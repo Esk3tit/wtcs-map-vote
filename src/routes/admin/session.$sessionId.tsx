@@ -57,10 +57,14 @@ function SessionDetailPage() {
   const [copiedCode, setCopiedCode] = useState<string | null>(null)
   const [sessionStatus, setSessionStatus] = useState<SessionStatus>(session.status)
 
-  const handleCopyCode = (code: string) => {
-    navigator.clipboard.writeText(code)
-    setCopiedCode(code)
-    setTimeout(() => setCopiedCode(null), 2000)
+  const handleCopyCode = async (code: string) => {
+    try {
+      await navigator.clipboard.writeText(code)
+      setCopiedCode(code)
+      setTimeout(() => setCopiedCode(null), 2000)
+    } catch (err) {
+      console.error('Failed to copy code:', err)
+    }
   }
 
   const handleStartSession = () => {
