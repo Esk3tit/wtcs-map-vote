@@ -1,4 +1,4 @@
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, Link } from '@tanstack/react-router'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -143,8 +143,8 @@ function VotingResultsPage() {
         {/* Action Button */}
         <div className="text-center">
           {isAdmin ? (
-            <Button size="lg" className="px-8">
-              Create New Session
+            <Button size="lg" className="px-8" asChild>
+              <Link to="/admin/create">Create New Session</Link>
             </Button>
           ) : (
             <p className="text-lg text-muted-foreground font-semibold">Session Complete</p>
