@@ -64,6 +64,27 @@ import { cn } from "@/lib/utils"
 - Add new shadcn components with `bunx shadcn@latest add <component>`
 - **Minimize new dependencies** - use what's already in the project when possible
 
+### Base UI Render Prop Pattern
+
+This project uses **Base UI** (not Radix UI). Base UI does NOT support `asChild` - use the `render` prop instead for polymorphic components:
+
+```tsx
+// WRONG - asChild doesn't exist in Base UI
+<Button asChild>
+  <Link to="/path">Click</Link>
+</Button>
+
+// CORRECT - use render prop
+<Button render={<Link to="/path" />}>
+  Click
+</Button>
+
+// Also works for other components like PopoverTrigger
+<PopoverTrigger render={<Button variant="outline" />}>
+  Open Menu
+</PopoverTrigger>
+```
+
 ### Styling
 
 - Use Tailwind CSS utility classes

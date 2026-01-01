@@ -85,11 +85,14 @@ export function SessionCard({ session }: SessionCardProps) {
       </CardContent>
 
       <CardFooter className="pt-3 border-t border-border/30">
-        <Button variant="secondary" size="sm" className="w-full gap-2" asChild>
-          <Link to="/admin/session/$sessionId" params={{ sessionId: session.id }}>
-            <Eye className="w-4 h-4" />
-            View
-          </Link>
+        <Button
+          variant="secondary"
+          size="sm"
+          className="w-full gap-2"
+          render={<Link to="/admin/session/$sessionId" params={{ sessionId: session.id }} />}
+        >
+          <Eye className="w-4 h-4" />
+          View
         </Button>
       </CardFooter>
     </Card>

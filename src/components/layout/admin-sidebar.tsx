@@ -27,22 +27,18 @@ export function AdminSidebar() {
         <Button
           variant={isSessionsActive ? 'secondary' : 'ghost'}
           className="w-full justify-start gap-3"
-          asChild
+          render={<Link to="/admin/dashboard" />}
         >
-          <Link to="/admin/dashboard">
-            <Calendar className="w-5 h-5" />
-            Sessions
-          </Link>
+          <Calendar className="w-5 h-5" />
+          Sessions
         </Button>
         <Button
           variant={isTeamsActive ? 'secondary' : 'ghost'}
           className="w-full justify-start gap-3"
-          asChild
+          render={<Link to="/admin/teams" />}
         >
-          <Link to="/admin/teams">
-            <Users className="w-5 h-5" />
-            Teams
-          </Link>
+          <Users className="w-5 h-5" />
+          Teams
         </Button>
       </nav>
 

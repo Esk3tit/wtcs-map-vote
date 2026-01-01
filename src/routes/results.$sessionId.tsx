@@ -143,8 +143,8 @@ function VotingResultsPage() {
         {/* Action Button */}
         <div className="text-center">
           {isAdmin ? (
-            <Button size="lg" className="px-8" asChild>
-              <Link to="/admin/create">Create New Session</Link>
+            <Button size="lg" className="px-8" render={<Link to="/admin/create" />}>
+              Create New Session
             </Button>
           ) : (
             <p className="text-lg text-muted-foreground font-semibold">Session Complete</p>

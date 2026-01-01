@@ -53,11 +53,9 @@ function DashboardPage() {
       <header className="border-b border-border/50 bg-card/30 backdrop-blur-sm">
         <div className="px-8 py-4 flex items-center justify-between">
           <h1 className="text-2xl font-bold text-foreground">Active Sessions</h1>
-          <Button size="default" className="gap-2" asChild>
-            <Link to="/admin/create">
-              <Plus className="w-4 h-4" />
-              Create Session
-            </Link>
+          <Button size="default" className="gap-2" render={<Link to="/admin/create" />}>
+            <Plus className="w-4 h-4" />
+            Create Session
           </Button>
         </div>
       </header>
@@ -84,11 +82,9 @@ function DashboardPage() {
             <p className="text-muted-foreground mb-6 text-center max-w-sm">
               Get started by creating your first voting session
             </p>
-            <Button size="lg" className="gap-2" asChild>
-              <Link to="/admin/create">
-                <Plus className="w-5 h-5" />
-                Create Session
-              </Link>
+            <Button size="lg" className="gap-2" render={<Link to="/admin/create" />}>
+              <Plus className="w-5 h-5" />
+              Create Session
             </Button>
           </div>
         ) : (
