@@ -5,9 +5,9 @@
   "type": "module",
   "scripts": {
     "dev": "bunx --bun vite",
-    "build": "tsc -b && vite build",
+    "build": "tsc -b && bunx --bun vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "bunx --bun vite preview"
   },
   "dependencies": {
     "@base-ui/react": "^1.0.0",
