@@ -101,18 +101,18 @@ function PlayerVotingPage() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       {/* Header */}
-      <header className="border-b border-border bg-card px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h1 className="text-xl font-bold">{matchName}</h1>
-            <Badge variant="secondary" className="bg-muted">
+      <header className="border-b border-border bg-card px-4 py-3 sm:px-6 sm:py-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <h1 className="text-lg sm:text-xl font-bold">{matchName}</h1>
+            <Badge variant="secondary" className="bg-muted text-xs sm:text-sm">
               ABBA Ban
             </Badge>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">You are:</span>
-            <span className="text-sm font-bold text-foreground">{playerName}</span>
-            <span className="text-sm text-muted-foreground">({yourTeam})</span>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground">You are:</span>
+            <span className="font-bold text-foreground">{playerName}</span>
+            <span className="text-muted-foreground">({yourTeam})</span>
           </div>
         </div>
       </header>
@@ -132,7 +132,7 @@ function PlayerVotingPage() {
           </div>
 
           <div
-            className={`text-center mb-4 font-mono text-7xl font-bold ${
+            className={`text-center mb-4 font-mono text-4xl sm:text-5xl md:text-7xl font-bold ${
               isYourTurn ? 'text-primary' : 'text-muted-foreground'
             }`}
           >
