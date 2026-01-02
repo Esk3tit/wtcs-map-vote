@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,7 +42,6 @@ function PlayerVotingPage() {
 
   const [timeLeft, setTimeLeft] = useState(27)
   const [isYourTurn, setIsYourTurn] = useState(true)
-  const [hoveredMap, setHoveredMap] = useState<string | null>(null)
   const [confirmBanMap, setConfirmBanMap] = useState<MapData | null>(null)
 
   const matchName = 'Match A5'
@@ -150,11 +148,14 @@ function PlayerVotingPage() {
                 key={map.id}
                 className={`overflow-hidden transition-all duration-200 relative group ${
                   map.status === 'available' && isYourTurn
-                    ? 'cursor-pointer hover:ring-2 hover:ring-primary hover:shadow-lg hover:shadow-primary/20'
+                    ? 'cursor-pointer hover:ring-2 hover:ring-primary hover:shadow-lg hover:shadow-primary/20 active:ring-2 active:ring-primary'
                     : ''
                 } ${map.status === 'banned' ? 'opacity-60' : ''}`}
-                onMouseEnter={() => map.status === 'available' && isYourTurn && setHoveredMap(map.id)}
-                onMouseLeave={() => setHoveredMap(null)}
+                onClick={() => {
+                  if (map.status === 'available' && isYourTurn) {
+                    handleBanMap(map.id)
+                  }
+                }}
               >
                 <div className="aspect-video relative overflow-hidden">
                   <img
@@ -167,20 +168,6 @@ function PlayerVotingPage() {
                   {map.status === 'banned' && (
                     <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
                       <X className="w-16 h-16 text-red-600" strokeWidth={4} />
-                    </div>
-                  )}
-
-                  {/* Hover Ban Button */}
-                  {map.status === 'available' && isYourTurn && hoveredMap === map.id && (
-                    <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
-                      <Button
-                        variant="destructive"
-                        size="lg"
-                        onClick={() => handleBanMap(map.id)}
-                        className="font-bold"
-                      >
-                        BAN
-                      </Button>
                     </div>
                   )}
                 </div>
