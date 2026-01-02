@@ -90,6 +90,14 @@ This project uses **Base UI** (not Radix UI). Base UI does NOT support `asChild`
 - Use Tailwind CSS utility classes
 - Use `cn()` helper from `@/lib/utils` for conditional class merging
 - CSS variables are defined in `src/index.css`
+- **Mobile-first responsive design** - start with mobile styles, then add breakpoints for larger screens:
+  ```tsx
+  // Mobile-first: base styles for mobile, then scale up
+  <div className="px-4 md:px-6 lg:px-8">
+  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3">
+  <div className="text-sm md:text-base lg:text-lg">
+  ```
+- Always test layouts on mobile viewports
 
 ### Routing (TanStack Router)
 
@@ -99,6 +107,20 @@ This project uses **Base UI** (not Radix UI). Base UI does NOT support `asChild`
 - Layout routes: `admin.tsx` wraps all `admin/*.tsx` routes with `<Outlet />`
 - `routeTree.gen.ts` is auto-generated - do not edit manually
 - Use `<Link to="/path">` for navigation
+
+## Code Quality
+
+- **TypeScript strict mode** - the project uses strict TypeScript, ensure all types are properly defined
+- **No `any` types** - avoid using `any` without clear justification; prefer `unknown` or proper typing
+- **Run linting before commits** - always run `bun run lint` before committing to catch issues early
+- **Run build to type-check** - use `bun run build` to verify no TypeScript errors
+
+## Code Security
+
+- **NEVER expose API keys or secrets in client code** - secrets must only be used server-side (Convex functions)
+- **Always use environment variables for secrets** - never hardcode sensitive values
+- **NEVER commit .env files** - ensure `.env*` files are in `.gitignore`
+- **Validate and sanitize all user input** - never trust client-side data
 
 ## Git Workflow
 
