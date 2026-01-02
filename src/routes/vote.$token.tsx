@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { Card } from '@/components/ui/card'
 import { Badge } from '@/components/ui/badge'
-import { Button } from '@/components/ui/button'
 import {
   AlertDialog,
   AlertDialogAction,
@@ -43,7 +42,6 @@ function PlayerVotingPage() {
 
   const [timeLeft, setTimeLeft] = useState(27)
   const [isYourTurn, setIsYourTurn] = useState(true)
-  const [hoveredMap, setHoveredMap] = useState<string | null>(null)
   const [confirmBanMap, setConfirmBanMap] = useState<MapData | null>(null)
 
   const matchName = 'Match A5'
@@ -101,18 +99,18 @@ function PlayerVotingPage() {
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       {/* Header */}
-      <header className="border-b border-border bg-card px-6 py-4">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-4">
-            <h1 className="text-xl font-bold">{matchName}</h1>
-            <Badge variant="secondary" className="bg-muted">
+      <header className="border-b border-border bg-card px-4 py-3 sm:px-6 sm:py-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-2 sm:gap-4">
+            <h1 className="text-lg sm:text-xl font-bold">{matchName}</h1>
+            <Badge variant="secondary" className="bg-muted text-xs sm:text-sm">
               ABBA Ban
             </Badge>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="text-sm text-muted-foreground">You are:</span>
-            <span className="text-sm font-bold text-foreground">{playerName}</span>
-            <span className="text-sm text-muted-foreground">({yourTeam})</span>
+          <div className="flex items-center gap-2 text-sm">
+            <span className="text-muted-foreground">You are:</span>
+            <span className="font-bold text-foreground">{playerName}</span>
+            <span className="text-muted-foreground">({yourTeam})</span>
           </div>
         </div>
       </header>
@@ -132,7 +130,7 @@ function PlayerVotingPage() {
           </div>
 
           <div
-            className={`text-center mb-4 font-mono text-7xl font-bold ${
+            className={`text-center mb-4 font-mono text-4xl sm:text-5xl md:text-7xl font-bold ${
               isYourTurn ? 'text-primary' : 'text-muted-foreground'
             }`}
           >
@@ -150,11 +148,14 @@ function PlayerVotingPage() {
                 key={map.id}
                 className={`overflow-hidden transition-all duration-200 relative group ${
                   map.status === 'available' && isYourTurn
-                    ? 'cursor-pointer hover:ring-2 hover:ring-primary hover:shadow-lg hover:shadow-primary/20'
+                    ? 'cursor-pointer hover:ring-2 hover:ring-primary hover:shadow-lg hover:shadow-primary/20 active:ring-2 active:ring-primary'
                     : ''
                 } ${map.status === 'banned' ? 'opacity-60' : ''}`}
-                onMouseEnter={() => map.status === 'available' && isYourTurn && setHoveredMap(map.id)}
-                onMouseLeave={() => setHoveredMap(null)}
+                onClick={() => {
+                  if (map.status === 'available' && isYourTurn) {
+                    handleBanMap(map.id)
+                  }
+                }}
               >
                 <div className="aspect-video relative overflow-hidden">
                   <img
@@ -167,20 +168,6 @@ function PlayerVotingPage() {
                   {map.status === 'banned' && (
                     <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
                       <X className="w-16 h-16 text-red-600" strokeWidth={4} />
-                    </div>
-                  )}
-
-                  {/* Hover Ban Button */}
-                  {map.status === 'available' && isYourTurn && hoveredMap === map.id && (
-                    <div className="absolute inset-0 bg-black/70 flex items-center justify-center">
-                      <Button
-                        variant="destructive"
-                        size="lg"
-                        onClick={() => handleBanMap(map.id)}
-                        className="font-bold"
-                      >
-                        BAN
-                      </Button>
                     </div>
                   )}
                 </div>
@@ -237,14 +224,14 @@ function PlayerVotingPage() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-border bg-card px-6 py-4">
-        <div className="flex items-center justify-between max-w-6xl mx-auto">
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Lock className="w-4 h-4" />
+      <footer className="border-t border-border bg-card px-4 py-3 sm:px-6 sm:py-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between max-w-6xl mx-auto">
+          <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
+            <Lock className="w-4 h-4 flex-shrink-0" />
             <span>Session locked to your device</span>
           </div>
-          <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Volume2 className="w-4 h-4" />
+          <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
+            <Volume2 className="w-4 h-4 flex-shrink-0" />
             <span>Audio alerts enabled</span>
           </div>
         </div>

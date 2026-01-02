@@ -65,7 +65,7 @@ function PlayerLobbyPage() {
         {/* Map Preview Section */}
         <div className="space-y-4">
           <h3 className="text-sm font-medium text-muted-foreground text-center">Maps in this session:</h3>
-          <div className="grid grid-cols-5 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
             {maps.map((map) => (
               <div key={map.name} className="space-y-2">
                 <div className="relative aspect-video rounded-lg overflow-hidden border border-border">
