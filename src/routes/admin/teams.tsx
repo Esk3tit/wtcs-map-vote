@@ -141,7 +141,8 @@ function TeamsPage() {
             // Teams Table
             <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
               <CardContent className="p-0">
-                <Table>
+                <div className="overflow-x-auto">
+                  <Table className="min-w-[600px]">
                   <TableHeader>
                     <TableRow className="border-border/50 hover:bg-transparent">
                       <TableHead className="w-12"></TableHead>
@@ -189,7 +190,8 @@ function TeamsPage() {
                       </TableRow>
                     ))}
                   </TableBody>
-                </Table>
+                  </Table>
+                </div>
               </CardContent>
             </Card>
           )}
