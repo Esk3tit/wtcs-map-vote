@@ -112,7 +112,7 @@ function TeamsPage() {
     <>
       <div className="flex-1 flex flex-col">
         <header className="border-b border-border/50 bg-card/30 backdrop-blur-sm">
-          <div className="px-8 py-4 flex items-center justify-between">
+          <div className="px-4 py-4 pl-16 md:px-8 md:pl-8 flex items-center justify-between">
             <h1 className="text-2xl font-bold text-foreground">Registered Teams</h1>
             <Button onClick={handleAddTeam} size="default" className="gap-2">
               <Plus className="w-4 h-4" />
@@ -121,7 +121,7 @@ function TeamsPage() {
           </div>
         </header>
 
-        <main className="flex-1 px-8 py-8">
+        <main className="flex-1 px-4 py-6 md:px-8 md:py-8">
           {hasNoTeams ? (
             // Empty State
             <div className="flex flex-col items-center justify-center py-16 px-4">
