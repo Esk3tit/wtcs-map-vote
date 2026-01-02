@@ -3,7 +3,11 @@ import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { LogOut, User, Users, Calendar } from 'lucide-react'
 
-export function AdminSidebar() {
+interface AdminSidebarProps {
+  onNavigate?: () => void
+}
+
+export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
   const matchRoute = useMatchRoute()
 
   const isSessionsActive = matchRoute({ to: '/admin/dashboard', fuzzy: true }) ||
@@ -16,8 +20,12 @@ export function AdminSidebar() {
     // TODO: Implement logout
   }
 
+  const handleNavClick = () => {
+    onNavigate?.()
+  }
+
   return (
-    <aside className="w-64 border-r border-border/50 bg-card/30 backdrop-blur-sm flex flex-col">
+    <aside className="w-64 border-r border-border/50 bg-card/30 backdrop-blur-sm flex flex-col h-full">
       <div className="p-6 border-b border-border/50">
         <h2 className="text-xl font-bold text-foreground">WTCS Map Vote</h2>
         <p className="text-sm text-muted-foreground">Admin Portal</p>
@@ -27,7 +35,7 @@ export function AdminSidebar() {
         <Button
           variant={isSessionsActive ? 'secondary' : 'ghost'}
           className="w-full justify-start gap-3"
-          render={<Link to="/admin/dashboard" />}
+          render={<Link to="/admin/dashboard" onClick={handleNavClick} />}
         >
           <Calendar className="w-5 h-5" />
           Sessions
@@ -35,7 +43,7 @@ export function AdminSidebar() {
         <Button
           variant={isTeamsActive ? 'secondary' : 'ghost'}
           className="w-full justify-start gap-3"
-          render={<Link to="/admin/teams" />}
+          render={<Link to="/admin/teams" onClick={handleNavClick} />}
         >
           <Users className="w-5 h-5" />
           Teams
