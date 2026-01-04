@@ -171,5 +171,5 @@ Key tools:
 - [Architecture](docs/architecture.md) - System design and data flow
 - [Changelog](docs/changelog.md) - Version history and changelog for changes over time, new changes in changelog should be appended instead of overwriting the changelog entirely
 - [Project Status](docs/project_status.md) - Current progress and immediate things that we are currently working on
-- Update files in the docs folder after major milestons and major additions to the project
+- Update files in the docs folder after major milestones and major additions to the project
 - Use the /update-docs-and-commit slash command when making git commits
