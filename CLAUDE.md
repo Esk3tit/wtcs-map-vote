@@ -28,21 +28,31 @@ WTCS Map Vote - A React application for map voting functionality.
 ## Project Structure
 
 ```
-src/
-├── components/
-│   ├── ui/          # shadcn/ui components (do not edit directly)
-│   ├── layout/      # Layout components (sidebar, headers, etc.)
-│   └── session/     # Session-related components
-├── routes/          # TanStack Router file-based routes
-│   ├── __root.tsx   # Root layout
-│   ├── admin.tsx    # Admin layout (wraps /admin/* routes)
-│   └── admin/       # Admin nested routes
-├── lib/
-│   └── utils.ts     # Utility functions (cn helper)
-├── routeTree.gen.ts # Auto-generated route tree (do not edit)
-├── App.tsx          # Router provider setup
-├── main.tsx         # Entry point
-└── index.css        # Global styles and Tailwind
+/
+├── docs/
+│   └── SPECIFICATION.md  # Full product & engineering spec
+├── .env.example          # Environment variables template
+└── src/
+    ├── assets/           # Static assets (images, etc.)
+    ├── components/
+    │   ├── ui/           # shadcn/ui components (do not edit directly)
+    │   ├── layout/       # Layout components (sidebar, headers, etc.)
+    │   └── session/      # Session-related components
+    ├── routes/           # TanStack Router file-based routes
+    │   ├── __root.tsx    # Root layout
+    │   ├── index.tsx     # Home redirect
+    │   ├── login.tsx     # Admin login page
+    │   ├── admin.tsx     # Admin layout (wraps /admin/* routes)
+    │   ├── admin/        # Admin nested routes (dashboard, create, teams, etc.)
+    │   ├── lobby.$token.tsx    # Player waiting room
+    │   ├── vote.$token.tsx     # Player voting interface
+    │   └── results.$sessionId.tsx  # Session results page
+    ├── lib/
+    │   └── utils.ts      # Utility functions (cn helper)
+    ├── routeTree.gen.ts  # Auto-generated route tree (do not edit)
+    ├── App.tsx           # Router provider setup
+    ├── main.tsx          # Entry point
+    └── index.css         # Global styles and Tailwind
 ```
 
 ## Code Conventions
@@ -115,6 +125,33 @@ This project uses **Base UI** (not Radix UI). Base UI does NOT support `asChild`
 - **Run linting before commits** - always run `bun run lint` before committing to catch issues early
 - **Run build to type-check** - use `bun run build` to verify no TypeScript errors
 
+## MCP Tools for Testing
+
+### Playwright MCP (UI Testing)
+
+**Always use Playwright MCP to test the UI** when:
+- Adding new UI features or components
+- Making any visual or layout changes
+- Modifying user interactions or flows
+- Fixing UI-related bugs
+
+Use `browser_snapshot` for accessibility-based testing and `browser_take_screenshot` for visual verification. Navigate with `browser_navigate` to `http://localhost:5173` (ensure dev server is running).
+
+### Convex MCP (Backend Testing)
+
+**Always use Convex MCP** for:
+- Testing Convex functions (queries, mutations, actions)
+- Inspecting or modifying database data
+- Debugging backend logic
+- Verifying data model changes
+
+Key tools:
+- `mcp__convex__status` - Get deployment info
+- `mcp__convex__tables` - List tables and schema
+- `mcp__convex__data` - Read table data
+- `mcp__convex__run` - Execute Convex functions
+- `mcp__convex__logs` - View function execution logs
+
 ## Code Security
 
 - **NEVER expose API keys or secrets in client code** - secrets must only be used server-side (Convex functions)
@@ -127,3 +164,12 @@ This project uses **Base UI** (not Radix UI). Base UI does NOT support `asChild`
 - **Always create a new branch** when starting major changes
 - **Never commit directly to main** - use feature branches and PRs
 - Branch naming: `feature/<description>`, `fix/<description>`, etc.
+
+## Documentation
+
+- [Project Spec](docs/SPECIFICATION.md) - Full project requirements, API specs, tech details. Product and Engineering Design document essentially.
+- [Architecture](docs/architecture.md) - System design and data flow
+- [Changelog](docs/changelog.md) - Version history and changelog for changes over time, new changes in changelog should be appended instead of overwriting the changelog entirely
+- [Project Status](docs/project_status.md) - Current progress and immediate things that we are currently working on
+- Update files in the docs folder after major milestons and major additions to the project
+- Use the /update-docs-and-commit slash command when making git commits
