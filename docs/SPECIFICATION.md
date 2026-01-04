@@ -55,7 +55,7 @@ A private web-based map vote/ban system for esports matches. The system enables 
 
 ### 2.1 Role Hierarchy
 
-```
+```text
 Root Admin
     └── Admin
             └── Player (temporary, session-scoped)
@@ -118,7 +118,7 @@ Root Admin
 
 ### 3.1 Session Lifecycle
 
-```
+```text
 ┌──────────┐     ┌─────────┐     ┌─────────────┐     ┌──────────┐
 │  DRAFT   │────▶│ WAITING │────▶│ IN_PROGRESS │────▶│ COMPLETE │
 └──────────┘     └─────────┘     └─────────────┘     └──────────┘
@@ -533,7 +533,7 @@ export default defineSchema({
 
 ### 7.2 Relationships Diagram
 
-```
+```text
 admins
    │
    ├──< sessions (createdBy)
@@ -792,7 +792,7 @@ scheduled: cleanupAuditLogs()
 
 ### 9.1 Route Structure
 
-```
+```text
 /                           → Redirect to /admin/dashboard
 /login                      → Admin Google OAuth login
 
@@ -1190,5 +1190,3 @@ Potential future metrics:
 | `WINNER_DECLARED` | SYSTEM | Map ID |
 
 ---
-
-*End of Specification*
