@@ -2,7 +2,7 @@
 
 Current progress and next steps for the WTCS Map Vote project.
 
-**Last Updated:** January 4, 2025
+**Last Updated:** January 4, 2026
 
 ---
 
