@@ -30,10 +30,10 @@ WTCS Map Vote - A React application for map voting functionality.
 ```
 /
 ├── docs/
+│   ├── plans/            # Working plans (gitignored)
 │   └── SPECIFICATION.md  # Full product & engineering spec
 ├── .env.example          # Environment variables template
 └── src/
-    ├── assets/           # Static assets (images, etc.)
     ├── components/
     │   ├── ui/           # shadcn/ui components (do not edit directly)
     │   ├── layout/       # Layout components (sidebar, headers, etc.)
@@ -173,3 +173,9 @@ Key tools:
 - [Project Status](docs/project_status.md) - Current progress and immediate things that we are currently working on
 - Update files in the docs folder after major milestones and major additions to the project
 - Use the /update-docs-and-commit slash command when making git commits
+
+### Working Plans
+
+**Always create plans in `docs/plans/`** - this directory is gitignored.
+
+When using `/workflows:plan` or similar planning commands, write plan files to `docs/plans/<plan-name>.md`. These are temporary working documents and should not be committed to the repository.
