@@ -139,6 +139,8 @@ Use `browser_snapshot` for accessibility-based testing and `browser_take_screens
 
 ### Convex MCP (Backend Testing)
 
+**Always refer to [docs/convex_rules.md](docs/convex_rules.md)** when writing or modifying Convex functions. This contains essential guidelines for function syntax, validators, schemas, and best practices.
+
 **Always use Convex MCP** for:
 - Testing Convex functions (queries, mutations, actions)
 - Inspecting or modifying database data
