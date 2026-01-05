@@ -178,4 +178,4 @@ Key tools:
 
 **Always create plans in `docs/plans/`** - this directory is gitignored.
 
-When using `/workflows:plan` or similar planning commands, write plan files to `docs/plans/<plan-name>.md`. These are temporary working documents and should not be committed to the repository.
+When using `/workflows:plan`, `/superpowers:write-plan`, or similar planning commands, write plan files to `docs/plans/<plan-name>.md`. These are temporary working documents and should not be committed to the repository.
