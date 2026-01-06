@@ -12,9 +12,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `.env.example` template for environment variables
 - `/update-docs-and-commit` slash command for automated documentation updates
 - MCP Tools section in CLAUDE.md (Playwright and Convex testing guidance)
+- Netlify `_redirects` file for SPA routing support
 
 ### Changed
 - Updated CLAUDE.md with expanded project structure documentation
+
+### Fixed
+- 404 errors when refreshing pages on Netlify deployment (SPA routing issue)
 
 ---
 
