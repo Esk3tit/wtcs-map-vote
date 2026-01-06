@@ -13,12 +13,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - `/update-docs-and-commit` slash command for automated documentation updates
 - MCP Tools section in CLAUDE.md (Playwright and Convex testing guidance)
 - Netlify `_redirects` file for SPA routing support
+- Meta description tag for SEO
+- Apple touch icon for iOS devices
 
 ### Changed
 - Updated CLAUDE.md with expanded project structure documentation
+- Browser tab title from "vite-app" to "WTCS Map Vote"
+- Favicon from Vite logo to custom project icon (`/icon.svg`)
 
 ### Fixed
 - 404 errors when refreshing pages on Netlify deployment (SPA routing issue)
+
+### Removed
+- Unused `public/vite.svg` (Vite default favicon)
 
 ---
 
