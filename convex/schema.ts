@@ -27,7 +27,7 @@ export default defineSchema({
     isActive: v.boolean(),
     createdAt: v.number(),
     updatedAt: v.number(),
-  }).index("by_active", ["isActive"]),
+  }).index("by_isActive", ["isActive"]),
 
   // Voting sessions
   sessions: defineTable({
@@ -78,7 +78,7 @@ export default defineSchema({
     lastHeartbeat: v.optional(v.number()),
     hasVotedThisRound: v.boolean(),
   })
-    .index("by_session", ["sessionId"])
+    .index("by_sessionId", ["sessionId"])
     .index("by_token", ["token"]),
 
   // Maps assigned to a session (snapshot from master pool)
@@ -97,8 +97,8 @@ export default defineSchema({
     bannedAtRound: v.optional(v.number()),
     voteCount: v.optional(v.number()),
   })
-    .index("by_session", ["sessionId"])
-    .index("by_session_state", ["sessionId", "state"]),
+    .index("by_sessionId", ["sessionId"])
+    .index("by_sessionId_and_state", ["sessionId", "state"]),
 
   // Individual votes (for MULTIPLAYER rounds)
   votes: defineTable({
@@ -109,8 +109,8 @@ export default defineSchema({
     submittedAt: v.number(),
     submittedByAdmin: v.boolean(),
   })
-    .index("by_session_round", ["sessionId", "round"])
-    .index("by_player_round", ["playerId", "round"]),
+    .index("by_sessionId_and_round", ["sessionId", "round"])
+    .index("by_playerId_and_round", ["playerId", "round"]),
 
   // Audit log
   auditLogs: defineTable({
@@ -132,6 +132,6 @@ export default defineSchema({
     }),
     timestamp: v.number(),
   })
-    .index("by_session", ["sessionId"])
+    .index("by_sessionId", ["sessionId"])
     .index("by_timestamp", ["timestamp"]),
 });
