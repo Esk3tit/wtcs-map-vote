@@ -2,7 +2,7 @@
 
 Current progress and next steps for the WTCS Map Vote project.
 
-**Last Updated:** January 4, 2026
+**Last Updated:** January 9, 2026
 
 ---
 
@@ -46,49 +46,53 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] MCP testing guidance (Playwright, Convex)
 - [x] `/update-docs-and-commit` slash command
 
+### Convex Backend
+- [x] Convex project initialization (`npx convex dev`)
+- [x] Convex deployment configuration
+- [x] Environment variables setup
+- [x] Complete database schema (`convex/schema.ts`) with 8 tables
+- [x] All indexes defined (14 total) for efficient queries
+- [x] TypeScript types auto-generated (`convex/_generated/`)
+
 ---
 
 ## In Progress
 
-### Documentation
-- [ ] Seeding initial documentation files (this PR)
+### Code Review Follow-ups
+- [ ] Implement uniqueness enforcement in mutations (token, email)
+- [ ] Create cascade delete helpers for sessions
+- [ ] Add missing performance indexes (4 identified)
+
+See `todos/` directory for detailed findings from code review.
 
 ---
 
 ## Next Steps
 
-### Convex Integration (Priority: High)
+### Convex Functions (Priority: High)
 
-Backend setup and integration with Convex:
+Implement the Convex functions to power the application:
 
-1. **Initialize Convex**
-   - [ ] Run `npx convex dev` to initialize project
-   - [ ] Configure Convex deployment
-   - [ ] Set up environment variables
-
-2. **Schema Definition**
-   - [ ] Create `convex/schema.ts` with data model from spec
-   - [ ] Define tables: admins, teams, maps, sessions, sessionPlayers, sessionMaps, votes, auditLogs
-   - [ ] Add indexes for common queries
-
-3. **Authentication**
+1. **Authentication**
    - [ ] Set up Convex Auth with Google OAuth provider
    - [ ] Implement admin whitelist check
    - [ ] Create player token authentication flow
+   - [ ] Add uniqueness validation (email, token)
 
-4. **Core Functions**
+2. **Core Functions**
    - [ ] Admin CRUD operations (teams, maps, sessions)
    - [ ] Session lifecycle mutations (create, finalize, start, pause, resume, end)
    - [ ] Player token validation and IP locking
    - [ ] Voting mutations (submitBan, submitVote)
+   - [ ] Cascade delete helpers for data integrity
 
-5. **Real-Time Subscriptions**
+3. **Real-Time Subscriptions**
    - [ ] Session state subscription
    - [ ] Map state updates
    - [ ] Player connection status
    - [ ] Timer synchronization
 
-6. **Connect Frontend**
+4. **Connect Frontend**
    - [ ] Replace mock data with Convex queries
    - [ ] Wire up mutations to forms/actions
    - [ ] Add loading and error states

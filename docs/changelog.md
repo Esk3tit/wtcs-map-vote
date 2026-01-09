@@ -9,6 +9,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- Complete Convex database schema with 8 tables (`convex/schema.ts`):
+  - `admins` - Google OAuth users with email whitelist
+  - `teams` - Reusable team registry
+  - `maps` - Master map pool (CMS-managed)
+  - `sessions` - Voting sessions with state machine
+  - `sessionPlayers` - Player slots with token authentication
+  - `sessionMaps` - Maps assigned to session (snapshot pattern)
+  - `votes` - Individual votes for Multiplayer format
+  - `auditLogs` - Action history and audit trail
+- All database indexes for efficient queries (14 total)
+- Convex project initialization and deployment configuration
+- Code review todos directory (`todos/`) for tracking follow-up work
 - `.env.example` template for environment variables
 - `/update-docs-and-commit` slash command for automated documentation updates
 - MCP Tools section in CLAUDE.md (Playwright and Convex testing guidance)

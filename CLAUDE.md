@@ -29,9 +29,15 @@ WTCS Map Vote - A React application for map voting functionality.
 
 ```
 /
+├── convex/
+│   ├── schema.ts         # Database schema (8 tables, 14 indexes)
+│   ├── _generated/       # Auto-generated types (do not edit)
+│   └── *.ts              # Convex functions (queries, mutations, actions)
 ├── docs/
 │   ├── plans/            # Working plans (gitignored)
+│   ├── convex_rules.md   # Convex coding guidelines
 │   └── SPECIFICATION.md  # Full product & engineering spec
+├── todos/                # Code review findings and follow-up work
 ├── .env.example          # Environment variables template
 └── src/
     ├── components/
@@ -153,6 +159,23 @@ Key tools:
 - `mcp__convex__data` - Read table data
 - `mcp__convex__run` - Execute Convex functions
 - `mcp__convex__logs` - View function execution logs
+
+### Database Schema
+
+The schema is defined in `convex/schema.ts` with 8 tables:
+
+| Table | Purpose | Key Indexes |
+|-------|---------|-------------|
+| `admins` | Google OAuth users | `by_email` |
+| `teams` | Reusable team registry | `by_name` |
+| `maps` | Master map pool | `by_isActive` |
+| `sessions` | Voting sessions | `by_status`, `by_createdBy`, `by_expiresAt` |
+| `sessionPlayers` | Player slots with tokens | `by_sessionId`, `by_token` |
+| `sessionMaps` | Maps assigned to session | `by_sessionId`, `by_sessionId_and_state` |
+| `votes` | Individual votes | `by_sessionId_and_round`, `by_playerId_and_round` |
+| `auditLogs` | Action history | `by_sessionId`, `by_timestamp` |
+
+**Important:** Convex indexes do not enforce uniqueness. Mutations must validate uniqueness for `token` and `email` fields before inserting.
 
 ## Code Security
 
