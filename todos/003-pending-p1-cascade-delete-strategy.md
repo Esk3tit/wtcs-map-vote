@@ -43,9 +43,12 @@ sessions
 export const deleteSessionWithCascade = internalMutation({
   args: { sessionId: v.id("sessions") },
   handler: async (ctx, args) => {
+    // NOTE: votes table needs a by_sessionId index (not compound by_sessionId_and_round)
+    // when querying by sessionId alone. Add index or use filter() as fallback.
+
     // 1. Delete votes (references both sessionPlayers and sessionMaps)
     const votes = await ctx.db.query("votes")
-      .withIndex("by_sessionId_and_round", q => q.eq("sessionId", args.sessionId))
+      .withIndex("by_sessionId", q => q.eq("sessionId", args.sessionId))
       .collect();
     await Promise.all(votes.map(v => ctx.db.delete(v._id)));
 
@@ -67,6 +70,11 @@ export const deleteSessionWithCascade = internalMutation({
   },
 });
 ```
+
+**Implementation Notes:**
+- **Index requirement:** Add `by_sessionId` index to `votes` table for efficient cascade queries
+- **Error handling:** Convex mutations are atomic per function call. If any operation throws, the entire mutation rolls back automatically. For additional safety, wrap in try-catch to log failures before re-throwing.
+- **Partial failure recovery:** Since Convex provides transactional guarantees within a mutation, partial deletes won't persist if an error occurs mid-cascade.
 
 ### Option B: Soft delete with status
 **Pros:** Preserves historical data
@@ -92,6 +100,9 @@ Option A for actual deletion, but document when soft delete (status: EXPIRED) is
 - [ ] All child records deleted before parent
 - [ ] Audit logs retention policy documented
 - [ ] Tests verify no orphans after deletion
+- [ ] Error handling: cascade failures logged with context before re-throwing
+- [ ] Tests simulate cascade failures at each step to verify atomic rollback
+- [ ] Add `by_sessionId` index to `votes` table for efficient cascade queries
 
 ## Work Log
 
