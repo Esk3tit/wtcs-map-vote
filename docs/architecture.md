@@ -89,9 +89,9 @@ src/components/
 
 ---
 
-## Backend Architecture (Planned)
+## Backend Architecture
 
-### Convex Functions
+### Convex Functions (Planned)
 
 | Type | Purpose |
 |------|---------|
@@ -100,19 +100,27 @@ src/components/
 | Actions | External API calls, complex operations |
 | Scheduled | Timer expiration, session cleanup |
 
-### Data Model
+### Data Model (Implemented)
 
-See [SPECIFICATION.md](./SPECIFICATION.md#7-data-model) for the complete schema.
+The database schema is fully implemented in `convex/schema.ts`. See [SPECIFICATION.md](./SPECIFICATION.md#7-data-model) for the complete specification.
 
-**Core Tables:**
-- `admins` - Admin users (Google OAuth)
-- `teams` - Registered teams
-- `maps` - Master map pool
-- `sessions` - Voting sessions
-- `sessionPlayers` - Player slots with tokens
-- `sessionMaps` - Maps assigned to sessions
-- `votes` - Individual votes (Multiplayer)
-- `auditLogs` - Action history
+**Tables:**
+
+| Table | Purpose | Key Indexes |
+|-------|---------|-------------|
+| `admins` | Google OAuth users with whitelist | `by_email` |
+| `teams` | Reusable team registry | `by_name` |
+| `maps` | Master map pool (CMS-managed) | `by_isActive` |
+| `sessions` | Voting sessions with state machine | `by_status`, `by_createdBy`, `by_expiresAt` |
+| `sessionPlayers` | Player slots with token auth | `by_sessionId`, `by_token` |
+| `sessionMaps` | Maps assigned to session (snapshot) | `by_sessionId`, `by_sessionId_and_state` |
+| `votes` | Individual votes (Multiplayer) | `by_sessionId_and_round`, `by_playerId_and_round` |
+| `auditLogs` | Action history and audit trail | `by_sessionId`, `by_timestamp` |
+
+**Design Patterns:**
+- **Snapshot pattern**: `sessionMaps` copies map data from master pool to preserve session integrity
+- **Denormalization**: `teamName` stored directly in `sessionPlayers` for flexibility
+- **Union types**: Status, format, and state fields use strict literal unions for type safety
 
 ### Authentication
 
