@@ -103,3 +103,4 @@ Option A for actual deletion, but document when soft delete (status: EXPIRED) is
 
 - [PR #11](https://github.com/Esk3tit/wtcs-map-vote/pull/11)
 - docs/SPECIFICATION.md Section 8.7 (Scheduled Functions)
+- docs/convex_rules.md
