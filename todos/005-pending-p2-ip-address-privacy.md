@@ -75,6 +75,6 @@ Option A - Implement IP cleanup when sessions expire. Document this in CLAUDE.md
 
 ## Resources
 
-- PR #11: https://github.com/Esk3tit/wtcs-map-vote/pull/11
+- [PR #11](https://github.com/Esk3tit/wtcs-map-vote/pull/11)
 - SPECIFICATION.md Section 12.4 (Privacy)
 - GDPR Article 5 (data minimization)

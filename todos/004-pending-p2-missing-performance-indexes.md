@@ -18,10 +18,11 @@ Several common query patterns identified in the specification lack supporting in
 
 **Source:** Performance Oracle, Architecture Strategist reviews
 
-### Missing Index 1: `auditLogs.by_sessionId_and_timestamp`
+### Missing Index 1: `auditLogs.by_sessionId_and_timestamp` (Composite Index Optimization)
 **Location:** `convex/schema.ts:135-136`
+**Current state:** Separate `by_sessionId` and `by_timestamp` indexes exist but not a composite
 **Query pattern:** "Get audit logs for session X ordered by time"
-**Impact:** Session history view requires fetch + client-side sort
+**Impact:** Session history view requires fetch + client-side sort; composite index enables efficient filtered + ordered queries
 
 ### Missing Index 2: `sessionPlayers.by_tokenExpiresAt`
 **Location:** `convex/schema.ts:80-82`
