@@ -89,5 +89,5 @@ Option A - Add all indexes now since the query patterns are documented in spec.
 ## Resources
 
 - [PR #11](https://github.com/Esk3tit/wtcs-map-vote/pull/11)
-- SPECIFICATION.md Section 8.7 (Scheduled functions)
+- docs/SPECIFICATION.md Section 8.7 (Scheduled Functions)
 - Performance Oracle review findings

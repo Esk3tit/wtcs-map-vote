@@ -87,5 +87,5 @@ Option A - Add validation in mutations that create sessionPlayers.
 ## Resources
 
 - [PR #11](https://github.com/Esk3tit/wtcs-map-vote/pull/11)
-- SPECIFICATION.md Section 12.1 (Token generation)
+- docs/SPECIFICATION.md Section 12.1 (Authentication & Authorization)
 - Convex docs on indexes

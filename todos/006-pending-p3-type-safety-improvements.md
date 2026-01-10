@@ -71,5 +71,5 @@ Option B - Keep schema flexible, add TypeScript types for use in functions.
 
 ## Resources
 
-- PR #11: https://github.com/Esk3tit/wtcs-map-vote/pull/11
-- SPECIFICATION.md Appendix C (Audit actions)
+- [PR #11](https://github.com/Esk3tit/wtcs-map-vote/pull/11)
+- docs/SPECIFICATION.md Appendix C (Audit Log Action Types)

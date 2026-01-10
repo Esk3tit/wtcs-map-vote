@@ -73,5 +73,5 @@ Option A - Add uniqueness check in admin creation mutations.
 
 ## Resources
 
-- PR #11: https://github.com/Esk3tit/wtcs-map-vote/pull/11
-- SPECIFICATION.md Section 2.5 (Admin authentication)
+- [PR #11](https://github.com/Esk3tit/wtcs-map-vote/pull/11)
+- docs/SPECIFICATION.md Section 2.5 (Authentication Flow)

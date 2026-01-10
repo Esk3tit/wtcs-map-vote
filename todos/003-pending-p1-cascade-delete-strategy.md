@@ -101,5 +101,5 @@ Option A for actual deletion, but document when soft delete (status: EXPIRED) is
 
 ## Resources
 
-- PR #11: https://github.com/Esk3tit/wtcs-map-vote/pull/11
-- SPECIFICATION.md Section 8.7 (Scheduled functions)
+- [PR #11](https://github.com/Esk3tit/wtcs-map-vote/pull/11)
+- docs/SPECIFICATION.md Section 8.7 (Scheduled Functions)
