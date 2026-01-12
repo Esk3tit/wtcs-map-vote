@@ -1,6 +1,36 @@
 import { query, mutation } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 
+// Constants for validation
+const MAX_NAME_LENGTH = 100;
+
+/**
+ * Validates a logo URL to prevent XSS and SSRF attacks.
+ * Allows undefined/empty strings, requires http(s) protocol,
+ * and blocks internal IP addresses.
+ */
+function isValidLogoUrl(url: string | undefined | null): boolean {
+  if (!url) return true;
+  try {
+    const parsed = new URL(url);
+    if (!["https:", "http:"].includes(parsed.protocol)) return false;
+    const hostname = parsed.hostname.toLowerCase();
+    // Block internal/private IPs
+    if (
+      hostname === "localhost" ||
+      hostname.startsWith("127.") ||
+      hostname.startsWith("192.168.") ||
+      hostname.startsWith("10.") ||
+      hostname === "169.254.169.254"
+    ) {
+      return false;
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 /**
  * List all teams sorted by name (ascending)
  */
@@ -34,10 +64,27 @@ export const createTeam = mutation({
   },
   returns: v.object({ teamId: v.id("teams") }),
   handler: async (ctx, args) => {
+    // TODO: Add authentication check when auth is integrated (Phase 2)
+    // const identity = await ctx.auth.getUserIdentity();
+    // if (!identity) throw new ConvexError("Authentication required");
+    // Verify caller is admin via admins table lookup
+
     // Trim and validate name
     const trimmedName = args.name.trim();
     if (trimmedName.length === 0) {
       throw new ConvexError("Team name cannot be empty");
+    }
+    if (trimmedName.length > MAX_NAME_LENGTH) {
+      throw new ConvexError(
+        `Team name cannot exceed ${MAX_NAME_LENGTH} characters`
+      );
+    }
+
+    // Validate logoUrl if provided
+    if (args.logoUrl && !isValidLogoUrl(args.logoUrl)) {
+      throw new ConvexError(
+        "Invalid logo URL. Must be a valid HTTP(S) URL and not point to internal addresses."
+      );
     }
 
     // Check uniqueness (indexes don't enforce uniqueness in Convex)
@@ -67,10 +114,16 @@ export const updateTeam = mutation({
   args: {
     teamId: v.id("teams"),
     name: v.optional(v.string()),
-    logoUrl: v.optional(v.string()),
+    // Allow null to unset logoUrl
+    logoUrl: v.optional(v.union(v.string(), v.null())),
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
+    // TODO: Add authentication check when auth is integrated (Phase 2)
+    // const identity = await ctx.auth.getUserIdentity();
+    // if (!identity) throw new ConvexError("Authentication required");
+    // Verify caller is admin via admins table lookup
+
     // Verify team exists
     const existing = await ctx.db.get(args.teamId);
     if (!existing) {
@@ -88,6 +141,11 @@ export const updateTeam = mutation({
       if (trimmedName.length === 0) {
         throw new ConvexError("Team name cannot be empty");
       }
+      if (trimmedName.length > MAX_NAME_LENGTH) {
+        throw new ConvexError(
+          `Team name cannot exceed ${MAX_NAME_LENGTH} characters`
+        );
+      }
 
       if (trimmedName !== existing.name) {
         const duplicate = await ctx.db
@@ -102,9 +160,20 @@ export const updateTeam = mutation({
       updates.name = trimmedName;
     }
 
-    // Handle logoUrl update
+    // Handle logoUrl update (null means unset)
     if (args.logoUrl !== undefined) {
-      updates.logoUrl = args.logoUrl;
+      if (args.logoUrl === null) {
+        // Unset the logoUrl by patching with undefined
+        updates.logoUrl = undefined;
+      } else {
+        // Validate the new URL
+        if (!isValidLogoUrl(args.logoUrl)) {
+          throw new ConvexError(
+            "Invalid logo URL. Must be a valid HTTP(S) URL and not point to internal addresses."
+          );
+        }
+        updates.logoUrl = args.logoUrl;
+      }
     }
 
     await ctx.db.patch(args.teamId, updates);
@@ -121,29 +190,44 @@ export const deleteTeam = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
+    // TODO: Add authentication check when auth is integrated (Phase 2)
+    // const identity = await ctx.auth.getUserIdentity();
+    // if (!identity) throw new ConvexError("Authentication required");
+    // Verify caller is admin via admins table lookup
+
     // Verify team exists
     const team = await ctx.db.get(args.teamId);
     if (!team) {
       throw new ConvexError("Team not found");
     }
 
-    // Check for active sessions using this team name
-    // Active = DRAFT, WAITING, IN_PROGRESS, PAUSED
-    const allSessions = await ctx.db.query("sessions").collect();
-    const activeStatuses = ["DRAFT", "WAITING", "IN_PROGRESS", "PAUSED"];
+    // Efficiently check for active sessions using this team.
+    // This avoids scanning all sessions and prevents N+1 queries.
+    // For optimal performance, consider adding an index on `teamName` in sessionPlayers.
+    const playersInTeam = await ctx.db
+      .query("sessionPlayers")
+      .filter((q) => q.eq(q.field("teamName"), team.name))
+      .collect();
 
-    for (const session of allSessions) {
-      if (!activeStatuses.includes(session.status)) continue;
+    if (playersInTeam.length > 0) {
+      const sessionIds = [...new Set(playersInTeam.map((p) => p.sessionId))];
+      const sessions = await Promise.all(
+        sessionIds.map((id) => ctx.db.get(id))
+      );
 
-      // Check if any player in this session uses the team name
-      const players = await ctx.db
-        .query("sessionPlayers")
-        .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
-        .collect();
+      const activeStatuses = new Set([
+        "DRAFT",
+        "WAITING",
+        "IN_PROGRESS",
+        "PAUSED",
+      ]);
+      const activeSession = sessions.find(
+        (session) => session && activeStatuses.has(session.status)
+      );
 
-      if (players.some((p) => p.teamName === team.name)) {
+      if (activeSession) {
         throw new ConvexError(
-          `Cannot delete team "${team.name}": used in active session "${session.matchName}"`
+          `Cannot delete team "${team.name}": used in active session "${activeSession.matchName}"`
         );
       }
     }
