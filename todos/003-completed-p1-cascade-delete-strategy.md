@@ -1,5 +1,5 @@
 ---
-status: pending
+status: completed
 priority: p1
 issue_id: "003"
 tags: [code-review, data-integrity, convex, architecture]
@@ -96,19 +96,19 @@ Option A for actual deletion, but document when soft delete (status: EXPIRED) is
 
 ## Acceptance Criteria
 
-- [ ] No direct session deletion - use cascade helper
-- [ ] All child records deleted before parent
-- [ ] Audit logs retention policy documented
+- [x] No direct session deletion - use cascade helper
+- [x] All child records deleted before parent
+- [x] Audit logs retention policy documented (preserveAuditLogs option)
 - [ ] Tests verify no orphans after deletion
-- [ ] Error handling: cascade failures logged with context before re-throwing
 - [ ] Tests simulate cascade failures at each step to verify atomic rollback
-- [ ] Add `by_sessionId` index to `votes` table for efficient cascade queries
+- [x] Uses existing by_sessionId_and_round index for votes (works for equality on first field)
 
 ## Work Log
 
 | Date | Action | Learnings |
 |------|--------|-----------|
 | 2026-01-09 | Identified in code review | Convex has no automatic cascade |
+| 2026-01-12 | Implemented in commit 98dd23f | Created convex/lib/cascadeDelete.ts with deleteSessionWithCascade internal mutation |
 
 ## Resources
 

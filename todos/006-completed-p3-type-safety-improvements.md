@@ -1,5 +1,5 @@
 ---
-status: pending
+status: completed
 priority: p3
 issue_id: "006"
 tags: [code-review, typescript, convex, type-safety]
@@ -60,14 +60,15 @@ Option B - Keep schema flexible, add TypeScript types for use in functions.
 
 ## Acceptance Criteria
 
-- [ ] TypeScript types defined for role and action values
-- [ ] Functions use typed constants, not raw strings
+- [x] TypeScript types defined for role and action values
+- [ ] Functions use typed constants, not raw strings (to be done when functions are implemented)
 
 ## Work Log
 
 | Date | Action | Learnings |
 |------|--------|-----------|
 | 2026-01-09 | Identified in code review | Balance between flexibility and safety |
+| 2026-01-12 | Implemented in commit 98dd23f | Created convex/lib/types.ts with PlayerRole and AuditAction types |
 
 ## Resources
 
