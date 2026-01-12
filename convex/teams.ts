@@ -1,8 +1,19 @@
 import { query, mutation } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
+import { Doc } from "./_generated/dataModel";
 
 // Constants for validation
 const MAX_NAME_LENGTH = 100;
+const MAX_URL_LENGTH = 2048;
+
+// Type-safe active session statuses (validated against schema)
+type SessionStatus = Doc<"sessions">["status"];
+const ACTIVE_SESSION_STATUSES: Set<SessionStatus> = new Set([
+  "DRAFT",
+  "WAITING",
+  "IN_PROGRESS",
+  "PAUSED",
+]);
 
 /**
  * Validates a logo URL to prevent XSS and SSRF attacks.
@@ -11,6 +22,8 @@ const MAX_NAME_LENGTH = 100;
  */
 function isValidLogoUrl(url: string | undefined | null): boolean {
   if (!url) return true;
+  // Reject excessively long URLs
+  if (url.length > MAX_URL_LENGTH) return false;
   try {
     const parsed = new URL(url);
     if (!["https:", "http:"].includes(parsed.protocol)) return false;
@@ -205,13 +218,7 @@ export const updateTeam = mutation({
           ];
           for (const sessionId of sessionIds) {
             const session = await ctx.db.get(sessionId);
-            const activeStatuses = new Set([
-              "DRAFT",
-              "WAITING",
-              "IN_PROGRESS",
-              "PAUSED",
-            ]);
-            if (session && activeStatuses.has(session.status)) {
+            if (session && ACTIVE_SESSION_STATUSES.has(session.status)) {
               throw new ConvexError(
                 `Cannot rename team "${existing.name}": used in active session "${session.matchName}"`
               );
@@ -276,14 +283,8 @@ export const deleteTeam = mutation({
         sessionIds.map((id) => ctx.db.get(id))
       );
 
-      const activeStatuses = new Set([
-        "DRAFT",
-        "WAITING",
-        "IN_PROGRESS",
-        "PAUSED",
-      ]);
       const activeSession = sessions.find(
-        (session) => session && activeStatuses.has(session.status)
+        (session) => session && ACTIVE_SESSION_STATUSES.has(session.status)
       );
 
       if (activeSession) {
