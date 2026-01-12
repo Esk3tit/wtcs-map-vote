@@ -8,13 +8,17 @@
  * @module
  */
 
+import type * as teams from "../teams.js";
+
 import type {
   ApiFromModules,
   FilterApi,
   FunctionReference,
 } from "convex/server";
 
-declare const fullApi: ApiFromModules<{}>;
+declare const fullApi: ApiFromModules<{
+  teams: typeof teams;
+}>;
 
 /**
  * A utility for referencing Convex functions in your app's public API.
