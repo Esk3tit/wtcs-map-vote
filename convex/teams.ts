@@ -15,13 +15,37 @@ function isValidLogoUrl(url: string | undefined | null): boolean {
     const parsed = new URL(url);
     if (!["https:", "http:"].includes(parsed.protocol)) return false;
     const hostname = parsed.hostname.toLowerCase();
-    // Block internal/private IPs
+    // Block internal/private IPs and cloud metadata endpoints
+    // Note: This is client-side validation; logos are rendered in <img> tags, not fetched server-side
     if (
       hostname === "localhost" ||
       hostname.startsWith("127.") ||
       hostname.startsWith("192.168.") ||
       hostname.startsWith("10.") ||
-      hostname === "169.254.169.254"
+      // 172.16.0.0/12 private range (172.16.x.x - 172.31.x.x)
+      hostname.startsWith("172.16.") ||
+      hostname.startsWith("172.17.") ||
+      hostname.startsWith("172.18.") ||
+      hostname.startsWith("172.19.") ||
+      hostname.startsWith("172.20.") ||
+      hostname.startsWith("172.21.") ||
+      hostname.startsWith("172.22.") ||
+      hostname.startsWith("172.23.") ||
+      hostname.startsWith("172.24.") ||
+      hostname.startsWith("172.25.") ||
+      hostname.startsWith("172.26.") ||
+      hostname.startsWith("172.27.") ||
+      hostname.startsWith("172.28.") ||
+      hostname.startsWith("172.29.") ||
+      hostname.startsWith("172.30.") ||
+      hostname.startsWith("172.31.") ||
+      // Link-local addresses
+      hostname.startsWith("169.254.") ||
+      // IPv6 localhost
+      hostname === "::1" ||
+      hostname === "[::1]" ||
+      // Cloud metadata endpoints
+      hostname === "metadata.google.internal"
     ) {
       return false;
     }
@@ -88,6 +112,11 @@ export const createTeam = mutation({
     }
 
     // Check uniqueness (indexes don't enforce uniqueness in Convex)
+    // Note: There's a theoretical race condition where two concurrent requests
+    // could both pass this check before either inserts. This is acceptable for
+    // this low-traffic admin application (~12 concurrent users max per spec).
+    // Convex mutations are serialized per-document, but uniqueness checks across
+    // documents require application-level handling.
     const existing = await ctx.db
       .query("teams")
       .withIndex("by_name", (q) => q.eq("name", trimmedName))
@@ -131,7 +160,12 @@ export const updateTeam = mutation({
     }
 
     // Build updates object
-    const updates: { name?: string; logoUrl?: string; updatedAt: number } = {
+    // Note: logoUrl uses `string | undefined` to allow unsetting via patch
+    const updates: {
+      name?: string;
+      logoUrl?: string | undefined;
+      updatedAt: number;
+    } = {
       updatedAt: Date.now(),
     };
 
@@ -148,6 +182,7 @@ export const updateTeam = mutation({
       }
 
       if (trimmedName !== existing.name) {
+        // Check for duplicate name
         const duplicate = await ctx.db
           .query("teams")
           .withIndex("by_name", (q) => q.eq("name", trimmedName))
@@ -155,6 +190,33 @@ export const updateTeam = mutation({
 
         if (duplicate) {
           throw new ConvexError("A team with this name already exists");
+        }
+
+        // Block rename if team is used in active sessions
+        // This prevents orphaned teamName references in sessionPlayers
+        const playersInTeam = await ctx.db
+          .query("sessionPlayers")
+          .withIndex("by_teamName", (q) => q.eq("teamName", existing.name))
+          .collect();
+
+        if (playersInTeam.length > 0) {
+          const sessionIds = [
+            ...new Set(playersInTeam.map((p) => p.sessionId)),
+          ];
+          for (const sessionId of sessionIds) {
+            const session = await ctx.db.get(sessionId);
+            const activeStatuses = new Set([
+              "DRAFT",
+              "WAITING",
+              "IN_PROGRESS",
+              "PAUSED",
+            ]);
+            if (session && activeStatuses.has(session.status)) {
+              throw new ConvexError(
+                `Cannot rename team "${existing.name}": used in active session "${session.matchName}"`
+              );
+            }
+          }
         }
       }
       updates.name = trimmedName;
@@ -202,11 +264,10 @@ export const deleteTeam = mutation({
     }
 
     // Efficiently check for active sessions using this team.
-    // This avoids scanning all sessions and prevents N+1 queries.
-    // For optimal performance, consider adding an index on `teamName` in sessionPlayers.
+    // Uses by_teamName index for O(1) lookup instead of full table scan.
     const playersInTeam = await ctx.db
       .query("sessionPlayers")
-      .filter((q) => q.eq(q.field("teamName"), team.name))
+      .withIndex("by_teamName", (q) => q.eq("teamName", team.name))
       .collect();
 
     if (playersInTeam.length > 0) {

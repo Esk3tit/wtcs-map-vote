@@ -75,7 +75,8 @@ export default defineSchema({
     hasVotedThisRound: v.boolean(),
   })
     .index("by_sessionId", ["sessionId"])
-    .index("by_token", ["token"]),
+    .index("by_token", ["token"])
+    .index("by_teamName", ["teamName"]),
 
   // Maps assigned to a session (snapshot from master pool)
   sessionMaps: defineTable({
