@@ -76,7 +76,9 @@ export default defineSchema({
   })
     .index("by_sessionId", ["sessionId"])
     .index("by_token", ["token"])
-    .index("by_teamName", ["teamName"]),
+    .index("by_teamName", ["teamName"])
+    .index("by_tokenExpiresAt", ["tokenExpiresAt"])
+    .index("by_lastHeartbeat", ["lastHeartbeat"]),
 
   // Maps assigned to a session (snapshot from master pool)
   sessionMaps: defineTable({
@@ -107,7 +109,8 @@ export default defineSchema({
     submittedByAdmin: v.boolean(),
   })
     .index("by_sessionId_and_round", ["sessionId", "round"])
-    .index("by_playerId_and_round", ["playerId", "round"]),
+    .index("by_playerId_and_round", ["playerId", "round"])
+    .index("by_sessionId_and_playerId", ["sessionId", "playerId"]),
 
   // Audit log
   auditLogs: defineTable({
@@ -130,5 +133,6 @@ export default defineSchema({
     timestamp: v.number(),
   })
     .index("by_sessionId", ["sessionId"])
-    .index("by_timestamp", ["timestamp"]),
+    .index("by_timestamp", ["timestamp"])
+    .index("by_sessionId_and_timestamp", ["sessionId", "timestamp"]),
 });
