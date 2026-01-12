@@ -1,6 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
 import { Doc } from "./_generated/dataModel";
+import validator from "validator";
 
 // Constants for validation
 const MAX_NAME_LENGTH = 100;
@@ -16,64 +17,21 @@ const ACTIVE_SESSION_STATUSES: Set<SessionStatus> = new Set([
 ]);
 
 /**
- * Validates a logo URL to prevent XSS and SSRF attacks.
- * Allows undefined/empty strings, requires http(s) protocol,
- * and blocks internal IP addresses.
+ * Validates a logo URL.
+ * Uses validator.js for robust URL validation.
+ * Note: Logo URLs are client-rendered in <img> tags, not fetched server-side,
+ * so SSRF/private IP blocking is not needed (browser handles CORS).
  */
 function isValidLogoUrl(url: string | undefined | null): boolean {
   if (!url) return true;
-  // Reject excessively long URLs
   if (url.length > MAX_URL_LENGTH) return false;
-  try {
-    const parsed = new URL(url);
-    if (!["https:", "http:"].includes(parsed.protocol)) return false;
-    const hostname = parsed.hostname.toLowerCase();
-    // Block internal/private IPs and cloud metadata endpoints
-    // Note: This is client-side validation; logos are rendered in <img> tags, not fetched server-side
-    if (
-      hostname === "localhost" ||
-      hostname === "0.0.0.0" ||
-      hostname.startsWith("127.") ||
-      hostname.startsWith("192.168.") ||
-      hostname.startsWith("10.") ||
-      // 172.16.0.0/12 private range (172.16.x.x - 172.31.x.x)
-      hostname.startsWith("172.16.") ||
-      hostname.startsWith("172.17.") ||
-      hostname.startsWith("172.18.") ||
-      hostname.startsWith("172.19.") ||
-      hostname.startsWith("172.20.") ||
-      hostname.startsWith("172.21.") ||
-      hostname.startsWith("172.22.") ||
-      hostname.startsWith("172.23.") ||
-      hostname.startsWith("172.24.") ||
-      hostname.startsWith("172.25.") ||
-      hostname.startsWith("172.26.") ||
-      hostname.startsWith("172.27.") ||
-      hostname.startsWith("172.28.") ||
-      hostname.startsWith("172.29.") ||
-      hostname.startsWith("172.30.") ||
-      hostname.startsWith("172.31.") ||
-      // Link-local addresses
-      hostname.startsWith("169.254.") ||
-      // IPv6 localhost and any address
-      hostname === "::1" ||
-      hostname === "[::1]" ||
-      hostname === "::" ||
-      hostname === "[::]" ||
-      // IPv6 private ranges (ULA - Unique Local Address)
-      hostname.startsWith("fc") ||
-      hostname.startsWith("fd") ||
-      hostname.startsWith("[fc") ||
-      hostname.startsWith("[fd") ||
-      // Cloud metadata endpoints
-      hostname === "metadata.google.internal"
-    ) {
-      return false;
-    }
-    return true;
-  } catch {
-    return false;
-  }
+
+  return validator.isURL(url, {
+    protocols: ["http", "https"],
+    require_protocol: true,
+    require_valid_protocol: true,
+    allow_underscores: true,
+  });
 }
 
 /**
@@ -128,7 +86,7 @@ export const createTeam = mutation({
     // Validate logoUrl if provided
     if (args.logoUrl && !isValidLogoUrl(args.logoUrl)) {
       throw new ConvexError(
-        "Invalid logo URL. Must be a valid HTTP(S) URL and not point to internal addresses."
+        "Invalid logo URL. Must be a valid HTTP or HTTPS URL."
       );
     }
 
@@ -202,6 +160,7 @@ export const updateTeam = mutation({
         );
       }
 
+      // Only update name if it's actually changing
       if (trimmedName !== existing.name) {
         // Check for duplicate name
         const duplicate = await ctx.db
@@ -233,8 +192,9 @@ export const updateTeam = mutation({
             }
           }
         }
+
+        updates.name = trimmedName;
       }
-      updates.name = trimmedName;
     }
 
     // Handle logoUrl update (null means unset)
@@ -246,7 +206,7 @@ export const updateTeam = mutation({
         // Validate the new URL
         if (!isValidLogoUrl(args.logoUrl)) {
           throw new ConvexError(
-            "Invalid logo URL. Must be a valid HTTP(S) URL and not point to internal addresses."
+            "Invalid logo URL. Must be a valid HTTP or HTTPS URL."
           );
         }
         updates.logoUrl = args.logoUrl;
