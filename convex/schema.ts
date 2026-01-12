@@ -8,7 +8,6 @@ export default defineSchema({
     name: v.string(),
     avatarUrl: v.optional(v.string()),
     isRootAdmin: v.boolean(),
-    createdAt: v.number(),
     lastLoginAt: v.number(),
   }).index("by_email", ["email"]),
 
@@ -16,7 +15,6 @@ export default defineSchema({
   teams: defineTable({
     name: v.string(),
     logoUrl: v.optional(v.string()),
-    createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_name", ["name"]),
 
@@ -25,7 +23,6 @@ export default defineSchema({
     name: v.string(),
     imageUrl: v.string(),
     isActive: v.boolean(),
-    createdAt: v.number(),
     updatedAt: v.number(),
   }).index("by_isActive", ["isActive"]),
 
@@ -56,7 +53,6 @@ export default defineSchema({
 
     // Metadata
     createdBy: v.id("admins"),
-    createdAt: v.number(),
     updatedAt: v.number(),
     startedAt: v.optional(v.number()),
     completedAt: v.optional(v.number()),
