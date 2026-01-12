@@ -1,5 +1,5 @@
 import { internalMutation } from "../_generated/server";
-import { v } from "convex/values";
+import { v, ConvexError } from "convex/values";
 
 /**
  * Deletes a session and all related records (cascade delete).
@@ -33,7 +33,7 @@ export const deleteSessionWithCascade = internalMutation({
     // Verify session exists
     const session = await ctx.db.get(sessionId);
     if (!session) {
-      throw new Error(`Session ${sessionId} not found`);
+      throw new ConvexError(`Session ${sessionId} not found`);
     }
 
     // Collect all related records first (before any deletions)

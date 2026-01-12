@@ -83,8 +83,9 @@ export const createTeam = mutation({
       );
     }
 
-    // Validate logoUrl if provided
-    if (args.logoUrl && !isValidLogoUrl(args.logoUrl)) {
+    // Validate and trim logoUrl if provided
+    const trimmedLogoUrl = args.logoUrl?.trim() || undefined;
+    if (trimmedLogoUrl && !isValidLogoUrl(trimmedLogoUrl)) {
       throw new ConvexError(
         "Invalid logo URL. Must be a valid HTTP or HTTPS URL."
       );
@@ -107,7 +108,7 @@ export const createTeam = mutation({
 
     const teamId = await ctx.db.insert("teams", {
       name: trimmedName,
-      logoUrl: args.logoUrl,
+      logoUrl: trimmedLogoUrl,
       updatedAt: Date.now(),
     });
 
@@ -180,16 +181,20 @@ export const updateTeam = mutation({
           .collect();
 
         if (playersInTeam.length > 0) {
+          // Batch-fetch sessions in parallel (N+1 fix)
           const sessionIds = [
             ...new Set(playersInTeam.map((p) => p.sessionId)),
           ];
-          for (const sessionId of sessionIds) {
-            const session = await ctx.db.get(sessionId);
-            if (session && ACTIVE_SESSION_STATUSES.has(session.status)) {
-              throw new ConvexError(
-                `Cannot rename team "${existing.name}": used in active session "${session.matchName}"`
-              );
-            }
+          const sessions = await Promise.all(
+            sessionIds.map((id) => ctx.db.get(id))
+          );
+          const activeSession = sessions.find(
+            (session) => session && ACTIVE_SESSION_STATUSES.has(session.status)
+          );
+          if (activeSession) {
+            throw new ConvexError(
+              `Cannot rename team "${existing.name}": used in active session "${activeSession.matchName}"`
+            );
           }
         }
 
@@ -203,13 +208,14 @@ export const updateTeam = mutation({
         // Unset the logoUrl by patching with undefined
         updates.logoUrl = undefined;
       } else {
-        // Validate the new URL
-        if (!isValidLogoUrl(args.logoUrl)) {
+        // Trim and validate the new URL
+        const trimmedLogoUrl = args.logoUrl.trim() || undefined;
+        if (trimmedLogoUrl && !isValidLogoUrl(trimmedLogoUrl)) {
           throw new ConvexError(
             "Invalid logo URL. Must be a valid HTTP or HTTPS URL."
           );
         }
-        updates.logoUrl = args.logoUrl;
+        updates.logoUrl = trimmedLogoUrl;
       }
     }
 
