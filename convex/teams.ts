@@ -32,6 +32,7 @@ function isValidLogoUrl(url: string | undefined | null): boolean {
     // Note: This is client-side validation; logos are rendered in <img> tags, not fetched server-side
     if (
       hostname === "localhost" ||
+      hostname === "0.0.0.0" ||
       hostname.startsWith("127.") ||
       hostname.startsWith("192.168.") ||
       hostname.startsWith("10.") ||
@@ -54,9 +55,16 @@ function isValidLogoUrl(url: string | undefined | null): boolean {
       hostname.startsWith("172.31.") ||
       // Link-local addresses
       hostname.startsWith("169.254.") ||
-      // IPv6 localhost
+      // IPv6 localhost and any address
       hostname === "::1" ||
       hostname === "[::1]" ||
+      hostname === "::" ||
+      hostname === "[::]" ||
+      // IPv6 private ranges (ULA - Unique Local Address)
+      hostname.startsWith("fc") ||
+      hostname.startsWith("fd") ||
+      hostname.startsWith("[fc") ||
+      hostname.startsWith("[fd") ||
       // Cloud metadata endpoints
       hostname === "metadata.google.internal"
     ) {
