@@ -26,7 +26,6 @@ admins: defineTable({
   name: v.string(),
   avatarUrl: v.optional(v.string()),
   isRootAdmin: v.boolean(),
-  createdAt: v.number(),
   lastLoginAt: v.number(),
 }).index("by_email", ["email"]),
 ```
