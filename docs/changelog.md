@@ -8,7 +8,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-*No changes yet.*
+### Added
+- **SSRF-Safe URL Validation** (`convex/lib/urlValidation.ts`):
+  - `isSecureUrl()` - Validates URLs are not pointing to internal/private IP addresses
+  - `validateSecureUrl()` - Throws ConvexError for invalid URLs
+  - Protection against IPv4 private ranges (10.x, 172.16.x, 192.168.x)
+  - Protection against IPv4 loopback (127.x) and link-local (169.254.x)
+  - Protection against IPv6 loopback (::1), link-local (fe80::), private (fc00::)
+  - Protection against tunneling protocols (6to4, Teredo)
+  - Blocks localhost hostname variants
+  - Uses `ipaddr.js` for robust IP classification
+- **Shared Name Validation** (`convex/lib/validation.ts`):
+  - `validateName()` - Reusable name validation with trimming and length checks
+  - Used by both Maps and Teams CRUD operations (DRY)
+- Code review todo tracking system (`todos/012-017`)
+
+### Changed
+- Maps CRUD now uses SSRF-safe URL validation for `imageUrl`
+- Teams CRUD now uses SSRF-safe URL validation for `logoUrl`
+- Refactored duplicate name validation into shared module
+
+### Security
+- Fixed critical IPv6 bracket bypass vulnerability (`http://[::1]/` was not being blocked)
+- Added comprehensive IP range blocking for SSRF protection
 
 ---
 
