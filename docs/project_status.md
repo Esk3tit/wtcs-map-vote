@@ -63,6 +63,10 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] Shared constants (`convex/lib/constants.ts`)
 - [x] N+1 query optimization patterns documented
 - [x] Code review todo tracking system
+- [x] Team logo upload with Convex storage (`convex/teams.ts`)
+- [x] Image upload/URL picker component (`src/components/ui/image-source-picker.tsx`)
+- [x] Orphaned storage cleanup cron job (`convex/crons.ts`, `convex/storage.ts`)
+- [x] Image constants shared module (`convex/lib/imageConstants.ts`)
 
 ---
 
@@ -103,6 +107,7 @@ Implement the Convex functions to power the application:
 - [ ] Timer expiration handling (scheduled functions)
 - [ ] Session cleanup cron job
 - [ ] Audit logging
+- [x] File upload for team logos (complete)
 - [ ] File upload for map images
 - [ ] Rate limiting
 - [ ] Production deployment to Netlify + Convex Cloud

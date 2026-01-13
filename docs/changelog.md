@@ -9,6 +9,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Team Logo Upload** (`convex/teams.ts`, `src/components/ui/image-source-picker.tsx`):
+  - Direct file upload to Convex storage (PNG, JPG, WebP up to 2MB)
+  - External URL fallback option with SSRF protection
+  - Dual-source support: `logoStorageId` (Convex) or `logoUrl` (external)
+  - Automatic storage cleanup on logo replacement/removal
+  - Hourly cron job for orphaned file cleanup (`convex/crons.ts`)
+  - Server-side file validation (size, MIME type)
+  - Reusable `ImageSourcePicker` component with tabs for upload/URL
+  - Drag-and-drop upload with keyboard accessibility
+  - Memory-safe blob URL management with ref-based cleanup
 - **SSRF-Safe URL Validation** (`convex/lib/urlValidation.ts`):
   - `isSecureUrl()` - Validates URLs are not pointing to internal/private IP addresses
   - `validateSecureUrl()` - Throws ConvexError for invalid URLs
@@ -27,6 +37,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - Maps CRUD now uses SSRF-safe URL validation for `imageUrl`
 - Teams CRUD now uses SSRF-safe URL validation for `logoUrl`
 - Refactored duplicate name validation into shared module
+- `updateTeam` and `deleteTeam` now delete database records before storage cleanup (atomicity fix)
 
 ### Security
 - Fixed critical IPv6 bracket bypass vulnerability (`http://[::1]/` was not being blocked)

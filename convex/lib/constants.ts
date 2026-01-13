@@ -1,4 +1,4 @@
-import { Doc } from "../_generated/dataModel";
+import type { Doc } from "../_generated/dataModel";
 
 // Validation constants
 export const MAX_NAME_LENGTH = 100;

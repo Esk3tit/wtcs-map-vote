@@ -15,6 +15,7 @@ export default defineSchema({
   teams: defineTable({
     name: v.string(),
     logoUrl: v.optional(v.string()),
+    logoStorageId: v.optional(v.id("_storage")),
     updatedAt: v.number(),
   }).index("by_name", ["name"]),
 
