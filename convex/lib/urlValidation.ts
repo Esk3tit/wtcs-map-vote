@@ -3,57 +3,40 @@ import * as ipaddr from "ipaddr.js";
 import { ConvexError } from "convex/values";
 import { MAX_URL_LENGTH } from "./constants";
 
-/**
- * IP ranges that are unsafe for user-provided URLs.
- * Based on ipaddr.js range() return values.
- *
- * These ranges are blocked to prevent SSRF attacks:
- * - Private networks (10.x, 172.16.x, 192.168.x)
- * - Localhost/loopback (127.x, ::1)
- * - Cloud metadata endpoints (169.254.x)
- * - Various reserved/special ranges
- */
+// IP ranges blocked for SSRF protection. See ipaddr.js range() for details.
 const UNSAFE_IP_RANGES = new Set([
-  // IPv4 ranges
-  "unspecified", // 0.0.0.0/8
-  "broadcast", // 255.255.255.255
-  "multicast", // 224.0.0.0/4
-  "linkLocal", // 169.254.0.0/16 (includes cloud metadata)
-  "loopback", // 127.0.0.0/8
-  "carrierGradeNat", // 100.64.0.0/10 (CGNAT)
-  "private", // 10.0.0.0/8, 172.16.0.0/12, 192.168.0.0/16
-  "reserved", // Various RFC reserved ranges
-
-  // IPv6 ranges
-  "uniqueLocal", // fc00::/7 (IPv6 private equivalent)
-  "ipv4Mapped", // ::ffff:0:0/96 (will be unwrapped and checked)
-  "rfc6145", // IPv4-translatable
-  "rfc6052", // Well-known prefix
-  "6to4", // 2002::/16 (embeds IPv4)
-  "teredo", // 2001::/32 (tunneling)
+  // IPv4
+  "unspecified",
+  "broadcast",
+  "multicast",
+  "linkLocal",
+  "loopback",
+  "carrierGradeNat",
+  "private",
+  "reserved",
+  "as112",
+  "amt",
+  // IPv6
+  "uniqueLocal",
+  "ipv4Mapped",
+  "rfc6145",
+  "rfc6052",
+  "6to4",
+  "teredo",
+  "discard",
+  "benchmarking",
+  "orchid2",
+  "as112v6",
 ]);
 
 /**
- * Check if a URL is secure (doesn't point to private/internal IPs).
- *
- * This function validates URLs for SSRF protection by:
- * 1. Checking URL format with validator.js
- * 2. Extracting and checking the hostname
- * 3. Blocking localhost hostnames
- * 4. Blocking private/reserved IP addresses
- *
- * Limitation: Domain names that resolve to private IPs cannot be detected
- * without DNS resolution (not available in Convex runtime). This is acceptable
- * because URLs are rendered client-side, not fetched server-side.
+ * Check if URL is secure (not pointing to private/internal IPs).
+ * Note: Cannot detect domains resolving to private IPs (no DNS in Convex).
  */
 export function isSecureUrl(url: string): boolean {
-  // Empty/null check
-  if (!url || typeof url !== "string") return false;
-
-  // Length check
+  if (!url) return false;
   if (url.length > MAX_URL_LENGTH) return false;
 
-  // Format validation with validator.js
   if (
     !validator.isURL(url, {
       protocols: ["http", "https"],
@@ -65,7 +48,6 @@ export function isSecureUrl(url: string): boolean {
     return false;
   }
 
-  // Extract hostname
   let hostname: string;
   try {
     hostname = new URL(url).hostname.toLowerCase();
@@ -73,34 +55,34 @@ export function isSecureUrl(url: string): boolean {
     return false;
   }
 
-  // Block localhost
-  if (hostname === "localhost" || hostname.endsWith(".localhost")) {
+  // Block localhost variants
+  if (
+    hostname === "localhost" ||
+    hostname.endsWith(".localhost") ||
+    hostname === "localhost.localdomain"
+  ) {
     return false;
   }
 
-  // Check if hostname is an IP address
-  if (ipaddr.isValid(hostname)) {
-    // process() handles IPv4-mapped IPv6 automatically
-    const addr = ipaddr.process(hostname);
-    const range = addr.range();
+  // Strip brackets from IPv6 addresses (URL.hostname returns "[::1]" for IPv6)
+  let hostnameForIpCheck = hostname;
+  if (hostname.startsWith("[") && hostname.endsWith("]")) {
+    hostnameForIpCheck = hostname.slice(1, -1);
+  }
 
-    // Only allow unicast (public) addresses
+  // Check if hostname is an IP address
+  if (ipaddr.isValid(hostnameForIpCheck)) {
+    const addr = ipaddr.process(hostnameForIpCheck);
+    const range = addr.range();
     if (UNSAFE_IP_RANGES.has(range)) {
       return false;
     }
   }
 
-  // Domain names pass through (can't DNS resolve in Convex)
   return true;
 }
 
-/**
- * Validate URL and return trimmed value, or throw ConvexError.
- *
- * Use this in mutations for consistent error handling.
- * The error message is generic to avoid leaking information about
- * what specific check failed.
- */
+/** Validate URL and return trimmed value, or throw ConvexError. */
 export function validateSecureUrl(url: string, fieldName: string): string {
   const trimmed = url.trim();
 

@@ -1,31 +1,11 @@
 import { query, mutation } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
-import { MAX_NAME_LENGTH, ACTIVE_SESSION_STATUSES } from "./lib/constants";
+import { ACTIVE_SESSION_STATUSES } from "./lib/constants";
 import { validateSecureUrl } from "./lib/urlValidation";
+import { validateName } from "./lib/validation";
 
-/**
- * Validates and trims a map name.
- * Throws ConvexError if invalid.
- */
-function validateAndTrimName(name: string): string {
-  const trimmedName = name.trim();
-  if (trimmedName.length === 0) {
-    throw new ConvexError("Map name cannot be empty");
-  }
-  if (trimmedName.length > MAX_NAME_LENGTH) {
-    throw new ConvexError(
-      `Map name cannot exceed ${MAX_NAME_LENGTH} characters`
-    );
-  }
-  return trimmedName;
-}
-
-/**
- * Validates and trims an image URL with SSRF protection.
- * Throws ConvexError if invalid or points to internal addresses.
- */
-const validateAndTrimImageUrl = (imageUrl: string): string =>
-  validateSecureUrl(imageUrl, "Image URL");
+const validateMapName = (name: string) => validateName(name, "Map");
+const validateImageUrl = (url: string) => validateSecureUrl(url, "Image URL");
 
 // Reusable validator for map objects returned by queries
 const mapObjectValidator = v.object({
@@ -100,8 +80,8 @@ export const createMap = mutation({
     // if (!identity) throw new ConvexError("Authentication required");
     // Verify caller is admin via admins table lookup
 
-    const trimmedName = validateAndTrimName(args.name);
-    const trimmedImageUrl = validateAndTrimImageUrl(args.imageUrl);
+    const trimmedName = validateMapName(args.name);
+    const trimmedImageUrl = validateImageUrl(args.imageUrl);
 
     // Check uniqueness (indexes don't enforce uniqueness in Convex)
     // Note: There's a theoretical race condition where two concurrent requests
@@ -160,7 +140,7 @@ export const updateMap = mutation({
 
     // Handle name update
     if (args.name !== undefined) {
-      const trimmedName = validateAndTrimName(args.name);
+      const trimmedName = validateMapName(args.name);
 
       // Only check for duplicates and update if name is actually changing
       if (trimmedName !== existing.name) {
@@ -179,7 +159,7 @@ export const updateMap = mutation({
 
     // Handle imageUrl update
     if (args.imageUrl !== undefined) {
-      const trimmedImageUrl = validateAndTrimImageUrl(args.imageUrl);
+      const trimmedImageUrl = validateImageUrl(args.imageUrl);
       if (trimmedImageUrl !== existing.imageUrl) {
         updates.imageUrl = trimmedImageUrl;
       }
