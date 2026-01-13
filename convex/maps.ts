@@ -211,6 +211,35 @@ export const updateMap = mutation({
       updates.imageUrl = validateAndTrimImageUrl(args.imageUrl);
     }
 
+    // Check for active session usage if name or imageUrl is changing
+    const nameChanging = updates.name !== undefined && updates.name !== existing.name;
+    const imageChanging = updates.imageUrl !== undefined && updates.imageUrl !== existing.imageUrl;
+
+    if (nameChanging || imageChanging) {
+      const sessionMapsWithMap = await ctx.db
+        .query("sessionMaps")
+        .withIndex("by_mapId", (q) => q.eq("mapId", args.mapId))
+        .collect();
+
+      if (sessionMapsWithMap.length > 0) {
+        const sessionIds = [
+          ...new Set(sessionMapsWithMap.map((sm) => sm.sessionId)),
+        ];
+        const sessions = await Promise.all(
+          sessionIds.map((id) => ctx.db.get(id))
+        );
+        const activeSession = sessions.find(
+          (session) => session && ACTIVE_SESSION_STATUSES.has(session.status)
+        );
+
+        if (activeSession) {
+          throw new ConvexError(
+            `Cannot update map "${existing.name}": it is currently in use in an active session`
+          );
+        }
+      }
+    }
+
     await ctx.db.patch(args.mapId, updates);
     return { success: true };
   },
@@ -296,6 +325,18 @@ export const reactivateMap = mutation({
 
     if (map.isActive) {
       throw new ConvexError("Map is already active");
+    }
+
+    // Check if another map with the same name now exists
+    const duplicate = await ctx.db
+      .query("maps")
+      .withIndex("by_name", (q) => q.eq("name", map.name))
+      .first();
+
+    if (duplicate && duplicate._id !== args.mapId) {
+      throw new ConvexError(
+        `Cannot reactivate: another map named "${map.name}" already exists`
+      );
     }
 
     await ctx.db.patch(args.mapId, {
