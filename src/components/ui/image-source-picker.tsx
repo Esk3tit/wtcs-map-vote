@@ -79,6 +79,8 @@ export function ImageSourcePicker({
   const [localError, setLocalError] = useState<string | null>(null);
   const [imageLoadError, setImageLoadError] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Track blob URL for cleanup on unmount (avoids stale closure issue)
+  const blobUrlRef = useRef<string | null>(null);
 
   // Determine current tab based on value
   const currentTab: ImageSourceType =
@@ -102,8 +104,9 @@ export function ImageSourcePicker({
       setLocalError(null);
 
       // Revoke previous blob URL to prevent memory leak
-      if (value.type === "upload" && value.previewUrl) {
-        URL.revokeObjectURL(value.previewUrl);
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
       }
 
       const validation: ImageValidationResult = validateImageFile(file);
@@ -112,11 +115,12 @@ export function ImageSourcePicker({
         return;
       }
 
-      // Create preview URL
+      // Create preview URL and track in ref for cleanup
       const previewUrl = URL.createObjectURL(file);
+      blobUrlRef.current = previewUrl;
       onChange({ type: "upload", file, previewUrl });
     },
-    [onChange, value]
+    [onChange]
   );
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -173,8 +177,9 @@ export function ImageSourcePicker({
 
   const handleClear = () => {
     // Revoke blob URL to prevent memory leak
-    if (value.type === "upload" && value.previewUrl) {
-      URL.revokeObjectURL(value.previewUrl);
+    if (blobUrlRef.current) {
+      URL.revokeObjectURL(blobUrlRef.current);
+      blobUrlRef.current = null;
     }
 
     setUrlInput("");
@@ -186,15 +191,15 @@ export function ImageSourcePicker({
     onChange({ type: "none" });
   };
 
-  // Cleanup blob URL on unmount
+  // Cleanup blob URL on unmount using ref to avoid stale closure
   useEffect(() => {
     return () => {
-      if (value.type === "upload" && value.previewUrl) {
-        URL.revokeObjectURL(value.previewUrl);
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
       }
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Empty deps - only run on unmount
+  }, []);
 
   const handleRemove = () => {
     handleClear();

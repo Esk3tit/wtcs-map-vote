@@ -90,6 +90,8 @@ function TeamsPage() {
   const handleRemoveLogo = () => {
     // Mark that we want to remove the current logo
     setCurrentImageUrl(undefined);
+    // Also reset image source to ensure logo removal is detected
+    setImageSource({ type: "none" });
   };
 
   const handleSaveTeam = async () => {
