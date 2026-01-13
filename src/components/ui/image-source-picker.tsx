@@ -103,16 +103,17 @@ export function ImageSourcePicker({
     (file: File) => {
       setLocalError(null);
 
-      // Revoke previous blob URL to prevent memory leak
-      if (blobUrlRef.current) {
-        URL.revokeObjectURL(blobUrlRef.current);
-        blobUrlRef.current = null;
-      }
-
+      // Validate BEFORE revoking old URL to preserve preview on validation failure
       const validation: ImageValidationResult = validateImageFile(file);
       if (!validation.valid) {
         setLocalError(validation.error.message);
         return;
+      }
+
+      // Revoke previous blob URL to prevent memory leak (only after validation passes)
+      if (blobUrlRef.current) {
+        URL.revokeObjectURL(blobUrlRef.current);
+        blobUrlRef.current = null;
       }
 
       // Create preview URL and track in ref for cleanup
