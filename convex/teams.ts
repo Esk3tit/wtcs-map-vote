@@ -254,9 +254,11 @@ export const updateTeam = mutation({
           oldStorageIdToDelete = existing.logoStorageId;
         }
       } else {
-        updates.logoUrl = validateLogoUrl(args.logoUrl);
-        // Setting URL clears storage ID
-        if (existing.logoStorageId) {
+        const validatedUrl = validateLogoUrl(args.logoUrl);
+        updates.logoUrl = validatedUrl;
+        // Only clear storage ID if we're actually setting a valid URL
+        // (whitespace-only input becomes undefined and shouldn't trigger storage cleanup)
+        if (validatedUrl && existing.logoStorageId) {
           updates.logoStorageId = undefined;
           oldStorageIdToDelete = existing.logoStorageId;
         }

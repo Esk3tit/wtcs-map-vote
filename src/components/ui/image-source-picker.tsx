@@ -99,6 +99,15 @@ export function ImageSourcePicker({
     setImageLoadError(false);
   }, [previewUrl]);
 
+  // Sync urlInput when value changes externally (controlled component pattern)
+  useEffect(() => {
+    if (value.type === "url") {
+      setUrlInput(value.url);
+    } else if (value.type === "none") {
+      setUrlInput("");
+    }
+  }, [value]);
+
   const handleFileSelect = useCallback(
     (file: File) => {
       setLocalError(null);
