@@ -10,6 +10,7 @@
 
 import type * as lib_cascadeDelete from "../lib/cascadeDelete.js";
 import type * as lib_types from "../lib/types.js";
+import type * as maps from "../maps.js";
 import type * as teams from "../teams.js";
 
 import type {
@@ -21,6 +22,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   "lib/cascadeDelete": typeof lib_cascadeDelete;
   "lib/types": typeof lib_types;
+  maps: typeof maps;
   teams: typeof teams;
 }>;
 
