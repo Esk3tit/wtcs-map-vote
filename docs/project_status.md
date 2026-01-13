@@ -2,7 +2,7 @@
 
 Current progress and next steps for the WTCS Map Vote project.
 
-**Last Updated:** January 12, 2026
+**Last Updated:** January 13, 2026
 
 ---
 
@@ -54,19 +54,21 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] All indexes defined (18 total) for efficient queries
 - [x] TypeScript types auto-generated (`convex/_generated/`)
 - [x] Teams CRUD operations (`convex/teams.ts`)
+- [x] Maps CRUD operations (`convex/maps.ts`)
 - [x] URL validation with `validator.js`
 - [x] Cascade delete helper (`convex/lib/cascadeDelete.ts`)
 - [x] Type definitions (`convex/lib/types.ts`)
+- [x] Shared constants (`convex/lib/constants.ts`)
 - [x] N+1 query optimization patterns documented
 
 ---
 
 ## In Progress
 
-### Teams CRUD PR (#14)
-- [x] Core CRUD operations implemented
-- [x] URL validation with validator.js
-- [x] Performance indexes added
+### Maps CRUD PR (#15)
+- [x] Core CRUD operations implemented (7 functions)
+- [x] Shared constants extracted to `convex/lib/constants.ts`
+- [x] Reusable validators and helper functions
 - [x] All PR comments addressed
 - [ ] Awaiting merge to main
 
@@ -88,7 +90,7 @@ Implement the Convex functions to power the application:
 
 2. **Core Functions**
    - [x] Teams CRUD operations (create, update, delete, list)
-   - [ ] Maps CRUD operations
+   - [x] Maps CRUD operations (create, update, deactivate, reactivate, list, get, upload URL)
    - [ ] Sessions CRUD operations
    - [ ] Session lifecycle mutations (create, finalize, start, pause, resume, end)
    - [ ] Player token validation and IP locking

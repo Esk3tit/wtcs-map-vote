@@ -9,6 +9,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Maps CRUD Operations** (`convex/maps.ts`):
+  - `listMaps` - Query maps with optional inactive filter, sorted by name
+  - `getMap` - Get single map by ID
+  - `createMap` - Create map with name/URL validation and uniqueness check
+  - `updateMap` - Update map with validation and uniqueness check
+  - `deactivateMap` - Soft delete with active session protection
+  - `reactivateMap` - Restore deactivated map
+  - `generateUploadUrl` - Generate Convex storage upload URL for images
+- Shared constants module (`convex/lib/constants.ts`):
+  - `MAX_NAME_LENGTH`, `MAX_URL_LENGTH` validation constants
+  - `ACTIVE_SESSION_STATUSES` type-safe set for session checks
+- New schema indexes:
+  - `maps.by_name` - Name sorting and uniqueness lookup
+  - `maps.by_isActive_and_name` - Compound index for filtering + sorting
+  - `sessionMaps.by_mapId` - Deactivation session check
 - **Teams CRUD Operations** (`convex/teams.ts`):
   - `listTeams` - Query all teams sorted by name
   - `createTeam` - Create team with name uniqueness validation
