@@ -338,12 +338,17 @@ export const deleteTeam = mutation({
       }
     }
 
-    // Clean up storage if team has an uploaded logo
-    if (team.logoStorageId) {
-      await ctx.storage.delete(team.logoStorageId);
+    // Store reference before deleting team record
+    const logoStorageId = team.logoStorageId;
+
+    // Delete database record first - ensures delete succeeds before cleanup
+    await ctx.db.delete(args.teamId);
+
+    // Then clean up storage (safe to fail - just creates orphan handled by cron)
+    if (logoStorageId) {
+      await ctx.storage.delete(logoStorageId);
     }
 
-    await ctx.db.delete(args.teamId);
     return { success: true };
   },
 });
