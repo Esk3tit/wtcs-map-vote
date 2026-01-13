@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -53,6 +53,11 @@ interface ImageSourcePickerProps {
    * Callback when remove is clicked
    */
   onRemove?: () => void;
+  /**
+   * Label text for the image picker
+   * @default "Image (Optional)"
+   */
+  label?: string;
 }
 
 export function ImageSourcePicker({
@@ -64,6 +69,7 @@ export function ImageSourcePicker({
   className,
   allowRemove = false,
   onRemove,
+  label = "Image (Optional)",
 }: ImageSourcePickerProps) {
   const [urlInput, setUrlInput] = useState(
     value.type === "url" ? value.url : ""
@@ -88,6 +94,12 @@ export function ImageSourcePicker({
   const handleFileSelect = useCallback(
     (file: File) => {
       setLocalError(null);
+
+      // Revoke previous blob URL to prevent memory leak
+      if (value.type === "upload" && value.previewUrl) {
+        URL.revokeObjectURL(value.previewUrl);
+      }
+
       const validation: ImageValidationResult = validateImageFile(file);
       if (!validation.valid) {
         setLocalError(validation.error.message);
@@ -98,7 +110,7 @@ export function ImageSourcePicker({
       const previewUrl = URL.createObjectURL(file);
       onChange({ type: "upload", file, previewUrl });
     },
-    [onChange]
+    [onChange, value]
   );
 
   const handleDragOver = (e: React.DragEvent) => {
@@ -154,6 +166,11 @@ export function ImageSourcePicker({
   };
 
   const handleClear = () => {
+    // Revoke blob URL to prevent memory leak
+    if (value.type === "upload" && value.previewUrl) {
+      URL.revokeObjectURL(value.previewUrl);
+    }
+
     setUrlInput("");
     setUrlError(null);
     setLocalError(null);
@@ -162,6 +179,16 @@ export function ImageSourcePicker({
     }
     onChange({ type: "none" });
   };
+
+  // Cleanup blob URL on unmount
+  useEffect(() => {
+    return () => {
+      if (value.type === "upload" && value.previewUrl) {
+        URL.revokeObjectURL(value.previewUrl);
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Empty deps - only run on unmount
 
   const handleRemove = () => {
     handleClear();
@@ -173,7 +200,7 @@ export function ImageSourcePicker({
   return (
     <div className={cn("space-y-3", className)}>
       <div className="flex items-center justify-between">
-        <Label>Team Logo (Optional)</Label>
+        <Label>{label}</Label>
         {allowRemove && currentImageUrl && value.type === "none" && (
           <Button
             type="button"

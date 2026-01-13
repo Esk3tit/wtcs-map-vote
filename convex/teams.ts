@@ -1,6 +1,13 @@
 import { query, mutation } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
+import type { Id } from "./_generated/dataModel";
 import { v, ConvexError } from "convex/values";
 import { ACTIVE_SESSION_STATUSES } from "./lib/constants";
+import {
+  MAX_IMAGE_SIZE_BYTES,
+  ALLOWED_IMAGE_CONTENT_TYPES,
+} from "./lib/imageConstants";
+import type { AllowedImageContentType } from "./lib/imageConstants";
 import { isSecureUrl } from "./lib/urlValidation";
 import { validateName } from "./lib/validation";
 
@@ -21,6 +28,36 @@ function validateLogoUrl(logoUrl: string | undefined | null): string | undefined
     );
   }
   return trimmed;
+}
+
+/**
+ * Validates that a storage file exists, is within size limits, and is an allowed image type.
+ * Throws ConvexError if validation fails.
+ */
+async function validateStorageFile(
+  ctx: MutationCtx,
+  storageId: Id<"_storage">
+): Promise<void> {
+  const metadata = await ctx.storage.getMetadata(storageId);
+  if (!metadata) {
+    throw new ConvexError("Invalid storage ID: file not found.");
+  }
+  if (metadata.size > MAX_IMAGE_SIZE_BYTES) {
+    const sizeMB = (metadata.size / 1024 / 1024).toFixed(1);
+    throw new ConvexError(
+      `File too large (${sizeMB}MB). Maximum size is 2MB.`
+    );
+  }
+  if (
+    !metadata.contentType ||
+    !ALLOWED_IMAGE_CONTENT_TYPES.includes(
+      metadata.contentType as AllowedImageContentType
+    )
+  ) {
+    throw new ConvexError(
+      `Invalid file type "${metadata.contentType ?? "unknown"}". Allowed: PNG, JPG, WebP.`
+    );
+  }
 }
 
 /**
@@ -90,6 +127,11 @@ export const createTeam = mutation({
 
     const trimmedLogoUrl = validateLogoUrl(args.logoUrl);
 
+    // Validate storage file if provided (size and content type)
+    if (args.logoStorageId) {
+      await validateStorageFile(ctx, args.logoStorageId);
+    }
+
     // Check uniqueness
     const existing = await ctx.db
       .query("teams")
@@ -142,6 +184,11 @@ export const updateTeam = mutation({
       throw new ConvexError(
         "Cannot set both logoUrl and logoStorageId. Choose one or neither."
       );
+    }
+
+    // Validate storage file if being set (size and content type)
+    if (settingLogoStorageId) {
+      await validateStorageFile(ctx, args.logoStorageId!);
     }
 
     const updates: {
@@ -235,12 +282,14 @@ export const updateTeam = mutation({
       }
     }
 
-    // Clean up old storage file if needed
+    // Patch database first - ensures update succeeds before cleanup
+    await ctx.db.patch(args.teamId, updates);
+
+    // Then cleanup old storage (safe to fail - just creates orphan)
     if (oldStorageIdToDelete) {
       await ctx.storage.delete(oldStorageIdToDelete);
     }
 
-    await ctx.db.patch(args.teamId, updates);
     return { success: true };
   },
 });

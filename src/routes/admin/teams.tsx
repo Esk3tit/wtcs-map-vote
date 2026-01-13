@@ -330,6 +330,7 @@ function TeamsPage() {
               error={saveError ?? undefined}
               allowRemove={!!editingTeamId && !!currentImageUrl}
               onRemove={handleRemoveLogo}
+              label="Team Logo (Optional)"
             />
           </div>
 
