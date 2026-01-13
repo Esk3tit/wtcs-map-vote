@@ -269,17 +269,20 @@ export function ImageSourcePicker({
                 {value.type === "none" && currentImageUrl && "Saved"}
               </p>
             </div>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon"
-              onClick={handleClear}
-              className="h-8 w-8 shrink-0"
-              disabled={isLoading}
-            >
-              <X className="w-4 h-4" />
-              <span className="sr-only">Clear selection</span>
-            </Button>
+{/* Only show clear button for active selections (upload/url), not saved images */}
+            {value.type !== "none" && (
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={handleClear}
+                className="h-8 w-8 shrink-0"
+                disabled={isLoading}
+              >
+                <X className="w-4 h-4" />
+                <span className="sr-only">Clear selection</span>
+              </Button>
+            )}
           </div>
         </div>
       )}
