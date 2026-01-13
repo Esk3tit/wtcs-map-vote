@@ -24,7 +24,9 @@ export default defineSchema({
     imageUrl: v.string(),
     isActive: v.boolean(),
     updatedAt: v.number(),
-  }).index("by_isActive", ["isActive"]),
+  })
+    .index("by_name", ["name"])
+    .index("by_isActive_and_name", ["isActive", "name"]),
 
   // Voting sessions
   sessions: defineTable({
@@ -97,7 +99,8 @@ export default defineSchema({
     voteCount: v.optional(v.number()),
   })
     .index("by_sessionId", ["sessionId"])
-    .index("by_sessionId_and_state", ["sessionId", "state"]),
+    .index("by_sessionId_and_state", ["sessionId", "state"])
+    .index("by_mapId", ["mapId"]),
 
   // Individual votes (for MULTIPLAYER rounds)
   votes: defineTable({

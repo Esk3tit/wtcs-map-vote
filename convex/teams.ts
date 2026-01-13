@@ -1,20 +1,11 @@
 import { query, mutation } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
-import { Doc } from "./_generated/dataModel";
 import validator from "validator";
-
-// Constants for validation
-const MAX_NAME_LENGTH = 100;
-const MAX_URL_LENGTH = 2048;
-
-// Type-safe active session statuses (validated against schema)
-type SessionStatus = Doc<"sessions">["status"];
-const ACTIVE_SESSION_STATUSES: Set<SessionStatus> = new Set([
-  "DRAFT",
-  "WAITING",
-  "IN_PROGRESS",
-  "PAUSED",
-]);
+import {
+  MAX_NAME_LENGTH,
+  MAX_URL_LENGTH,
+  ACTIVE_SESSION_STATUSES,
+} from "./lib/constants";
 
 /**
  * Validates a logo URL.
