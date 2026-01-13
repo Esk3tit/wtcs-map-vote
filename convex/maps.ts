@@ -23,6 +23,50 @@ function isValidImageUrl(url: string): boolean {
 }
 
 /**
+ * Validates and trims a map name.
+ * Throws ConvexError if invalid.
+ */
+function validateAndTrimName(name: string): string {
+  const trimmedName = name.trim();
+  if (trimmedName.length === 0) {
+    throw new ConvexError("Map name cannot be empty");
+  }
+  if (trimmedName.length > MAX_NAME_LENGTH) {
+    throw new ConvexError(
+      `Map name cannot exceed ${MAX_NAME_LENGTH} characters`
+    );
+  }
+  return trimmedName;
+}
+
+/**
+ * Validates and trims an image URL.
+ * Throws ConvexError if invalid.
+ */
+function validateAndTrimImageUrl(imageUrl: string): string {
+  const trimmedImageUrl = imageUrl.trim();
+  if (trimmedImageUrl.length === 0) {
+    throw new ConvexError("Image URL cannot be empty");
+  }
+  if (!isValidImageUrl(trimmedImageUrl)) {
+    throw new ConvexError(
+      "Invalid image URL. Must be a valid HTTP or HTTPS URL."
+    );
+  }
+  return trimmedImageUrl;
+}
+
+// Reusable validator for map objects returned by queries
+const mapObjectValidator = v.object({
+  _id: v.id("maps"),
+  _creationTime: v.number(),
+  name: v.string(),
+  imageUrl: v.string(),
+  isActive: v.boolean(),
+  updatedAt: v.number(),
+});
+
+/**
  * List all maps, optionally including inactive ones.
  * Returns maps sorted alphabetically by name.
  *
@@ -34,16 +78,7 @@ export const listMaps = query({
   args: {
     includeInactive: v.optional(v.boolean()),
   },
-  returns: v.array(
-    v.object({
-      _id: v.id("maps"),
-      _creationTime: v.number(),
-      name: v.string(),
-      imageUrl: v.string(),
-      isActive: v.boolean(),
-      updatedAt: v.number(),
-    })
-  ),
+  returns: v.array(mapObjectValidator),
   handler: async (ctx, args) => {
     if (args.includeInactive) {
       // Return all maps sorted by name
@@ -72,17 +107,7 @@ export const getMap = query({
   args: {
     mapId: v.id("maps"),
   },
-  returns: v.union(
-    v.object({
-      _id: v.id("maps"),
-      _creationTime: v.number(),
-      name: v.string(),
-      imageUrl: v.string(),
-      isActive: v.boolean(),
-      updatedAt: v.number(),
-    }),
-    v.null()
-  ),
+  returns: v.union(mapObjectValidator, v.null()),
   handler: async (ctx, args) => {
     return await ctx.db.get(args.mapId);
   },
@@ -104,27 +129,8 @@ export const createMap = mutation({
     // if (!identity) throw new ConvexError("Authentication required");
     // Verify caller is admin via admins table lookup
 
-    // Trim and validate name
-    const trimmedName = args.name.trim();
-    if (trimmedName.length === 0) {
-      throw new ConvexError("Map name cannot be empty");
-    }
-    if (trimmedName.length > MAX_NAME_LENGTH) {
-      throw new ConvexError(
-        `Map name cannot exceed ${MAX_NAME_LENGTH} characters`
-      );
-    }
-
-    // Validate and trim imageUrl
-    const trimmedImageUrl = args.imageUrl.trim();
-    if (trimmedImageUrl.length === 0) {
-      throw new ConvexError("Image URL cannot be empty");
-    }
-    if (!isValidImageUrl(trimmedImageUrl)) {
-      throw new ConvexError(
-        "Invalid image URL. Must be a valid HTTP or HTTPS URL."
-      );
-    }
+    const trimmedName = validateAndTrimName(args.name);
+    const trimmedImageUrl = validateAndTrimImageUrl(args.imageUrl);
 
     // Check uniqueness (indexes don't enforce uniqueness in Convex)
     // Note: There's a theoretical race condition where two concurrent requests
@@ -183,15 +189,7 @@ export const updateMap = mutation({
 
     // Handle name update
     if (args.name !== undefined) {
-      const trimmedName = args.name.trim();
-      if (trimmedName.length === 0) {
-        throw new ConvexError("Map name cannot be empty");
-      }
-      if (trimmedName.length > MAX_NAME_LENGTH) {
-        throw new ConvexError(
-          `Map name cannot exceed ${MAX_NAME_LENGTH} characters`
-        );
-      }
+      const trimmedName = validateAndTrimName(args.name);
 
       // Only check for duplicates if name is actually changing
       if (trimmedName !== existing.name) {
@@ -210,16 +208,7 @@ export const updateMap = mutation({
 
     // Handle imageUrl update
     if (args.imageUrl !== undefined) {
-      const trimmedImageUrl = args.imageUrl.trim();
-      if (trimmedImageUrl.length === 0) {
-        throw new ConvexError("Image URL cannot be empty");
-      }
-      if (!isValidImageUrl(trimmedImageUrl)) {
-        throw new ConvexError(
-          "Invalid image URL. Must be a valid HTTP or HTTPS URL."
-        );
-      }
-      updates.imageUrl = trimmedImageUrl;
+      updates.imageUrl = validateAndTrimImageUrl(args.imageUrl);
     }
 
     await ctx.db.patch(args.mapId, updates);
