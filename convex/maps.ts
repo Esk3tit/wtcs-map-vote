@@ -191,7 +191,7 @@ export const updateMap = mutation({
     if (args.name !== undefined) {
       const trimmedName = validateAndTrimName(args.name);
 
-      // Only check for duplicates if name is actually changing
+      // Only check for duplicates and update if name is actually changing
       if (trimmedName !== existing.name) {
         const duplicate = await ctx.db
           .query("maps")
@@ -201,14 +201,17 @@ export const updateMap = mutation({
         if (duplicate) {
           throw new ConvexError("A map with this name already exists");
         }
-      }
 
-      updates.name = trimmedName;
+        updates.name = trimmedName;
+      }
     }
 
     // Handle imageUrl update
     if (args.imageUrl !== undefined) {
-      updates.imageUrl = validateAndTrimImageUrl(args.imageUrl);
+      const trimmedImageUrl = validateAndTrimImageUrl(args.imageUrl);
+      if (trimmedImageUrl !== existing.imageUrl) {
+        updates.imageUrl = trimmedImageUrl;
+      }
     }
 
     // Check for active session usage if name or imageUrl is changing
