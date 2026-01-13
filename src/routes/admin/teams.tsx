@@ -148,8 +148,14 @@ function TeamsPage() {
           updateArgs.logoStorageId = null;
         }
 
-        await updateTeam(updateArgs);
-        toast.success("Team updated");
+        // Skip API call if nothing changed (only teamId in updateArgs)
+        const hasChanges = Object.keys(updateArgs).length > 1;
+        if (hasChanges) {
+          await updateTeam(updateArgs);
+          toast.success("Team updated");
+        } else {
+          toast.info("No changes to save");
+        }
       } else {
         // Create new team
         await createTeam({

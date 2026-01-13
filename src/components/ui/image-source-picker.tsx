@@ -77,6 +77,7 @@ export function ImageSourcePicker({
   const [urlError, setUrlError] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
+  const [imageLoadError, setImageLoadError] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Determine current tab based on value
@@ -90,6 +91,11 @@ export function ImageSourcePicker({
       : value.type === "url"
         ? value.url
         : currentImageUrl;
+
+  // Reset image load error when preview URL changes
+  useEffect(() => {
+    setImageLoadError(false);
+  }, [previewUrl]);
 
   const handleFileSelect = useCallback(
     (file: File) => {
@@ -220,17 +226,17 @@ export function ImageSourcePicker({
         <div className="relative rounded-lg border border-border/50 p-4 bg-muted/20">
           <div className="flex items-center gap-4">
             <div className="relative w-16 h-16 rounded-lg overflow-hidden bg-muted flex items-center justify-center">
-              <img
-                src={previewUrl}
-                alt="Logo preview"
-                className="w-full h-full object-cover"
-                onError={(e) => {
-                  const target = e.target as HTMLImageElement;
-                  target.style.display = "none";
-                  target.nextElementSibling?.classList.remove("hidden");
-                }}
-              />
-              <ImageIcon className="w-8 h-8 text-muted-foreground hidden" />
+              {!imageLoadError && (
+                <img
+                  src={previewUrl}
+                  alt="Logo preview"
+                  className="w-full h-full object-cover"
+                  onError={() => setImageLoadError(true)}
+                />
+              )}
+              {imageLoadError && (
+                <ImageIcon className="w-8 h-8 text-muted-foreground" />
+              )}
             </div>
             <div className="flex-1 min-w-0">
               <p className="text-sm font-medium truncate">
@@ -287,12 +293,22 @@ export function ImageSourcePicker({
               disabled={isLoading}
             />
             <div
+              role="button"
+              tabIndex={isLoading ? -1 : 0}
+              aria-label="Upload image. Drop file here or press Enter to browse."
+              aria-disabled={isLoading}
               onClick={() => !isLoading && fileInputRef.current?.click()}
+              onKeyDown={(e) => {
+                if (!isLoading && (e.key === "Enter" || e.key === " ")) {
+                  e.preventDefault();
+                  fileInputRef.current?.click();
+                }
+              }}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
               onDrop={handleDrop}
               className={cn(
-                "border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center gap-3 transition-colors cursor-pointer bg-muted/20",
+                "border-2 border-dashed rounded-lg p-8 flex flex-col items-center justify-center gap-3 transition-colors cursor-pointer bg-muted/20 focus:outline-none focus:ring-2 focus:ring-primary focus:ring-offset-2",
                 dragActive
                   ? "border-primary bg-primary/5"
                   : "border-border/50 hover:border-primary/50",
