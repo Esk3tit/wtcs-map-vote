@@ -1,29 +1,14 @@
 import { query, mutation } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
-import validator from "validator";
-import {
-  MAX_NAME_LENGTH,
-  MAX_URL_LENGTH,
-  ACTIVE_SESSION_STATUSES,
-} from "./lib/constants";
+import { MAX_NAME_LENGTH, ACTIVE_SESSION_STATUSES } from "./lib/constants";
+import { isSecureUrl, validateSecureUrl } from "./lib/urlValidation";
 
 /**
- * Validates a logo URL.
- * Uses validator.js for robust URL validation.
- * Note: Logo URLs are client-rendered in <img> tags, not fetched server-side,
- * so SSRF/private IP blocking is not needed (browser handles CORS).
+ * Validates a logo URL with SSRF protection.
+ * Returns true if URL is valid and safe, or if empty/null (logo is optional).
  */
-function isValidLogoUrl(url: string | undefined | null): boolean {
-  if (!url) return true;
-  if (url.length > MAX_URL_LENGTH) return false;
-
-  return validator.isURL(url, {
-    protocols: ["http", "https"],
-    require_protocol: true,
-    require_valid_protocol: true,
-    allow_underscores: true,
-  });
-}
+const isValidLogoUrl = (url: string | undefined | null): boolean =>
+  !url || isSecureUrl(url);
 
 /**
  * List all teams sorted by name (ascending)
@@ -78,7 +63,7 @@ export const createTeam = mutation({
     const trimmedLogoUrl = args.logoUrl?.trim() || undefined;
     if (trimmedLogoUrl && !isValidLogoUrl(trimmedLogoUrl)) {
       throw new ConvexError(
-        "Invalid logo URL. Must be a valid HTTP or HTTPS URL."
+        "Invalid logo URL. Must be a valid HTTP/HTTPS URL that doesn't point to internal addresses."
       );
     }
 
@@ -203,7 +188,7 @@ export const updateTeam = mutation({
         const trimmedLogoUrl = args.logoUrl.trim() || undefined;
         if (trimmedLogoUrl && !isValidLogoUrl(trimmedLogoUrl)) {
           throw new ConvexError(
-            "Invalid logo URL. Must be a valid HTTP or HTTPS URL."
+            "Invalid logo URL. Must be a valid HTTP/HTTPS URL that doesn't point to internal addresses."
           );
         }
         updates.logoUrl = trimmedLogoUrl;

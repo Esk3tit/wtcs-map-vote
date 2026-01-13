@@ -1,26 +1,7 @@
 import { query, mutation } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
-import validator from "validator";
-import {
-  MAX_NAME_LENGTH,
-  MAX_URL_LENGTH,
-  ACTIVE_SESSION_STATUSES,
-} from "./lib/constants";
-
-/**
- * Validates an image URL.
- * Uses validator.js for robust URL validation.
- */
-function isValidImageUrl(url: string): boolean {
-  if (!url || url.length > MAX_URL_LENGTH) return false;
-
-  return validator.isURL(url, {
-    protocols: ["http", "https"],
-    require_protocol: true,
-    require_valid_protocol: true,
-    allow_underscores: true,
-  });
-}
+import { MAX_NAME_LENGTH, ACTIVE_SESSION_STATUSES } from "./lib/constants";
+import { validateSecureUrl } from "./lib/urlValidation";
 
 /**
  * Validates and trims a map name.
@@ -40,21 +21,11 @@ function validateAndTrimName(name: string): string {
 }
 
 /**
- * Validates and trims an image URL.
- * Throws ConvexError if invalid.
+ * Validates and trims an image URL with SSRF protection.
+ * Throws ConvexError if invalid or points to internal addresses.
  */
-function validateAndTrimImageUrl(imageUrl: string): string {
-  const trimmedImageUrl = imageUrl.trim();
-  if (trimmedImageUrl.length === 0) {
-    throw new ConvexError("Image URL cannot be empty");
-  }
-  if (!isValidImageUrl(trimmedImageUrl)) {
-    throw new ConvexError(
-      "Invalid image URL. Must be a valid HTTP or HTTPS URL."
-    );
-  }
-  return trimmedImageUrl;
-}
+const validateAndTrimImageUrl = (imageUrl: string): string =>
+  validateSecureUrl(imageUrl, "Image URL");
 
 // Reusable validator for map objects returned by queries
 const mapObjectValidator = v.object({
