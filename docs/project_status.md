@@ -63,19 +63,6 @@ Current progress and next steps for the WTCS Map Vote project.
 
 ---
 
-## In Progress
-
-### Maps CRUD PR (#15)
-- [x] Core CRUD operations implemented (7 functions)
-- [x] Shared constants extracted to `convex/lib/constants.ts`
-- [x] Reusable validators and helper functions
-- [x] All PR comments addressed
-- [ ] Awaiting merge to main
-
-See `todos/` directory for detailed findings from code review.
-
----
-
 ## Next Steps
 
 ### Convex Functions (Priority: High)

@@ -8,38 +8,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+*No changes yet.*
+
+---
+
+## [0.3.0] - 2025-01-13
+
 ### Added
 - **Maps CRUD Operations** (`convex/maps.ts`):
   - `listMaps` - Query maps with optional inactive filter, sorted by name
   - `getMap` - Get single map by ID
   - `createMap` - Create map with name/URL validation and uniqueness check
-  - `updateMap` - Update map with validation and uniqueness check
+  - `updateMap` - Update map with validation, uniqueness check, and active session protection
   - `deactivateMap` - Soft delete with active session protection
-  - `reactivateMap` - Restore deactivated map
+  - `reactivateMap` - Restore deactivated map with duplicate name check
   - `generateUploadUrl` - Generate Convex storage upload URL for images
-- Shared constants module (`convex/lib/constants.ts`):
-  - `MAX_NAME_LENGTH`, `MAX_URL_LENGTH` validation constants
-  - `ACTIVE_SESSION_STATUSES` type-safe set for session checks
-- New schema indexes:
-  - `maps.by_name` - Name sorting and uniqueness lookup
-  - `maps.by_isActive_and_name` - Compound index for filtering + sorting
-  - `sessionMaps.by_mapId` - Deactivation session check
 - **Teams CRUD Operations** (`convex/teams.ts`):
   - `listTeams` - Query all teams sorted by name
   - `createTeam` - Create team with name uniqueness validation
   - `updateTeam` - Update team with active session protection
   - `deleteTeam` - Delete team with cascade protection
-- URL validation using `validator.js` for logo URLs
+- Shared constants module (`convex/lib/constants.ts`):
+  - `MAX_NAME_LENGTH`, `MAX_URL_LENGTH` validation constants
+  - `ACTIVE_SESSION_STATUSES` type-safe set for session checks
 - Shared utilities (`convex/lib/`):
   - `cascadeDelete.ts` - Atomic cascade delete for sessions
   - `types.ts` - Type definitions for PlayerRole, AuditAction
-- Performance indexes added to schema (4 new):
-  - `sessionPlayers.by_teamName` - Team lookup optimization
-  - `sessionPlayers.by_tokenExpiresAt` - Token cleanup
-  - `sessionPlayers.by_lastHeartbeat` - Heartbeat monitoring
-  - `votes.by_sessionId_and_playerId` - Vote queries
-  - `auditLogs.by_sessionId_and_timestamp` - Log queries
-- N+1 query solution documentation (`docs/solutions/`)
 - Complete Convex database schema with 8 tables (`convex/schema.ts`):
   - `admins` - Google OAuth users with email whitelist
   - `teams` - Reusable team registry
@@ -49,7 +43,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `sessionMaps` - Maps assigned to session (snapshot pattern)
   - `votes` - Individual votes for Multiplayer format
   - `auditLogs` - Action history and audit trail
-- All database indexes for efficient queries (14 total)
+- Schema indexes (18 total):
+  - `maps.by_name` - Name sorting and uniqueness lookup
+  - `maps.by_isActive_and_name` - Compound index for filtering + sorting
+  - `sessionMaps.by_mapId` - Deactivation session check
+  - `sessionPlayers.by_teamName` - Team lookup optimization
+  - `sessionPlayers.by_tokenExpiresAt` - Token cleanup
+  - `sessionPlayers.by_lastHeartbeat` - Heartbeat monitoring
+  - `votes.by_sessionId_and_playerId` - Vote queries
+  - `auditLogs.by_sessionId_and_timestamp` - Log queries
+- URL validation using `validator.js` for map image and team logo URLs
+- N+1 query solution documentation (`docs/solutions/`)
 - Convex project initialization and deployment configuration
 - Code review todos directory (`todos/`) for tracking follow-up work
 - `.env.example` template for environment variables
@@ -69,6 +73,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Removed
 - Unused `public/vite.svg` (Vite default favicon)
+- Unused `by_isActive` standalone index (superseded by compound index)
 
 ---
 
