@@ -1,60 +1,11 @@
 import { query, mutation } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
-import validator from "validator";
-import {
-  MAX_NAME_LENGTH,
-  MAX_URL_LENGTH,
-  ACTIVE_SESSION_STATUSES,
-} from "./lib/constants";
+import { ACTIVE_SESSION_STATUSES } from "./lib/constants";
+import { validateSecureUrl } from "./lib/urlValidation";
+import { validateName } from "./lib/validation";
 
-/**
- * Validates an image URL.
- * Uses validator.js for robust URL validation.
- */
-function isValidImageUrl(url: string): boolean {
-  if (!url || url.length > MAX_URL_LENGTH) return false;
-
-  return validator.isURL(url, {
-    protocols: ["http", "https"],
-    require_protocol: true,
-    require_valid_protocol: true,
-    allow_underscores: true,
-  });
-}
-
-/**
- * Validates and trims a map name.
- * Throws ConvexError if invalid.
- */
-function validateAndTrimName(name: string): string {
-  const trimmedName = name.trim();
-  if (trimmedName.length === 0) {
-    throw new ConvexError("Map name cannot be empty");
-  }
-  if (trimmedName.length > MAX_NAME_LENGTH) {
-    throw new ConvexError(
-      `Map name cannot exceed ${MAX_NAME_LENGTH} characters`
-    );
-  }
-  return trimmedName;
-}
-
-/**
- * Validates and trims an image URL.
- * Throws ConvexError if invalid.
- */
-function validateAndTrimImageUrl(imageUrl: string): string {
-  const trimmedImageUrl = imageUrl.trim();
-  if (trimmedImageUrl.length === 0) {
-    throw new ConvexError("Image URL cannot be empty");
-  }
-  if (!isValidImageUrl(trimmedImageUrl)) {
-    throw new ConvexError(
-      "Invalid image URL. Must be a valid HTTP or HTTPS URL."
-    );
-  }
-  return trimmedImageUrl;
-}
+const validateMapName = (name: string) => validateName(name, "Map");
+const validateImageUrl = (url: string) => validateSecureUrl(url, "Image URL");
 
 // Reusable validator for map objects returned by queries
 const mapObjectValidator = v.object({
@@ -129,8 +80,8 @@ export const createMap = mutation({
     // if (!identity) throw new ConvexError("Authentication required");
     // Verify caller is admin via admins table lookup
 
-    const trimmedName = validateAndTrimName(args.name);
-    const trimmedImageUrl = validateAndTrimImageUrl(args.imageUrl);
+    const trimmedName = validateMapName(args.name);
+    const trimmedImageUrl = validateImageUrl(args.imageUrl);
 
     // Check uniqueness (indexes don't enforce uniqueness in Convex)
     // Note: There's a theoretical race condition where two concurrent requests
@@ -189,7 +140,7 @@ export const updateMap = mutation({
 
     // Handle name update
     if (args.name !== undefined) {
-      const trimmedName = validateAndTrimName(args.name);
+      const trimmedName = validateMapName(args.name);
 
       // Only check for duplicates and update if name is actually changing
       if (trimmedName !== existing.name) {
@@ -208,7 +159,7 @@ export const updateMap = mutation({
 
     // Handle imageUrl update
     if (args.imageUrl !== undefined) {
-      const trimmedImageUrl = validateAndTrimImageUrl(args.imageUrl);
+      const trimmedImageUrl = validateImageUrl(args.imageUrl);
       if (trimmedImageUrl !== existing.imageUrl) {
         updates.imageUrl = trimmedImageUrl;
       }

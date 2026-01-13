@@ -1,28 +1,26 @@
 import { query, mutation } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
-import validator from "validator";
-import {
-  MAX_NAME_LENGTH,
-  MAX_URL_LENGTH,
-  ACTIVE_SESSION_STATUSES,
-} from "./lib/constants";
+import { ACTIVE_SESSION_STATUSES } from "./lib/constants";
+import { isSecureUrl } from "./lib/urlValidation";
+import { validateName } from "./lib/validation";
+
+const validateTeamName = (name: string) => validateName(name, "Team");
 
 /**
- * Validates a logo URL.
- * Uses validator.js for robust URL validation.
- * Note: Logo URLs are client-rendered in <img> tags, not fetched server-side,
- * so SSRF/private IP blocking is not needed (browser handles CORS).
+ * Validates an optional logo URL with SSRF protection.
+ * Returns trimmed URL or undefined if empty/null.
+ * Throws ConvexError if URL is invalid.
  */
-function isValidLogoUrl(url: string | undefined | null): boolean {
-  if (!url) return true;
-  if (url.length > MAX_URL_LENGTH) return false;
-
-  return validator.isURL(url, {
-    protocols: ["http", "https"],
-    require_protocol: true,
-    require_valid_protocol: true,
-    allow_underscores: true,
-  });
+function validateLogoUrl(logoUrl: string | undefined | null): string | undefined {
+  if (!logoUrl) return undefined;
+  const trimmed = logoUrl.trim();
+  if (!trimmed) return undefined;
+  if (!isSecureUrl(trimmed)) {
+    throw new ConvexError(
+      "Invalid logo URL. Must be a valid HTTP/HTTPS URL that doesn't point to internal addresses."
+    );
+  }
+  return trimmed;
 }
 
 /**
@@ -59,35 +57,11 @@ export const createTeam = mutation({
   returns: v.object({ teamId: v.id("teams") }),
   handler: async (ctx, args) => {
     // TODO: Add authentication check when auth is integrated (Phase 2)
-    // const identity = await ctx.auth.getUserIdentity();
-    // if (!identity) throw new ConvexError("Authentication required");
-    // Verify caller is admin via admins table lookup
 
-    // Trim and validate name
-    const trimmedName = args.name.trim();
-    if (trimmedName.length === 0) {
-      throw new ConvexError("Team name cannot be empty");
-    }
-    if (trimmedName.length > MAX_NAME_LENGTH) {
-      throw new ConvexError(
-        `Team name cannot exceed ${MAX_NAME_LENGTH} characters`
-      );
-    }
+    const trimmedName = validateTeamName(args.name);
+    const trimmedLogoUrl = validateLogoUrl(args.logoUrl);
 
-    // Validate and trim logoUrl if provided
-    const trimmedLogoUrl = args.logoUrl?.trim() || undefined;
-    if (trimmedLogoUrl && !isValidLogoUrl(trimmedLogoUrl)) {
-      throw new ConvexError(
-        "Invalid logo URL. Must be a valid HTTP or HTTPS URL."
-      );
-    }
-
-    // Check uniqueness (indexes don't enforce uniqueness in Convex)
-    // Note: There's a theoretical race condition where two concurrent requests
-    // could both pass this check before either inserts. This is acceptable for
-    // this low-traffic admin application (~12 concurrent users max per spec).
-    // Convex mutations are serialized per-document, but uniqueness checks across
-    // documents require application-level handling.
+    // Check uniqueness
     const existing = await ctx.db
       .query("teams")
       .withIndex("by_name", (q) => q.eq("name", trimmedName))
@@ -114,24 +88,17 @@ export const updateTeam = mutation({
   args: {
     teamId: v.id("teams"),
     name: v.optional(v.string()),
-    // Allow null to unset logoUrl
     logoUrl: v.optional(v.union(v.string(), v.null())),
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
     // TODO: Add authentication check when auth is integrated (Phase 2)
-    // const identity = await ctx.auth.getUserIdentity();
-    // if (!identity) throw new ConvexError("Authentication required");
-    // Verify caller is admin via admins table lookup
 
-    // Verify team exists
     const existing = await ctx.db.get(args.teamId);
     if (!existing) {
       throw new ConvexError("Team not found");
     }
 
-    // Build updates object
-    // Note: logoUrl uses `string | undefined` to allow unsetting via patch
     const updates: {
       name?: string;
       logoUrl?: string | undefined;
@@ -140,21 +107,11 @@ export const updateTeam = mutation({
       updatedAt: Date.now(),
     };
 
-    // Handle name update with uniqueness check
+    // Handle name update
     if (args.name !== undefined) {
-      const trimmedName = args.name.trim();
-      if (trimmedName.length === 0) {
-        throw new ConvexError("Team name cannot be empty");
-      }
-      if (trimmedName.length > MAX_NAME_LENGTH) {
-        throw new ConvexError(
-          `Team name cannot exceed ${MAX_NAME_LENGTH} characters`
-        );
-      }
+      const trimmedName = validateTeamName(args.name);
 
-      // Only update name if it's actually changing
       if (trimmedName !== existing.name) {
-        // Check for duplicate name
         const duplicate = await ctx.db
           .query("teams")
           .withIndex("by_name", (q) => q.eq("name", trimmedName))
@@ -165,14 +122,12 @@ export const updateTeam = mutation({
         }
 
         // Block rename if team is used in active sessions
-        // This prevents orphaned teamName references in sessionPlayers
         const playersInTeam = await ctx.db
           .query("sessionPlayers")
           .withIndex("by_teamName", (q) => q.eq("teamName", existing.name))
           .collect();
 
         if (playersInTeam.length > 0) {
-          // Batch-fetch sessions in parallel (N+1 fix)
           const sessionIds = [
             ...new Set(playersInTeam.map((p) => p.sessionId)),
           ];
@@ -196,17 +151,9 @@ export const updateTeam = mutation({
     // Handle logoUrl update (null means unset)
     if (args.logoUrl !== undefined) {
       if (args.logoUrl === null) {
-        // Unset the logoUrl by patching with undefined
         updates.logoUrl = undefined;
       } else {
-        // Trim and validate the new URL
-        const trimmedLogoUrl = args.logoUrl.trim() || undefined;
-        if (trimmedLogoUrl && !isValidLogoUrl(trimmedLogoUrl)) {
-          throw new ConvexError(
-            "Invalid logo URL. Must be a valid HTTP or HTTPS URL."
-          );
-        }
-        updates.logoUrl = trimmedLogoUrl;
+        updates.logoUrl = validateLogoUrl(args.logoUrl);
       }
     }
 
@@ -225,18 +172,12 @@ export const deleteTeam = mutation({
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
     // TODO: Add authentication check when auth is integrated (Phase 2)
-    // const identity = await ctx.auth.getUserIdentity();
-    // if (!identity) throw new ConvexError("Authentication required");
-    // Verify caller is admin via admins table lookup
 
-    // Verify team exists
     const team = await ctx.db.get(args.teamId);
     if (!team) {
       throw new ConvexError("Team not found");
     }
 
-    // Efficiently check for active sessions using this team.
-    // Uses by_teamName index for O(1) lookup instead of full table scan.
     const playersInTeam = await ctx.db
       .query("sessionPlayers")
       .withIndex("by_teamName", (q) => q.eq("teamName", team.name))

@@ -11,6 +11,8 @@
 import type * as lib_cascadeDelete from "../lib/cascadeDelete.js";
 import type * as lib_constants from "../lib/constants.js";
 import type * as lib_types from "../lib/types.js";
+import type * as lib_urlValidation from "../lib/urlValidation.js";
+import type * as lib_validation from "../lib/validation.js";
 import type * as maps from "../maps.js";
 import type * as teams from "../teams.js";
 
@@ -24,6 +26,8 @@ declare const fullApi: ApiFromModules<{
   "lib/cascadeDelete": typeof lib_cascadeDelete;
   "lib/constants": typeof lib_constants;
   "lib/types": typeof lib_types;
+  "lib/urlValidation": typeof lib_urlValidation;
+  "lib/validation": typeof lib_validation;
   maps: typeof maps;
   teams: typeof teams;
 }>;

@@ -56,10 +56,13 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] Teams CRUD operations (`convex/teams.ts`)
 - [x] Maps CRUD operations (`convex/maps.ts`)
 - [x] URL validation with `validator.js`
+- [x] SSRF-safe URL validation (`convex/lib/urlValidation.ts`)
+- [x] Shared name validation (`convex/lib/validation.ts`)
 - [x] Cascade delete helper (`convex/lib/cascadeDelete.ts`)
 - [x] Type definitions (`convex/lib/types.ts`)
 - [x] Shared constants (`convex/lib/constants.ts`)
 - [x] N+1 query optimization patterns documented
+- [x] Code review todo tracking system
 
 ---
 
