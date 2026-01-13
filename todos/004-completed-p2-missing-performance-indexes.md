@@ -1,5 +1,5 @@
 ---
-status: pending
+status: completed
 priority: p2
 issue_id: "004"
 tags: [code-review, performance, convex, indexes]
@@ -76,15 +76,16 @@ Option A - Add all indexes now since the query patterns are documented in spec.
 
 ## Acceptance Criteria
 
-- [ ] All 4 indexes added to schema
-- [ ] `bunx convex dev` runs without errors
-- [ ] Query patterns documented in comments
+- [x] All 4 indexes added to schema
+- [x] `bunx convex dev` runs without errors
+- [x] Query patterns documented in comments
 
 ## Work Log
 
 | Date | Action | Learnings |
 |------|--------|-----------|
 | 2026-01-09 | Identified in code review | 4 missing indexes for common patterns |
+| 2026-01-12 | Implemented in commit 98dd23f | Added all 4 indexes to convex/schema.ts |
 
 ## Resources
 

@@ -32,9 +32,11 @@ WTCS Map Vote - A React application for map voting functionality.
 ├── convex/
 │   ├── schema.ts         # Database schema (8 tables, 14 indexes)
 │   ├── _generated/       # Auto-generated types (do not edit)
+│   ├── lib/              # Shared utilities (cascadeDelete, types)
 │   └── *.ts              # Convex functions (queries, mutations, actions)
 ├── docs/
 │   ├── plans/            # Working plans (gitignored)
+│   ├── solutions/        # Documented solutions and patterns
 │   ├── convex_rules.md   # Convex coding guidelines
 │   └── SPECIFICATION.md  # Full product & engineering spec
 ├── todos/                # Code review findings and follow-up work

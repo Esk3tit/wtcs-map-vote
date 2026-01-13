@@ -8,13 +8,21 @@
  * @module
  */
 
+import type * as lib_cascadeDelete from "../lib/cascadeDelete.js";
+import type * as lib_types from "../lib/types.js";
+import type * as teams from "../teams.js";
+
 import type {
   ApiFromModules,
   FilterApi,
   FunctionReference,
 } from "convex/server";
 
-declare const fullApi: ApiFromModules<{}>;
+declare const fullApi: ApiFromModules<{
+  "lib/cascadeDelete": typeof lib_cascadeDelete;
+  "lib/types": typeof lib_types;
+  teams: typeof teams;
+}>;
 
 /**
  * A utility for referencing Convex functions in your app's public API.

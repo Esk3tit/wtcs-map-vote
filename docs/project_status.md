@@ -2,7 +2,7 @@
 
 Current progress and next steps for the WTCS Map Vote project.
 
-**Last Updated:** January 9, 2026
+**Last Updated:** January 12, 2026
 
 ---
 
@@ -51,17 +51,24 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] Convex deployment configuration
 - [x] Environment variables setup
 - [x] Complete database schema (`convex/schema.ts`) with 8 tables
-- [x] All indexes defined (14 total) for efficient queries
+- [x] All indexes defined (18 total) for efficient queries
 - [x] TypeScript types auto-generated (`convex/_generated/`)
+- [x] Teams CRUD operations (`convex/teams.ts`)
+- [x] URL validation with `validator.js`
+- [x] Cascade delete helper (`convex/lib/cascadeDelete.ts`)
+- [x] Type definitions (`convex/lib/types.ts`)
+- [x] N+1 query optimization patterns documented
 
 ---
 
 ## In Progress
 
-### Code Review Follow-ups
-- [ ] Implement uniqueness enforcement in mutations (token, email)
-- [ ] Create cascade delete helpers for sessions
-- [ ] Add missing performance indexes (4 identified)
+### Teams CRUD PR (#14)
+- [x] Core CRUD operations implemented
+- [x] URL validation with validator.js
+- [x] Performance indexes added
+- [x] All PR comments addressed
+- [ ] Awaiting merge to main
 
 See `todos/` directory for detailed findings from code review.
 
@@ -80,11 +87,13 @@ Implement the Convex functions to power the application:
    - [ ] Add uniqueness validation (email, token)
 
 2. **Core Functions**
-   - [ ] Admin CRUD operations (teams, maps, sessions)
+   - [x] Teams CRUD operations (create, update, delete, list)
+   - [ ] Maps CRUD operations
+   - [ ] Sessions CRUD operations
    - [ ] Session lifecycle mutations (create, finalize, start, pause, resume, end)
    - [ ] Player token validation and IP locking
    - [ ] Voting mutations (submitBan, submitVote)
-   - [ ] Cascade delete helpers for data integrity
+   - [x] Cascade delete helpers for data integrity
 
 3. **Real-Time Subscriptions**
    - [ ] Session state subscription

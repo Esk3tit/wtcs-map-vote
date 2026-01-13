@@ -9,6 +9,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Teams CRUD Operations** (`convex/teams.ts`):
+  - `listTeams` - Query all teams sorted by name
+  - `createTeam` - Create team with name uniqueness validation
+  - `updateTeam` - Update team with active session protection
+  - `deleteTeam` - Delete team with cascade protection
+- URL validation using `validator.js` for logo URLs
+- Shared utilities (`convex/lib/`):
+  - `cascadeDelete.ts` - Atomic cascade delete for sessions
+  - `types.ts` - Type definitions for PlayerRole, AuditAction
+- Performance indexes added to schema (4 new):
+  - `sessionPlayers.by_teamName` - Team lookup optimization
+  - `sessionPlayers.by_tokenExpiresAt` - Token cleanup
+  - `sessionPlayers.by_lastHeartbeat` - Heartbeat monitoring
+  - `votes.by_sessionId_and_playerId` - Vote queries
+  - `auditLogs.by_sessionId_and_timestamp` - Log queries
+- N+1 query solution documentation (`docs/solutions/`)
 - Complete Convex database schema with 8 tables (`convex/schema.ts`):
   - `admins` - Google OAuth users with email whitelist
   - `teams` - Reusable team registry
