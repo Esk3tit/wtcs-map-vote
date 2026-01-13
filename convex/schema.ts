@@ -25,7 +25,6 @@ export default defineSchema({
     isActive: v.boolean(),
     updatedAt: v.number(),
   })
-    .index("by_isActive", ["isActive"])
     .index("by_name", ["name"])
     .index("by_isActive_and_name", ["isActive", "name"]),
 

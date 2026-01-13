@@ -1,20 +1,11 @@
 import { query, mutation } from "./_generated/server";
 import { v, ConvexError } from "convex/values";
-import { Doc } from "./_generated/dataModel";
 import validator from "validator";
-
-// Constants for validation
-const MAX_NAME_LENGTH = 100;
-const MAX_URL_LENGTH = 2048;
-
-// Type-safe active session statuses (validated against schema)
-type SessionStatus = Doc<"sessions">["status"];
-const ACTIVE_SESSION_STATUSES: Set<SessionStatus> = new Set([
-  "DRAFT",
-  "WAITING",
-  "IN_PROGRESS",
-  "PAUSED",
-]);
+import {
+  MAX_NAME_LENGTH,
+  MAX_URL_LENGTH,
+  ACTIVE_SESSION_STATUSES,
+} from "./lib/constants";
 
 /**
  * Validates an image URL.
@@ -135,6 +126,19 @@ export const createMap = mutation({
       );
     }
 
+    // Check uniqueness (indexes don't enforce uniqueness in Convex)
+    // Note: There's a theoretical race condition where two concurrent requests
+    // could both pass this check before either inserts. This is acceptable for
+    // this low-traffic admin application (~12 concurrent users max per spec).
+    const existingMap = await ctx.db
+      .query("maps")
+      .withIndex("by_name", (q) => q.eq("name", trimmedName))
+      .first();
+
+    if (existingMap) {
+      throw new ConvexError("A map with this name already exists");
+    }
+
     const mapId = await ctx.db.insert("maps", {
       name: trimmedName,
       imageUrl: trimmedImageUrl,
@@ -188,6 +192,19 @@ export const updateMap = mutation({
           `Map name cannot exceed ${MAX_NAME_LENGTH} characters`
         );
       }
+
+      // Only check for duplicates if name is actually changing
+      if (trimmedName !== existing.name) {
+        const duplicate = await ctx.db
+          .query("maps")
+          .withIndex("by_name", (q) => q.eq("name", trimmedName))
+          .first();
+
+        if (duplicate) {
+          throw new ConvexError("A map with this name already exists");
+        }
+      }
+
       updates.name = trimmedName;
     }
 
@@ -255,7 +272,7 @@ export const deactivateMap = mutation({
 
       if (activeSession) {
         throw new ConvexError(
-          `Cannot deactivate map "${map.name}": used in active session "${activeSession.matchName}"`
+          `Cannot deactivate map "${map.name}": it is currently in use in an active session`
         );
       }
     }
