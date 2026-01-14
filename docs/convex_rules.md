@@ -143,6 +143,7 @@ export const g = query({
 
 ### Pagination
 - Paginated queries are queries that return a list of results in incremental pages.
+- **ALWAYS use `paginationOptsValidator`** for paginated queries - NEVER manually define separate `cursor` and `limit` arguments.
 - You can define pagination using the following syntax:
 
 ```ts
@@ -167,6 +168,30 @@ Note: `paginationOpts` is an object with the following properties:
                             - page (contains an array of documents that you fetches)
                             - isDone (a boolean that represents whether or not this is the last page of documents)
                             - continueCursor (a string that represents the cursor to use to fetch the next page of documents)
+
+#### Pagination Anti-Pattern (DO NOT DO THIS)
+```ts
+// WRONG: Manual cursor/limit breaks gapless reactive pagination
+export const listItems = query({
+    args: {
+        limit: v.optional(v.number()),   // ANTI-PATTERN
+        cursor: v.optional(v.string()),  // ANTI-PATTERN
+    },
+    handler: async (ctx, args) => {
+        const limit = args.limit ?? 50;
+        return await ctx.db.query("items")
+            .paginate({ cursor: args.cursor ?? null, numItems: limit });
+    },
+});
+```
+
+Why this is wrong:
+1. **Breaks gapless pagination** - Items may be skipped or duplicated when data changes during pagination
+2. **Incompatible with `usePaginatedQuery`** - Frontend must manually track cursor state
+3. **Loses QueryJournal tracking** - Convex cannot provide reactive pagination
+4. **No automatic page invalidation** - Stale data when items are inserted/deleted
+
+See [docs/solutions/pagination/convex-pagination-best-practices.md](solutions/pagination/convex-pagination-best-practices.md) for detailed guidance.
 
 
 ## Validator guidelines
