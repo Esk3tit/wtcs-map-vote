@@ -1,36 +1,6 @@
-import { internalMutation, internalQuery } from "./_generated/server";
+import { internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-
-/**
- * Get all storage IDs currently referenced by teams and maps.
- * Used by the cleanup job to determine which files are still in use.
- */
-export const getReferencedStorageIds = internalQuery({
-  args: {},
-  returns: v.array(v.id("_storage")),
-  handler: async (ctx) => {
-    const storageIds: Array<Id<"_storage">> = [];
-
-    // Get team logo storage IDs
-    const teams = await ctx.db.query("teams").collect();
-    for (const team of teams) {
-      if (team.logoStorageId) {
-        storageIds.push(team.logoStorageId);
-      }
-    }
-
-    // Get map image storage IDs
-    const maps = await ctx.db.query("maps").collect();
-    for (const map of maps) {
-      if (map.imageStorageId) {
-        storageIds.push(map.imageStorageId);
-      }
-    }
-
-    return storageIds;
-  },
-});
 
 /**
  * Cleans up storage files that are not referenced by any team or map.

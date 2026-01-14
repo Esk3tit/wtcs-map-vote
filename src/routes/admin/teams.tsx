@@ -36,7 +36,7 @@ export const Route = createFileRoute("/admin/teams")({
 });
 
 function TeamsPage() {
-  const teams = useQuery(api.teams.listTeams);
+  const teamsResult = useQuery(api.teams.listTeams, {});
   const createTeam = useMutation(api.teams.createTeam);
   const updateTeam = useMutation(api.teams.updateTeam);
   const deleteTeam = useMutation(api.teams.deleteTeam);
@@ -50,7 +50,9 @@ function TeamsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const isLoading = teams === undefined;
+  // Extract teams array from paginated result
+  const teams = teamsResult?.teams;
+  const isLoading = teamsResult === undefined;
   const hasNoTeams = teams?.length === 0;
 
   const resetDialog = useCallback(() => {

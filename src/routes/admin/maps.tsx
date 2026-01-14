@@ -32,7 +32,7 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
-import { useState, useCallback } from "react";
+import React, { useState, useCallback, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
@@ -72,8 +72,13 @@ function MapsPage() {
 
   const isLoading = maps === undefined;
   const hasNoMaps = maps?.length === 0;
-  const activeMaps = maps?.filter((m) => m.isActive) ?? [];
-  const inactiveMaps = maps?.filter((m) => !m.isActive) ?? [];
+  const { activeMaps, inactiveMaps } = useMemo(() => {
+    if (!maps) return { activeMaps: [], inactiveMaps: [] };
+    return {
+      activeMaps: maps.filter((m) => m.isActive),
+      inactiveMaps: maps.filter((m) => !m.isActive),
+    };
+  }, [maps]);
 
   const resetDialog = useCallback(() => {
     setMapName("");
@@ -433,7 +438,7 @@ type MapFromApi = NonNullable<
   ReturnType<typeof useQuery<typeof api.maps.listMaps>>
 >[number];
 
-// Map Card Component
+// Map Card Component - Memoized to prevent unnecessary re-renders
 interface MapCardProps {
   map: MapFromApi;
   isInactive?: boolean;
@@ -442,7 +447,7 @@ interface MapCardProps {
   onReactivate?: () => void;
 }
 
-function MapCard({
+const MapCard = React.memo(function MapCard({
   map,
   isInactive,
   onEdit,
@@ -521,4 +526,4 @@ function MapCard({
       </CardContent>
     </Card>
   );
-}
+});

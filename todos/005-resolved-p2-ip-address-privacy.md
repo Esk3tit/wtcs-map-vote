@@ -1,5 +1,5 @@
 ---
-status: pending
+status: resolved
 priority: p2
 issue_id: "005"
 tags: [code-review, security, privacy, gdpr]
@@ -31,7 +31,7 @@ The schema stores IPs but doesn't enforce the retention policy.
 
 ## Proposed Solutions
 
-### Option A: Implement IP cleanup in session expiration (Recommended)
+### Option A: Implement IP cleanup in session expiration (Recommended) - IMPLEMENTED
 **Pros:** Follows spec, minimal changes
 **Cons:** Relies on cron job running
 **Effort:** Small
@@ -58,20 +58,33 @@ Option A - Implement IP cleanup when sessions expire. Document this in CLAUDE.md
 ## Technical Details
 
 **Affected files:**
-- `convex/crons.ts` (when created) - expireStaleSessions
-- `convex/sessions.ts` - session completion handler
+- `convex/crons.ts` - Added cron jobs for session expiration and IP cleanup
+- `convex/sessionCleanup.ts` - New file with IP cleanup and session expiration functions
 
 ## Acceptance Criteria
 
-- [ ] IPs cleared when session status becomes COMPLETE or EXPIRED
-- [ ] Retention policy documented
-- [ ] No IPs stored longer than session duration
+- [x] IPs cleared when session status becomes COMPLETE or EXPIRED
+- [x] Retention policy documented (in code comments, references spec Section 12.4)
+- [x] No IPs stored longer than session duration
+
+## Implementation Details
+
+Created `convex/sessionCleanup.ts` with three internal mutations:
+
+1. **`clearSessionIpAddresses`** - Clears IP addresses for a specific session (utility function)
+2. **`expireStaleSessions`** - Expires DRAFT/WAITING sessions past their `expiresAt` time and clears their IPs
+3. **`clearCompletedSessionIps`** - Clears IPs from completed sessions (catches any that slipped through)
+
+Updated `convex/crons.ts` with two new hourly cron jobs:
+- `expire stale sessions` - Runs `expireStaleSessions` to handle session expiration with IP cleanup
+- `cleanup completed session IPs` - Runs `clearCompletedSessionIps` as a safety net
 
 ## Work Log
 
 | Date | Action | Learnings |
 |------|--------|-----------|
 | 2026-01-09 | Identified in code review | GDPR implications for IP storage |
+| 2026-01-14 | Implemented Option A | Created sessionCleanup.ts with cron jobs for IP cleanup on session expiration/completion |
 
 ## Resources
 

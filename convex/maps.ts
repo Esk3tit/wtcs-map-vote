@@ -1,15 +1,11 @@
 import { query, mutation } from "./_generated/server";
-import type { MutationCtx, QueryCtx } from "./_generated/server";
+import type { QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { v, ConvexError } from "convex/values";
 import { ACTIVE_SESSION_STATUSES } from "./lib/constants";
-import {
-  MAX_IMAGE_SIZE_BYTES,
-  ALLOWED_IMAGE_CONTENT_TYPES,
-} from "./lib/imageConstants";
-import type { AllowedImageContentType } from "./lib/imageConstants";
 import { isSecureUrl } from "./lib/urlValidation";
 import { validateName } from "./lib/validation";
+import { validateStorageFile } from "./lib/storageValidation";
 
 const validateMapName = (name: string) => validateName(name, "Map");
 
@@ -30,36 +26,6 @@ function validateImageUrl(
     );
   }
   return trimmed;
-}
-
-/**
- * Validates that a storage file exists, is within size limits, and is an allowed image type.
- * Throws ConvexError if validation fails.
- */
-async function validateStorageFile(
-  ctx: MutationCtx,
-  storageId: Id<"_storage">
-): Promise<void> {
-  const metadata = await ctx.storage.getMetadata(storageId);
-  if (!metadata) {
-    throw new ConvexError("Invalid storage ID: file not found.");
-  }
-  if (metadata.size > MAX_IMAGE_SIZE_BYTES) {
-    const sizeMB = (metadata.size / 1024 / 1024).toFixed(1);
-    throw new ConvexError(
-      `File too large (${sizeMB}MB). Maximum size is 2MB.`
-    );
-  }
-  if (
-    !metadata.contentType ||
-    !ALLOWED_IMAGE_CONTENT_TYPES.includes(
-      metadata.contentType as AllowedImageContentType
-    )
-  ) {
-    throw new ConvexError(
-      `Invalid file type "${metadata.contentType ?? "unknown"}". Allowed: PNG, JPG, WebP.`
-    );
-  }
 }
 
 // Reusable validator for map objects returned by queries
@@ -499,8 +465,24 @@ export const reactivateMap = mutation({
 
 /**
  * Generate a short-lived upload URL for map images.
- * Client should POST file to this URL, then use ctx.storage.getUrl(storageId)
- * to get a permanent URL for the uploaded file.
+ *
+ * ## Usage Workflow
+ * 1. Call this mutation to get an upload URL
+ * 2. POST the file to the URL:
+ *    ```
+ *    fetch(uploadUrl, {
+ *      method: "POST",
+ *      headers: { "Content-Type": file.type },
+ *      body: file
+ *    })
+ *    ```
+ * 3. Extract storageId from response: `const { storageId } = await response.json()`
+ * 4. Pass storageId to createMap/updateMap as imageStorageId
+ *
+ * ## Constraints
+ * - Max file size: 2MB
+ * - Allowed types: PNG, JPG, WebP
+ * - URL expires in ~1 hour
  */
 export const generateUploadUrl = mutation({
   args: {},
