@@ -119,6 +119,13 @@ const sessionWithRelationsValidator = v.object({
  * List sessions with optional status filtering and pagination.
  * Returns sessions sorted by creation time (newest first).
  *
+ * **Known Limitation:** When filtering by multiple statuses (e.g., ["DRAFT", "WAITING"]),
+ * pagination may skip some matching items because in-memory filtering reduces the result
+ * set while the cursor advances based on the unfiltered query. For reliable pagination
+ * with multi-status filtering, use single-status queries or fetch all relevant statuses
+ * in separate queries. This is acceptable for the admin dashboard use case where
+ * multi-status filtering is rare and result sets are typically small.
+ *
  * @param status - Optional array of statuses to filter by
  * @param limit - Maximum number of sessions per page (default: 50, max: 100)
  * @param cursor - Pagination cursor for fetching subsequent pages
@@ -355,6 +362,21 @@ export const updateSession = mutation({
 
     await ctx.db.patch(args.sessionId, updates);
 
+    // Create audit log for session update
+    // Use reason field to store what was updated (schema has fixed detail fields)
+    const changedFields = [];
+    if (args.matchName !== undefined) changedFields.push("matchName");
+    if (args.turnTimerSeconds !== undefined) changedFields.push("turnTimerSeconds");
+    await ctx.db.insert("auditLogs", {
+      sessionId: args.sessionId,
+      action: "SESSION_UPDATED",
+      actorType: "ADMIN",
+      details: {
+        reason: `Updated: ${changedFields.join(", ")}`,
+      },
+      timestamp: Date.now(),
+    });
+
     return { success: true };
   },
 });
@@ -384,8 +406,8 @@ export const deleteSession = mutation({
       );
     }
 
-    // Fetch related records
-    const [players, maps] = await Promise.all([
+    // Fetch related records (include votes for complete cascade delete)
+    const [players, maps, votes] = await Promise.all([
       ctx.db
         .query("sessionPlayers")
         .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
@@ -394,12 +416,19 @@ export const deleteSession = mutation({
         .query("sessionMaps")
         .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
         .collect(),
+      ctx.db
+        .query("votes")
+        .withIndex("by_sessionId_and_round", (q) =>
+          q.eq("sessionId", args.sessionId)
+        )
+        .collect(),
     ]);
 
     // Delete related records in parallel
     await Promise.all([
       ...players.map((p) => ctx.db.delete(p._id)),
       ...maps.map((m) => ctx.db.delete(m._id)),
+      ...votes.map((v) => ctx.db.delete(v._id)),
     ]);
 
     // Delete the session
@@ -463,11 +492,14 @@ export const assignPlayer = mutation({
       );
     }
 
-    // Check for duplicate role in session
-    const duplicateRole = existingPlayers.find((p) => p.role === args.role);
+    // Validate role input (trimming, length limit) - do this early for duplicate check
+    const validatedRole = validateName(args.role, "Role");
+
+    // Check for duplicate role in session (use validated role for accurate comparison)
+    const duplicateRole = existingPlayers.find((p) => p.role === validatedRole);
     if (duplicateRole) {
       throw new ConvexError(
-        `Role "${args.role}" is already assigned in this session`
+        `Role "${validatedRole}" is already assigned in this session`
       );
     }
 
@@ -496,7 +528,7 @@ export const assignPlayer = mutation({
     const now = Date.now();
     const playerId = await ctx.db.insert("sessionPlayers", {
       sessionId: args.sessionId,
-      role: args.role,
+      role: validatedRole,
       teamName: args.teamName,
       token,
       tokenExpiresAt: now + TOKEN_EXPIRY_MS,
@@ -581,25 +613,27 @@ export const setSessionMaps = mutation({
 
     await Promise.all(existingMaps.map((m) => ctx.db.delete(m._id)));
 
-    // Create snapshots from master maps
-    for (const map of maps) {
-      // Resolve image URL (storage takes precedence over external URL)
-      let imageUrl = map!.imageUrl ?? "";
-      if (map!.imageStorageId) {
-        const storageUrl = await ctx.storage.getUrl(map!.imageStorageId);
-        if (storageUrl) {
-          imageUrl = storageUrl;
+    // Create snapshots from master maps (parallelized for performance)
+    await Promise.all(
+      maps.map(async (map) => {
+        // Resolve image URL (storage takes precedence over external URL)
+        let imageUrl = map!.imageUrl ?? "";
+        if (map!.imageStorageId) {
+          const storageUrl = await ctx.storage.getUrl(map!.imageStorageId);
+          if (storageUrl) {
+            imageUrl = storageUrl;
+          }
         }
-      }
 
-      await ctx.db.insert("sessionMaps", {
-        sessionId: args.sessionId,
-        mapId: map!._id,
-        name: map!.name,
-        imageUrl,
-        state: "AVAILABLE",
-      });
-    }
+        return ctx.db.insert("sessionMaps", {
+          sessionId: args.sessionId,
+          mapId: map!._id,
+          name: map!.name,
+          imageUrl,
+          state: "AVAILABLE",
+        });
+      })
+    );
 
     // Update session timestamp
     await ctx.db.patch(args.sessionId, {
