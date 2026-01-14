@@ -16,8 +16,10 @@ import type * as lib_storageValidation from "../lib/storageValidation.js";
 import type * as lib_types from "../lib/types.js";
 import type * as lib_urlValidation from "../lib/urlValidation.js";
 import type * as lib_validation from "../lib/validation.js";
+import type * as lib_validators from "../lib/validators.js";
 import type * as maps from "../maps.js";
 import type * as sessionCleanup from "../sessionCleanup.js";
+import type * as sessions from "../sessions.js";
 import type * as storage from "../storage.js";
 import type * as teams from "../teams.js";
 
@@ -36,8 +38,10 @@ declare const fullApi: ApiFromModules<{
   "lib/types": typeof lib_types;
   "lib/urlValidation": typeof lib_urlValidation;
   "lib/validation": typeof lib_validation;
+  "lib/validators": typeof lib_validators;
   maps: typeof maps;
   sessionCleanup: typeof sessionCleanup;
+  sessions: typeof sessions;
   storage: typeof storage;
   teams: typeof teams;
 }>;
