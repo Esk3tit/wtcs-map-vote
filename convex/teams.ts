@@ -1,15 +1,9 @@
 import { query, mutation } from "./_generated/server";
-import type { MutationCtx } from "./_generated/server";
-import type { Id } from "./_generated/dataModel";
 import { v, ConvexError } from "convex/values";
 import { ACTIVE_SESSION_STATUSES } from "./lib/constants";
-import {
-  MAX_IMAGE_SIZE_BYTES,
-  ALLOWED_IMAGE_CONTENT_TYPES,
-} from "./lib/imageConstants";
-import type { AllowedImageContentType } from "./lib/imageConstants";
 import { isSecureUrl } from "./lib/urlValidation";
 import { validateName } from "./lib/validation";
+import { validateStorageFile } from "./lib/storageValidation";
 
 const validateTeamName = (name: string) => validateName(name, "Team");
 
@@ -30,62 +24,44 @@ function validateLogoUrl(logoUrl: string | undefined | null): string | undefined
   return trimmed;
 }
 
-/**
- * Validates that a storage file exists, is within size limits, and is an allowed image type.
- * Throws ConvexError if validation fails.
- */
-async function validateStorageFile(
-  ctx: MutationCtx,
-  storageId: Id<"_storage">
-): Promise<void> {
-  const metadata = await ctx.storage.getMetadata(storageId);
-  if (!metadata) {
-    throw new ConvexError("Invalid storage ID: file not found.");
-  }
-  if (metadata.size > MAX_IMAGE_SIZE_BYTES) {
-    const sizeMB = (metadata.size / 1024 / 1024).toFixed(1);
-    throw new ConvexError(
-      `File too large (${sizeMB}MB). Maximum size is 2MB.`
-    );
-  }
-  if (
-    !metadata.contentType ||
-    !ALLOWED_IMAGE_CONTENT_TYPES.includes(
-      metadata.contentType as AllowedImageContentType
-    )
-  ) {
-    throw new ConvexError(
-      `Invalid file type "${metadata.contentType ?? "unknown"}". Allowed: PNG, JPG, WebP.`
-    );
-  }
-}
+// Reusable validator for team objects with resolved logo URLs
+const teamObjectValidator = v.object({
+  _id: v.id("teams"),
+  _creationTime: v.number(),
+  name: v.string(),
+  logoUrl: v.optional(v.string()),
+  logoStorageId: v.optional(v.id("_storage")),
+  updatedAt: v.number(),
+});
 
 /**
- * List all teams sorted by name (ascending).
+ * List teams sorted by name (ascending) with optional pagination.
  * Resolves logoStorageId to URL for display - prefers storage over URL when both exist.
+ *
+ * @param limit - Maximum number of teams per page (default: 50)
+ * @param cursor - Pagination cursor for fetching subsequent pages
  */
 export const listTeams = query({
-  args: {},
-  returns: v.array(
-    v.object({
-      _id: v.id("teams"),
-      _creationTime: v.number(),
-      name: v.string(),
-      logoUrl: v.optional(v.string()),
-      logoStorageId: v.optional(v.id("_storage")),
-      updatedAt: v.number(),
-    })
-  ),
-  handler: async (ctx) => {
-    const teams = await ctx.db
+  args: {
+    limit: v.optional(v.number()),
+    cursor: v.optional(v.string()),
+  },
+  returns: v.object({
+    teams: v.array(teamObjectValidator),
+    continueCursor: v.union(v.string(), v.null()),
+    isDone: v.boolean(),
+  }),
+  handler: async (ctx, args) => {
+    const limit = args.limit ?? 50;
+    const result = await ctx.db
       .query("teams")
       .withIndex("by_name")
       .order("asc")
-      .collect();
+      .paginate({ cursor: args.cursor ?? null, numItems: limit });
 
-    // Resolve storage IDs to URLs in parallel
+    // Resolve storage IDs to URLs in parallel for this page only
     const teamsWithResolvedLogos = await Promise.all(
-      teams.map(async (team) => {
+      result.page.map(async (team) => {
         if (team.logoStorageId) {
           const resolvedUrl = await ctx.storage.getUrl(team.logoStorageId);
           return {
@@ -98,7 +74,11 @@ export const listTeams = query({
       })
     );
 
-    return teamsWithResolvedLogos;
+    return {
+      teams: teamsWithResolvedLogos,
+      continueCursor: result.continueCursor,
+      isDone: result.isDone,
+    };
   },
 });
 
@@ -357,7 +337,24 @@ export const deleteTeam = mutation({
 
 /**
  * Generate a short-lived upload URL for team logo images.
- * Client should POST file to this URL, then pass the storageId to createTeam/updateTeam.
+ *
+ * ## Usage Workflow
+ * 1. Call this mutation to get an upload URL
+ * 2. POST the file to the URL:
+ *    ```
+ *    fetch(uploadUrl, {
+ *      method: "POST",
+ *      headers: { "Content-Type": file.type },
+ *      body: file
+ *    })
+ *    ```
+ * 3. Extract storageId from response: `const { storageId } = await response.json()`
+ * 4. Pass storageId to createTeam/updateTeam as logoStorageId
+ *
+ * ## Constraints
+ * - Max file size: 2MB
+ * - Allowed types: PNG, JPG, WebP
+ * - URL expires in ~1 hour
  */
 export const generateUploadUrl = mutation({
   args: {},

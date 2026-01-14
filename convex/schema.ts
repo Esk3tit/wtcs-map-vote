@@ -22,7 +22,8 @@ export default defineSchema({
   // Master map pool (CMS-managed)
   maps: defineTable({
     name: v.string(),
-    imageUrl: v.string(),
+    imageUrl: v.optional(v.string()),
+    imageStorageId: v.optional(v.id("_storage")),
     isActive: v.boolean(),
     updatedAt: v.number(),
   })
