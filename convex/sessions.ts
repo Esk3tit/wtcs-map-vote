@@ -119,13 +119,6 @@ const sessionWithRelationsValidator = v.object({
  * List sessions with optional status filtering and pagination.
  * Returns sessions sorted by creation time (newest first).
  *
- * **Known Limitation:** When filtering by multiple statuses (e.g., ["DRAFT", "WAITING"]),
- * pagination may skip some matching items because in-memory filtering reduces the result
- * set while the cursor advances based on the unfiltered query. For reliable pagination
- * with multi-status filtering, use single-status queries or fetch all relevant statuses
- * in separate queries. This is acceptable for the admin dashboard use case where
- * multi-status filtering is rare and result sets are typically small.
- *
  * @param status - Optional array of statuses to filter by
  * @param limit - Maximum number of sessions per page (default: 50, max: 100)
  * @param cursor - Pagination cursor for fetching subsequent pages
@@ -143,31 +136,58 @@ export const listSessions = query({
   }),
   handler: async (ctx, args) => {
     const limit = Math.min(args.limit ?? 50, 100);
-    const paginationOpts = { cursor: args.cursor ?? null, numItems: limit };
 
-    // Use index for single status filter, otherwise full table scan
-    let result;
+    // Single status filter: use index for efficiency
     if (args.status && args.status.length === 1) {
-      result = await ctx.db
+      const result = await ctx.db
         .query("sessions")
         .withIndex("by_status", (q) => q.eq("status", args.status![0]))
         .order("desc")
-        .paginate(paginationOpts);
-    } else {
-      result = await ctx.db
-        .query("sessions")
-        .order("desc")
-        .paginate(paginationOpts);
+        .paginate({ cursor: args.cursor ?? null, numItems: limit });
+
+      return {
+        sessions: result.page,
+        continueCursor: result.continueCursor,
+        isDone: result.isDone,
+      };
     }
 
-    // Filter in memory for multiple statuses (less efficient but works)
-    const filtered =
-      args.status && args.status.length > 1
-        ? result.page.filter((s) => args.status!.includes(s.status))
-        : result.page;
+    // Multiple status filter: iterate until we have enough matching items
+    // This ensures correct pagination even with in-memory filtering
+    if (args.status && args.status.length > 1) {
+      const statusSet = new Set(args.status);
+      const collected: Doc<"sessions">[] = [];
+      let currentCursor: string | null = args.cursor ?? null;
+      let isDone = false;
+
+      // Keep fetching until we have enough items or exhaust the table
+      while (collected.length < limit && !isDone) {
+        const result = await ctx.db
+          .query("sessions")
+          .order("desc")
+          .paginate({ cursor: currentCursor, numItems: limit });
+
+        const matching = result.page.filter((s) => statusSet.has(s.status));
+        collected.push(...matching);
+        currentCursor = result.continueCursor;
+        isDone = result.isDone;
+      }
+
+      return {
+        sessions: collected.slice(0, limit),
+        continueCursor: isDone ? null : currentCursor,
+        isDone: isDone && collected.length <= limit,
+      };
+    }
+
+    // No filter: return all sessions
+    const result = await ctx.db
+      .query("sessions")
+      .order("desc")
+      .paginate({ cursor: args.cursor ?? null, numItems: limit });
 
     return {
-      sessions: filtered,
+      sessions: result.page,
       continueCursor: result.continueCursor,
       isDone: result.isDone,
     };
