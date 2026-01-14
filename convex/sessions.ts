@@ -28,31 +28,6 @@ const validateMatchName = (name: string) => validateName(name, "Match");
 // ============================================================================
 
 /**
- * Validator for session objects returned by queries.
- * Matches the sessions table schema.
- */
-const sessionObjectValidator = v.object({
-  _id: v.id("sessions"),
-  _creationTime: v.number(),
-  matchName: v.string(),
-  format: sessionFormatValidator,
-  status: sessionStatusValidator,
-  turnTimerSeconds: v.number(),
-  mapPoolSize: v.number(),
-  playerCount: v.number(),
-  currentTurn: v.number(),
-  currentRound: v.number(),
-  timerStartedAt: v.optional(v.number()),
-  timerPausedAt: v.optional(v.number()),
-  winnerMapId: v.optional(v.id("sessionMaps")),
-  createdBy: v.id("admins"),
-  updatedAt: v.number(),
-  startedAt: v.optional(v.number()),
-  completedAt: v.optional(v.number()),
-  expiresAt: v.number(),
-});
-
-/**
  * Validator for session player objects.
  */
 const sessionPlayerObjectValidator = v.object({

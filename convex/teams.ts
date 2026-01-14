@@ -1,4 +1,5 @@
 import { query, mutation } from "./_generated/server";
+import { paginationOptsValidator } from "convex/server";
 import { v, ConvexError } from "convex/values";
 import { ACTIVE_SESSION_STATUSES } from "./lib/constants";
 import { isSecureUrl } from "./lib/urlValidation";
@@ -24,40 +25,27 @@ function validateLogoUrl(logoUrl: string | undefined | null): string | undefined
   return trimmed;
 }
 
-// Reusable validator for team objects with resolved logo URLs
-const teamObjectValidator = v.object({
-  _id: v.id("teams"),
-  _creationTime: v.number(),
-  name: v.string(),
-  logoUrl: v.optional(v.string()),
-  logoStorageId: v.optional(v.id("_storage")),
-  updatedAt: v.number(),
-});
-
 /**
- * List teams sorted by name (ascending) with optional pagination.
+ * List teams sorted by name (ascending) with pagination.
  * Resolves logoStorageId to URL for display - prefers storage over URL when both exist.
  *
- * @param limit - Maximum number of teams per page (default: 50)
- * @param cursor - Pagination cursor for fetching subsequent pages
+ * Uses Convex's standard pagination pattern with paginationOptsValidator for:
+ * - Gapless reactive pagination (pages adjust when data changes)
+ * - Compatibility with usePaginatedQuery hook on frontend
+ * - Proper endCursor tracking via QueryJournal
+ *
+ * @param paginationOpts - Standard Convex pagination options (numItems, cursor, etc.)
  */
 export const listTeams = query({
   args: {
-    limit: v.optional(v.number()),
-    cursor: v.optional(v.string()),
+    paginationOpts: paginationOptsValidator,
   },
-  returns: v.object({
-    teams: v.array(teamObjectValidator),
-    continueCursor: v.union(v.string(), v.null()),
-    isDone: v.boolean(),
-  }),
   handler: async (ctx, args) => {
-    const limit = args.limit ?? 50;
     const result = await ctx.db
       .query("teams")
       .withIndex("by_name")
       .order("asc")
-      .paginate({ cursor: args.cursor ?? null, numItems: limit });
+      .paginate(args.paginationOpts);
 
     // Resolve storage IDs to URLs in parallel for this page only
     const teamsWithResolvedLogos = await Promise.all(
@@ -75,9 +63,8 @@ export const listTeams = query({
     );
 
     return {
-      teams: teamsWithResolvedLogos,
-      continueCursor: result.continueCursor,
-      isDone: result.isDone,
+      ...result,
+      page: teamsWithResolvedLogos,
     };
   },
 });

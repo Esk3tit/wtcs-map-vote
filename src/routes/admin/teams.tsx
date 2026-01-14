@@ -22,7 +22,7 @@ import {
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Plus, Pencil, Trash2, Users, Loader2 } from "lucide-react";
 import { useState, useCallback } from "react";
-import { useQuery, useMutation } from "convex/react";
+import { usePaginatedQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { toast } from "sonner";
@@ -36,7 +36,11 @@ export const Route = createFileRoute("/admin/teams")({
 });
 
 function TeamsPage() {
-  const teamsResult = useQuery(api.teams.listTeams, {});
+  const { results: teams, status, loadMore } = usePaginatedQuery(
+    api.teams.listTeams,
+    {},
+    { initialNumItems: 50 }
+  );
   const createTeam = useMutation(api.teams.createTeam);
   const updateTeam = useMutation(api.teams.updateTeam);
   const deleteTeam = useMutation(api.teams.deleteTeam);
@@ -50,10 +54,8 @@ function TeamsPage() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  // Extract teams array from paginated result
-  const teams = teamsResult?.teams;
-  const isLoading = teamsResult === undefined;
-  const hasNoTeams = teams?.length === 0;
+  const isLoading = status === "LoadingFirstPage";
+  const hasNoTeams = teams.length === 0 && status !== "LoadingFirstPage";
 
   const resetDialog = useCallback(() => {
     setTeamName("");
@@ -68,7 +70,7 @@ function TeamsPage() {
     setIsDialogOpen(true);
   };
 
-  const handleEditTeam = (team: NonNullable<typeof teams>[number]) => {
+  const handleEditTeam = (team: (typeof teams)[number]) => {
     resetDialog();
     setEditingTeamId(team._id);
     setTeamName(team.name);
@@ -136,7 +138,7 @@ function TeamsPage() {
         } = { teamId: editingTeamId };
 
         // Only update name if it changed
-        const existingTeam = teams?.find((t) => t._id === editingTeamId);
+        const existingTeam = teams.find((t) => t._id === editingTeamId);
         if (existingTeam && teamName.trim() !== existingTeam.name) {
           updateArgs.name = teamName.trim();
         }
@@ -233,73 +235,92 @@ function TeamsPage() {
             </div>
           ) : (
             // Teams Table
-            <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
-              <CardContent className="p-0">
-                <div className="overflow-x-auto">
-                  <Table className="min-w-[600px]">
-                    <TableHeader>
-                      <TableRow className="border-border/50 hover:bg-transparent">
-                        <TableHead className="w-12"></TableHead>
-                        <TableHead>Team Name</TableHead>
-                        <TableHead>Date Added</TableHead>
-                        <TableHead className="text-right">Actions</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {teams?.map((team) => (
-                        <TableRow key={team._id} className="border-border/50">
-                          <TableCell>
-                            <Avatar className="w-10 h-10">
-                              {team.logoUrl && (
-                                <AvatarImage
-                                  src={team.logoUrl}
-                                  alt={team.name}
-                                />
-                              )}
-                              <AvatarFallback className="bg-primary/20 text-primary font-semibold">
-                                {team.name.substring(0, 2).toUpperCase()}
-                              </AvatarFallback>
-                            </Avatar>
-                          </TableCell>
-                          <TableCell className="font-medium">
-                            {team.name}
-                          </TableCell>
-                          <TableCell className="text-muted-foreground">
-                            {formatDate(team._creationTime)}
-                          </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-2">
-                              <Button
-                                onClick={() => handleEditTeam(team)}
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8"
-                              >
-                                <Pencil className="w-4 h-4" />
-                                <span className="sr-only">Edit {team.name}</span>
-                              </Button>
-                              <Button
-                                onClick={() =>
-                                  handleDeleteTeam(team._id, team.name)
-                                }
-                                variant="ghost"
-                                size="icon"
-                                className="h-8 w-8 text-destructive hover:text-destructive"
-                              >
-                                <Trash2 className="w-4 h-4" />
-                                <span className="sr-only">
-                                  Delete {team.name}
-                                </span>
-                              </Button>
-                            </div>
-                          </TableCell>
+            <div className="space-y-4">
+              <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
+                <CardContent className="p-0">
+                  <div className="overflow-x-auto">
+                    <Table className="min-w-[600px]">
+                      <TableHeader>
+                        <TableRow className="border-border/50 hover:bg-transparent">
+                          <TableHead className="w-12"></TableHead>
+                          <TableHead>Team Name</TableHead>
+                          <TableHead>Date Added</TableHead>
+                          <TableHead className="text-right">Actions</TableHead>
                         </TableRow>
-                      ))}
-                    </TableBody>
-                  </Table>
+                      </TableHeader>
+                      <TableBody>
+                        {teams.map((team) => (
+                          <TableRow key={team._id} className="border-border/50">
+                            <TableCell>
+                              <Avatar className="w-10 h-10">
+                                {team.logoUrl && (
+                                  <AvatarImage
+                                    src={team.logoUrl}
+                                    alt={team.name}
+                                  />
+                                )}
+                                <AvatarFallback className="bg-primary/20 text-primary font-semibold">
+                                  {team.name.substring(0, 2).toUpperCase()}
+                                </AvatarFallback>
+                              </Avatar>
+                            </TableCell>
+                            <TableCell className="font-medium">
+                              {team.name}
+                            </TableCell>
+                            <TableCell className="text-muted-foreground">
+                              {formatDate(team._creationTime)}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex items-center justify-end gap-2">
+                                <Button
+                                  onClick={() => handleEditTeam(team)}
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8"
+                                >
+                                  <Pencil className="w-4 h-4" />
+                                  <span className="sr-only">Edit {team.name}</span>
+                                </Button>
+                                <Button
+                                  onClick={() =>
+                                    handleDeleteTeam(team._id, team.name)
+                                  }
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-destructive hover:text-destructive"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                  <span className="sr-only">
+                                    Delete {team.name}
+                                  </span>
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* Load More Button */}
+              {status === "CanLoadMore" && (
+                <div className="flex justify-center">
+                  <Button
+                    variant="outline"
+                    onClick={() => loadMore(50)}
+                  >
+                    Load More Teams
+                  </Button>
                 </div>
-              </CardContent>
-            </Card>
+              )}
+              {status === "LoadingMore" && (
+                <div className="flex justify-center">
+                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                </div>
+              )}
+            </div>
           )}
         </main>
       </div>
