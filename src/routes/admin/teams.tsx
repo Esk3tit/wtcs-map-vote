@@ -242,36 +242,35 @@ function TeamsPage() {
                     <Table className="min-w-[600px]">
                       <TableHeader>
                         <TableRow className="border-border/50 hover:bg-transparent">
-                          <TableHead className="w-12 pl-4"></TableHead>
-                          <TableHead>Team Name</TableHead>
-                          <TableHead>Date Added</TableHead>
-                          <TableHead className="text-right pr-4">Actions</TableHead>
+                          <TableHead className="w-1/3 pl-4">Team Name</TableHead>
+                          <TableHead className="w-1/3 text-center">Date Added</TableHead>
+                          <TableHead className="w-1/3 text-center pr-4">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {teams.map((team) => (
                           <TableRow key={team._id} className="border-border/50">
                             <TableCell className="pl-4">
-                              <Avatar className="w-10 h-10">
-                                {team.logoUrl && (
-                                  <AvatarImage
-                                    src={team.logoUrl}
-                                    alt={team.name}
-                                  />
-                                )}
-                                <AvatarFallback className="bg-primary/20 text-primary font-semibold">
-                                  {team.name.substring(0, 2).toUpperCase()}
-                                </AvatarFallback>
-                              </Avatar>
+                              <div className="flex items-center gap-3">
+                                <Avatar className="w-10 h-10">
+                                  {team.logoUrl && (
+                                    <AvatarImage
+                                      src={team.logoUrl}
+                                      alt={team.name}
+                                    />
+                                  )}
+                                  <AvatarFallback className="bg-primary/20 text-primary font-semibold">
+                                    {team.name.substring(0, 2).toUpperCase()}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <span className="font-medium">{team.name}</span>
+                              </div>
                             </TableCell>
-                            <TableCell className="font-medium">
-                              {team.name}
-                            </TableCell>
-                            <TableCell className="text-muted-foreground">
+                            <TableCell className="text-center text-muted-foreground">
                               {formatDate(team._creationTime)}
                             </TableCell>
-                            <TableCell className="text-right pr-4">
-                              <div className="flex items-center justify-end gap-2">
+                            <TableCell className="pr-4">
+                              <div className="flex items-center justify-center gap-2">
                                 <Button
                                   onClick={() => handleEditTeam(team)}
                                   variant="ghost"
