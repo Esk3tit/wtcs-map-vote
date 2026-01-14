@@ -242,16 +242,16 @@ function TeamsPage() {
                     <Table className="min-w-[600px]">
                       <TableHeader>
                         <TableRow className="border-border/50 hover:bg-transparent">
-                          <TableHead className="w-12"></TableHead>
+                          <TableHead className="w-12 pl-4"></TableHead>
                           <TableHead>Team Name</TableHead>
                           <TableHead>Date Added</TableHead>
-                          <TableHead className="text-right">Actions</TableHead>
+                          <TableHead className="text-right pr-4">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {teams.map((team) => (
                           <TableRow key={team._id} className="border-border/50">
-                            <TableCell>
+                            <TableCell className="pl-4">
                               <Avatar className="w-10 h-10">
                                 {team.logoUrl && (
                                   <AvatarImage
@@ -270,7 +270,7 @@ function TeamsPage() {
                             <TableCell className="text-muted-foreground">
                               {formatDate(team._creationTime)}
                             </TableCell>
-                            <TableCell className="text-right">
+                            <TableCell className="text-right pr-4">
                               <div className="flex items-center justify-end gap-2">
                                 <Button
                                   onClick={() => handleEditTeam(team)}
