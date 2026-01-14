@@ -27,7 +27,7 @@ import {
   Pencil,
   Power,
   PowerOff,
-  Map,
+  Map as MapIcon,
   Loader2,
   Eye,
   EyeOff,
@@ -132,11 +132,8 @@ function MapsPage() {
     if (!mapName.trim()) return;
 
     // Validate that we have an image source for new maps
-    if (
-      !editingMapId &&
-      imageSource.type === "none" &&
-      !currentImageUrl
-    ) {
+    // (currentImageUrl is only set when editing, so we just check imageSource.type)
+    if (!editingMapId && imageSource.type === "none") {
       setSaveError("An image is required for maps.");
       toast.error("An image is required for maps.");
       return;
@@ -267,7 +264,7 @@ function MapsPage() {
             // Empty State
             <div className="flex flex-col items-center justify-center py-16 px-4">
               <div className="w-64 h-64 mb-6 rounded-lg bg-muted/30 flex items-center justify-center">
-                <Map className="w-24 h-24 text-muted-foreground/50" />
+                <MapIcon className="w-24 h-24 text-muted-foreground/50" />
               </div>
               <h2 className="text-2xl font-semibold text-foreground mb-2">
                 No maps in the pool yet
@@ -431,14 +428,14 @@ function MapsPage() {
   );
 }
 
+// Map type derived from API - keeps props in sync with backend schema
+type MapFromApi = NonNullable<
+  ReturnType<typeof useQuery<typeof api.maps.listMaps>>
+>[number];
+
 // Map Card Component
 interface MapCardProps {
-  map: {
-    _id: Id<"maps">;
-    name: string;
-    imageUrl?: string;
-    isActive: boolean;
-  };
+  map: MapFromApi;
   isInactive?: boolean;
   onEdit: () => void;
   onDeactivate?: () => void;
@@ -468,7 +465,7 @@ function MapCard({
           />
         ) : (
           <div className="w-full h-full flex items-center justify-center">
-            <Map className="w-12 h-12 text-muted-foreground/30" />
+            <MapIcon className="w-12 h-12 text-muted-foreground/30" />
           </div>
         )}
         {isInactive && (

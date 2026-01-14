@@ -1,5 +1,5 @@
 import { query, mutation } from "./_generated/server";
-import type { MutationCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { v, ConvexError } from "convex/values";
 import { ACTIVE_SESSION_STATUSES } from "./lib/constants";
@@ -73,6 +73,36 @@ const mapObjectValidator = v.object({
   updatedAt: v.number(),
 });
 
+// Type for map document from database
+type MapDoc = {
+  _id: Id<"maps">;
+  _creationTime: number;
+  name: string;
+  imageUrl?: string;
+  imageStorageId?: Id<"_storage">;
+  isActive: boolean;
+  updatedAt: number;
+};
+
+/**
+ * Resolves a map's imageStorageId to a URL if present.
+ * Prefers storage URL over external URL when both exist.
+ * Returns the map with resolved imageUrl.
+ */
+async function resolveMapImageUrl(
+  ctx: QueryCtx,
+  map: MapDoc
+): Promise<MapDoc> {
+  if (map.imageStorageId) {
+    const resolvedUrl = await ctx.storage.getUrl(map.imageStorageId);
+    return {
+      ...map,
+      imageUrl: resolvedUrl ?? map.imageUrl,
+    };
+  }
+  return map;
+}
+
 /**
  * List all maps, optionally including inactive ones.
  * Returns maps sorted alphabetically by name.
@@ -97,21 +127,7 @@ export const listMaps = query({
           .collect();
 
     // Resolve storage IDs to URLs in parallel
-    const mapsWithResolvedImages = await Promise.all(
-      maps.map(async (map) => {
-        if (map.imageStorageId) {
-          const resolvedUrl = await ctx.storage.getUrl(map.imageStorageId);
-          return {
-            ...map,
-            // Prefer storage URL over external URL when available
-            imageUrl: resolvedUrl ?? map.imageUrl,
-          };
-        }
-        return map;
-      })
-    );
-
-    return mapsWithResolvedImages;
+    return Promise.all(maps.map((map) => resolveMapImageUrl(ctx, map)));
   },
 });
 
@@ -129,16 +145,7 @@ export const getMap = query({
     const map = await ctx.db.get(args.mapId);
     if (!map) return null;
 
-    // Resolve storage ID to URL if present
-    if (map.imageStorageId) {
-      const resolvedUrl = await ctx.storage.getUrl(map.imageStorageId);
-      return {
-        ...map,
-        imageUrl: resolvedUrl ?? map.imageUrl,
-      };
-    }
-
-    return map;
+    return resolveMapImageUrl(ctx, map);
   },
 });
 
@@ -326,6 +333,21 @@ export const updateMap = mutation({
           oldStorageIdToDelete = existing.imageStorageId;
         }
       }
+    }
+
+    // Final validation: ensure at least one image source will remain after update
+    // Determine final state of each field after applying updates
+    const finalImageUrl =
+      updates.imageUrl !== undefined ? updates.imageUrl : existing.imageUrl;
+    const finalStorageId =
+      updates.imageStorageId !== undefined
+        ? updates.imageStorageId
+        : existing.imageStorageId;
+
+    if (!finalImageUrl && !finalStorageId) {
+      throw new ConvexError(
+        "Cannot remove all image sources. A map must have either an image URL or uploaded image."
+      );
     }
 
     // Check for active session usage if name or image is changing

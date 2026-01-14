@@ -3,19 +3,28 @@ import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 
 /**
- * Get all storage IDs currently referenced by teams.
+ * Get all storage IDs currently referenced by teams and maps.
  * Used by the cleanup job to determine which files are still in use.
  */
 export const getReferencedStorageIds = internalQuery({
   args: {},
   returns: v.array(v.id("_storage")),
   handler: async (ctx) => {
-    const teams = await ctx.db.query("teams").collect();
     const storageIds: Array<Id<"_storage">> = [];
 
+    // Get team logo storage IDs
+    const teams = await ctx.db.query("teams").collect();
     for (const team of teams) {
       if (team.logoStorageId) {
         storageIds.push(team.logoStorageId);
+      }
+    }
+
+    // Get map image storage IDs
+    const maps = await ctx.db.query("maps").collect();
+    for (const map of maps) {
+      if (map.imageStorageId) {
+        storageIds.push(map.imageStorageId);
       }
     }
 
@@ -24,11 +33,11 @@ export const getReferencedStorageIds = internalQuery({
 });
 
 /**
- * Cleans up storage files that are not referenced by any team.
+ * Cleans up storage files that are not referenced by any team or map.
  * Files must be older than 1 hour to avoid race conditions with active uploads.
  *
  * This mutation queries the _storage system table to find all files,
- * compares against referenced storage IDs from teams, and deletes
+ * compares against referenced storage IDs from teams and maps, and deletes
  * any orphaned files that are older than 1 hour.
  */
 export const cleanupOrphanedFiles = internalMutation({
@@ -43,9 +52,21 @@ export const cleanupOrphanedFiles = internalMutation({
 
     // Get all teams' storage IDs
     const teams = await ctx.db.query("teams").collect();
-    const referencedStorageIds = new Set<string>(
-      teams.map((t) => t.logoStorageId).filter((id): id is Id<"_storage"> => id !== undefined)
-    );
+    const teamStorageIds = teams
+      .map((t) => t.logoStorageId)
+      .filter((id): id is Id<"_storage"> => id !== undefined);
+
+    // Get all maps' storage IDs
+    const maps = await ctx.db.query("maps").collect();
+    const mapStorageIds = maps
+      .map((m) => m.imageStorageId)
+      .filter((id): id is Id<"_storage"> => id !== undefined);
+
+    // Combine all referenced storage IDs
+    const referencedStorageIds = new Set<string>([
+      ...teamStorageIds,
+      ...mapStorageIds,
+    ]);
 
     // Query all files in storage system table
     // Note: We query with a reasonable limit and process in batches to avoid memory issues

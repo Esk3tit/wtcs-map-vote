@@ -1,7 +1,7 @@
 import { Link, useMatchRoute } from '@tanstack/react-router'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { LogOut, User, Users, Calendar, Map } from 'lucide-react'
+import { LogOut, User, Users, Calendar, Map as MapIcon } from 'lucide-react'
 
 interface AdminSidebarProps {
   onNavigate?: () => void
@@ -54,7 +54,7 @@ export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
           className="w-full justify-start gap-3"
           render={<Link to="/admin/maps" onClick={handleNavClick} />}
         >
-          <Map className="w-5 h-5" />
+          <MapIcon className="w-5 h-5" />
           Map Pool
         </Button>
       </nav>
