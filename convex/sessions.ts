@@ -1,4 +1,5 @@
 import { query, mutation } from "./_generated/server";
+import { paginationOptsValidator } from "convex/server";
 import type { Doc } from "./_generated/dataModel";
 import { v, ConvexError } from "convex/values";
 import {
@@ -119,54 +120,37 @@ const sessionWithRelationsValidator = v.object({
  * List sessions with optional status filtering and pagination.
  * Returns sessions sorted by creation time (newest first).
  *
- * For single-status filtering, uses an index for efficient queries with correct pagination.
- * For multi-status filtering, omit the status param and filter on the frontend—this ensures
- * robust pagination even with 100+ sessions.
+ * Uses Convex's standard pagination pattern with paginationOptsValidator for:
+ * - Gapless reactive pagination (pages adjust when data changes)
+ * - Compatibility with usePaginatedQuery hook on frontend
+ * - Proper endCursor tracking via QueryJournal
  *
+ * For single-status filtering, uses an index for efficient queries.
+ * For multi-status filtering, omit the status param and filter on the frontend.
+ *
+ * @param paginationOpts - Standard Convex pagination options (numItems, cursor, etc.)
  * @param status - Optional single status to filter by (uses index)
- * @param limit - Maximum number of sessions per page (default: 50, max: 100)
- * @param cursor - Pagination cursor for fetching subsequent pages
  */
 export const listSessions = query({
   args: {
+    paginationOpts: paginationOptsValidator,
     status: v.optional(sessionStatusValidator),
-    limit: v.optional(v.number()),
-    cursor: v.optional(v.string()),
   },
-  returns: v.object({
-    sessions: v.array(sessionObjectValidator),
-    continueCursor: v.union(v.string(), v.null()),
-    isDone: v.boolean(),
-  }),
   handler: async (ctx, args) => {
-    const limit = Math.min(args.limit ?? 50, 100);
-
-    // Single status filter: use index for efficient query with correct pagination
+    // Single status filter: use index for efficient query
     if (args.status) {
-      const result = await ctx.db
+      return await ctx.db
         .query("sessions")
         .withIndex("by_status", (q) => q.eq("status", args.status!))
         .order("desc")
-        .paginate({ cursor: args.cursor ?? null, numItems: limit });
-
-      return {
-        sessions: result.page,
-        continueCursor: result.continueCursor,
-        isDone: result.isDone,
-      };
+        .paginate(args.paginationOpts);
     }
 
     // No filter: return all sessions (frontend can filter for multi-status)
-    const result = await ctx.db
+    return await ctx.db
       .query("sessions")
       .order("desc")
-      .paginate({ cursor: args.cursor ?? null, numItems: limit });
-
-    return {
-      sessions: result.page,
-      continueCursor: result.continueCursor,
-      isDone: result.isDone,
-    };
+      .paginate(args.paginationOpts);
   },
 });
 
