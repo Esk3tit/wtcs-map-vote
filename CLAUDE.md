@@ -199,7 +199,7 @@ The schema is defined in `convex/schema.ts` with 8 tables:
 - [Changelog](docs/changelog.md) - Version history and changelog for changes over time, new changes in changelog should be appended instead of overwriting the changelog entirely
 - [Project Status](docs/project_status.md) - Current progress and immediate things that we are currently working on
 - Update files in the docs folder after major milestones and major additions to the project
-- Use the /update-docs-and-commit slash command when making git commits
+- Use the /update-docs-and-commit slash command when making git commits to automatically update documentation and keep it up to date with the project (also run the command after finishing a feature and/or merging a PR)
 
 ### Working Plans
 
