@@ -13,7 +13,7 @@ import {
   MIN_MAP_POOL_SIZE,
   MAX_MAP_POOL_SIZE,
 } from "./lib/constants";
-import { validateName } from "./lib/validation";
+import { validateName, validateRange } from "./lib/validation";
 import {
   sessionStatusValidator,
   sessionFormatValidator,
@@ -235,42 +235,31 @@ export const createSession = mutation({
     const trimmedName = validateMatchName(args.matchName);
 
     // Validate player count
-    if (args.playerCount < MIN_PLAYER_COUNT) {
-      throw new ConvexError(
-        `Player count must be at least ${MIN_PLAYER_COUNT}`
-      );
-    }
-    if (args.playerCount > MAX_PLAYER_COUNT) {
-      throw new ConvexError(
-        `Player count cannot exceed ${MAX_PLAYER_COUNT}`
-      );
-    }
+    validateRange(
+      args.playerCount,
+      MIN_PLAYER_COUNT,
+      MAX_PLAYER_COUNT,
+      "Player count"
+    );
 
     // Validate turn timer
     const turnTimerSeconds = args.turnTimerSeconds ?? DEFAULT_TURN_TIMER_SECONDS;
-    if (turnTimerSeconds < MIN_TURN_TIMER_SECONDS) {
-      throw new ConvexError(
-        `Turn timer must be at least ${MIN_TURN_TIMER_SECONDS} seconds`
-      );
-    }
-    if (turnTimerSeconds > MAX_TURN_TIMER_SECONDS) {
-      throw new ConvexError(
-        `Turn timer cannot exceed ${MAX_TURN_TIMER_SECONDS} seconds`
-      );
-    }
+    validateRange(
+      turnTimerSeconds,
+      MIN_TURN_TIMER_SECONDS,
+      MAX_TURN_TIMER_SECONDS,
+      "Turn timer",
+      "seconds"
+    );
 
     // Validate map pool size
     const mapPoolSize = args.mapPoolSize ?? DEFAULT_MAP_POOL_SIZE;
-    if (mapPoolSize < MIN_MAP_POOL_SIZE) {
-      throw new ConvexError(
-        `Map pool size must be at least ${MIN_MAP_POOL_SIZE}`
-      );
-    }
-    if (mapPoolSize > MAX_MAP_POOL_SIZE) {
-      throw new ConvexError(
-        `Map pool size cannot exceed ${MAX_MAP_POOL_SIZE}`
-      );
-    }
+    validateRange(
+      mapPoolSize,
+      MIN_MAP_POOL_SIZE,
+      MAX_MAP_POOL_SIZE,
+      "Map pool size"
+    );
 
     // TODO: Get createdBy from ctx.auth when auth is integrated
     // For now, require it to be passed explicitly
@@ -354,16 +343,13 @@ export const updateSession = mutation({
 
     // Validate and apply turn timer update
     if (args.turnTimerSeconds !== undefined) {
-      if (args.turnTimerSeconds < MIN_TURN_TIMER_SECONDS) {
-        throw new ConvexError(
-          `Turn timer must be at least ${MIN_TURN_TIMER_SECONDS} seconds`
-        );
-      }
-      if (args.turnTimerSeconds > MAX_TURN_TIMER_SECONDS) {
-        throw new ConvexError(
-          `Turn timer cannot exceed ${MAX_TURN_TIMER_SECONDS} seconds`
-        );
-      }
+      validateRange(
+        args.turnTimerSeconds,
+        MIN_TURN_TIMER_SECONDS,
+        MAX_TURN_TIMER_SECONDS,
+        "Turn timer",
+        "seconds"
+      );
       updates.turnTimerSeconds = args.turnTimerSeconds;
     }
 
