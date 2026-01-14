@@ -1,7 +1,7 @@
 import { Link, useMatchRoute } from '@tanstack/react-router'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { LogOut, User, Users, Calendar } from 'lucide-react'
+import { LogOut, User, Users, Calendar, Map } from 'lucide-react'
 
 interface AdminSidebarProps {
   onNavigate?: () => void
@@ -14,6 +14,7 @@ export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
                            matchRoute({ to: '/admin/create', fuzzy: true }) ||
                            matchRoute({ to: '/admin/session/$sessionId', fuzzy: true })
   const isTeamsActive = matchRoute({ to: '/admin/teams', fuzzy: true })
+  const isMapsActive = matchRoute({ to: '/admin/maps', fuzzy: true })
 
   const handleLogout = () => {
     console.log('Logout clicked')
@@ -47,6 +48,14 @@ export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
         >
           <Users className="w-5 h-5" />
           Teams
+        </Button>
+        <Button
+          variant={isMapsActive ? 'secondary' : 'ghost'}
+          className="w-full justify-start gap-3"
+          render={<Link to="/admin/maps" onClick={handleNavClick} />}
+        >
+          <Map className="w-5 h-5" />
+          Map Pool
         </Button>
       </nav>
 

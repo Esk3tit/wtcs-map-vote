@@ -16,6 +16,7 @@ import { Route as VoteTokenRouteImport } from './routes/vote.$token'
 import { Route as ResultsSessionIdRouteImport } from './routes/results.$sessionId'
 import { Route as LobbyTokenRouteImport } from './routes/lobby.$token'
 import { Route as AdminTeamsRouteImport } from './routes/admin/teams'
+import { Route as AdminMapsRouteImport } from './routes/admin/maps'
 import { Route as AdminDashboardRouteImport } from './routes/admin/dashboard'
 import { Route as AdminCreateRouteImport } from './routes/admin/create'
 import { Route as AdminSessionSessionIdRouteImport } from './routes/admin/session.$sessionId'
@@ -55,6 +56,11 @@ const AdminTeamsRoute = AdminTeamsRouteImport.update({
   path: '/teams',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminMapsRoute = AdminMapsRouteImport.update({
+  id: '/maps',
+  path: '/maps',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminDashboardRoute = AdminDashboardRouteImport.update({
   id: '/dashboard',
   path: '/dashboard',
@@ -77,6 +83,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/admin/create': typeof AdminCreateRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/admin/maps': typeof AdminMapsRoute
   '/admin/teams': typeof AdminTeamsRoute
   '/lobby/$token': typeof LobbyTokenRoute
   '/results/$sessionId': typeof ResultsSessionIdRoute
@@ -89,6 +96,7 @@ export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/admin/create': typeof AdminCreateRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/admin/maps': typeof AdminMapsRoute
   '/admin/teams': typeof AdminTeamsRoute
   '/lobby/$token': typeof LobbyTokenRoute
   '/results/$sessionId': typeof ResultsSessionIdRoute
@@ -102,6 +110,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/admin/create': typeof AdminCreateRoute
   '/admin/dashboard': typeof AdminDashboardRoute
+  '/admin/maps': typeof AdminMapsRoute
   '/admin/teams': typeof AdminTeamsRoute
   '/lobby/$token': typeof LobbyTokenRoute
   '/results/$sessionId': typeof ResultsSessionIdRoute
@@ -116,6 +125,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/admin/create'
     | '/admin/dashboard'
+    | '/admin/maps'
     | '/admin/teams'
     | '/lobby/$token'
     | '/results/$sessionId'
@@ -128,6 +138,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/admin/create'
     | '/admin/dashboard'
+    | '/admin/maps'
     | '/admin/teams'
     | '/lobby/$token'
     | '/results/$sessionId'
@@ -140,6 +151,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/admin/create'
     | '/admin/dashboard'
+    | '/admin/maps'
     | '/admin/teams'
     | '/lobby/$token'
     | '/results/$sessionId'
@@ -207,6 +219,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminTeamsRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/maps': {
+      id: '/admin/maps'
+      path: '/maps'
+      fullPath: '/admin/maps'
+      preLoaderRoute: typeof AdminMapsRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/dashboard': {
       id: '/admin/dashboard'
       path: '/dashboard'
@@ -234,6 +253,7 @@ declare module '@tanstack/react-router' {
 interface AdminRouteChildren {
   AdminCreateRoute: typeof AdminCreateRoute
   AdminDashboardRoute: typeof AdminDashboardRoute
+  AdminMapsRoute: typeof AdminMapsRoute
   AdminTeamsRoute: typeof AdminTeamsRoute
   AdminSessionSessionIdRoute: typeof AdminSessionSessionIdRoute
 }
@@ -241,6 +261,7 @@ interface AdminRouteChildren {
 const AdminRouteChildren: AdminRouteChildren = {
   AdminCreateRoute: AdminCreateRoute,
   AdminDashboardRoute: AdminDashboardRoute,
+  AdminMapsRoute: AdminMapsRoute,
   AdminTeamsRoute: AdminTeamsRoute,
   AdminSessionSessionIdRoute: AdminSessionSessionIdRoute,
 }
