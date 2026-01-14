@@ -8,6 +8,54 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+*No unreleased changes.*
+
+---
+
+## [0.4.0] - 2026-01-14
+
+### Added
+- **Maps Admin Page** (`src/routes/admin/maps.tsx`):
+  - Full map pool management UI at `/admin/maps`
+  - Grid layout with 16:9 aspect ratio map cards
+  - Add/edit dialogs with `ImageSourcePicker` for upload/URL images
+  - Active/inactive toggle filter
+  - Deactivate confirmation dialog with reactivate option
+  - Map Pool link in admin sidebar navigation
+- **Map Image Storage** (`convex/maps.ts`):
+  - `imageStorageId` field for Convex storage uploads
+  - `validateStorageFile()` for server-side file validation
+  - `validateImageUrl()` for SSRF-safe URL validation
+  - Storage cleanup when replacing/removing images
+  - JSDoc documentation for upload workflow
+- **Shared Storage Validation** (`convex/lib/storageValidation.ts`):
+  - Extracted `validateStorageFile()` from duplicated code (DRY)
+  - Used by both Maps and Teams CRUD operations
+- **URL Validation Tests** (`convex/lib/urlValidation.test.ts`):
+  - 34 comprehensive unit tests for SSRF protection
+  - Tests cover private IPv4/IPv6 ranges, loopback, cloud metadata, localhost
+- **Session Cleanup** (`convex/sessionCleanup.ts`):
+  - `clearSessionIpAddresses` - Clear IPs when session completes (privacy)
+  - `expireStaleSessions` - Mark stale sessions as expired
+  - `clearCompletedSessionIps` - Batch cleanup for old completed sessions
+  - Cron jobs for automated privacy compliance
+- **listTeams Pagination** (`convex/teams.ts`):
+  - Added `limit` and `cursor` args for paginated queries
+  - Returns `continueCursor` and `isDone` for client-side pagination
+
+### Changed
+- Maps CRUD now validates both storage uploads and external URLs
+- Teams page updated to handle paginated listTeams response
+- Maps page uses `useMemo` for filtering (performance optimization)
+- `MapCard` component wrapped with `React.memo` (prevents unnecessary re-renders)
+
+### Removed
+- Unused `getReferencedStorageIds` internal query (dead code cleanup)
+
+---
+
+## [0.3.1] - 2026-01-13
+
 ### Added
 - **Team Logo Upload** (`convex/teams.ts`, `src/components/ui/image-source-picker.tsx`):
   - Direct file upload to Convex storage (PNG, JPG, WebP up to 2MB)

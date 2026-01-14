@@ -2,7 +2,7 @@
 
 Current progress and next steps for the WTCS Map Vote project.
 
-**Last Updated:** January 13, 2026
+**Last Updated:** January 14, 2026
 
 ---
 
@@ -67,6 +67,13 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] Image upload/URL picker component (`src/components/ui/image-source-picker.tsx`)
 - [x] Orphaned storage cleanup cron job (`convex/crons.ts`, `convex/storage.ts`)
 - [x] Image constants shared module (`convex/lib/imageConstants.ts`)
+- [x] Maps admin page with image upload (`src/routes/admin/maps.tsx`)
+- [x] Map image storage support (`imageStorageId` field)
+- [x] Shared storage validation (`convex/lib/storageValidation.ts`)
+- [x] URL validation unit tests (`convex/lib/urlValidation.test.ts`)
+- [x] Session cleanup for privacy (`convex/sessionCleanup.ts`)
+- [x] listTeams pagination support
+- [x] React performance optimizations (useMemo, React.memo)
 
 ---
 
@@ -108,7 +115,7 @@ Implement the Convex functions to power the application:
 - [ ] Session cleanup cron job
 - [ ] Audit logging
 - [x] File upload for team logos (complete)
-- [ ] File upload for map images
+- [x] File upload for map images (complete)
 - [ ] Rate limiting
 - [ ] Production deployment to Netlify + Convex Cloud
 
