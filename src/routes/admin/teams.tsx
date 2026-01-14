@@ -239,19 +239,19 @@ function TeamsPage() {
               <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
                 <CardContent className="p-0">
                   <div className="overflow-x-auto">
-                    <Table className="min-w-[600px]">
+                    <Table className="min-w-[600px] table-fixed">
                       <TableHeader>
                         <TableRow className="border-border/50 hover:bg-transparent">
-                          <TableHead className="w-1/3 pl-4">Team Name</TableHead>
-                          <TableHead className="w-1/3 text-center">Date Added</TableHead>
-                          <TableHead className="w-1/3 text-center pr-4">Actions</TableHead>
+                          <TableHead className="w-[40%] text-center">Team</TableHead>
+                          <TableHead className="w-[35%] text-center">Date Added</TableHead>
+                          <TableHead className="w-[25%] text-center">Actions</TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {teams.map((team) => (
                           <TableRow key={team._id} className="border-border/50">
-                            <TableCell className="pl-4">
-                              <div className="flex items-center gap-3">
+                            <TableCell>
+                              <div className="flex items-center justify-center gap-3">
                                 <Avatar className="w-10 h-10">
                                   {team.logoUrl && (
                                     <AvatarImage
@@ -269,7 +269,7 @@ function TeamsPage() {
                             <TableCell className="text-center text-muted-foreground">
                               {formatDate(team._creationTime)}
                             </TableCell>
-                            <TableCell className="pr-4">
+                            <TableCell>
                               <div className="flex items-center justify-center gap-2">
                                 <Button
                                   onClick={() => handleEditTeam(team)}
