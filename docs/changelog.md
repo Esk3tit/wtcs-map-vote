@@ -35,17 +35,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - 34 comprehensive unit tests for SSRF protection
   - Tests cover private IPv4/IPv6 ranges, loopback, cloud metadata, localhost
 - **Session Cleanup** (`convex/sessionCleanup.ts`):
-  - `clearSessionIpAddresses` - Clear IPs when session completes (privacy)
-  - `expireStaleSessions` - Mark stale sessions as expired
-  - `clearCompletedSessionIps` - Batch cleanup for old completed sessions
+  - `clearSessionIpAddresses` - Utility to clear IP addresses for a given session (privacy)
+  - `expireStaleSessions` - Mark stale sessions as expired and clear their IPs
+  - `clearCompletedSessionIps` - Batch cleanup of IPs from old completed sessions
   - Cron jobs for automated privacy compliance
-- **listTeams Pagination** (`convex/teams.ts`):
+- **`listTeams` Pagination** (`convex/teams.ts`):
   - Added `limit` and `cursor` args for paginated queries
   - Returns `continueCursor` and `isDone` for client-side pagination
 
 ### Changed
 - Maps CRUD now validates both storage uploads and external URLs
-- Teams page updated to handle paginated listTeams response
+- Teams page updated to handle paginated `listTeams` response
 - Maps page uses `useMemo` for filtering (performance optimization)
 - `MapCard` component wrapped with `React.memo` (prevents unnecessary re-renders)
 

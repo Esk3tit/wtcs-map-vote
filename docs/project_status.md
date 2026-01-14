@@ -112,7 +112,7 @@ Implement the Convex functions to power the application:
 ### Future Work
 
 - [ ] Timer expiration handling (scheduled functions)
-- [ ] Session cleanup cron job
+- [x] Session cleanup cron job (complete)
 - [ ] Audit logging
 - [x] File upload for team logos (complete)
 - [x] File upload for map images (complete)
