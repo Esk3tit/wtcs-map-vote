@@ -12,6 +12,48 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.5.0] - 2026-01-15
+
+### Added
+- **Sessions CRUD Operations** (`convex/sessions.ts`):
+  - `listSessions` - Paginated query with status filtering, sorted by creation date
+  - `getSession` - Get session with resolved map images (sanitized: no IP addresses exposed)
+  - `createSession` - Create session with map validation and voting configuration
+  - `updateSession` - Update draft sessions with map/config changes
+  - `deleteSession` - Cascade delete sessions with all related data
+  - `setSessionMaps` - Assign/update maps for a session (snapshot from map pool)
+  - `duplicateSession` - Clone session configuration for quick setup
+  - Full audit logging integration for all mutations
+- **Shared Validators** (`convex/lib/validators.ts`):
+  - `mapIdsValidator` - Reusable map ID array validation (3+ maps, max 50)
+  - `paginationOptsValidator` for standardized pagination
+- **Range Validation Helper** (`convex/lib/validation.ts`):
+  - `validateRange()` - Generic min/max validation with custom error messages
+  - Used for timer durations, map counts, player limits
+- **Pagination Best Practices Documentation** (`docs/solutions/pagination/`):
+  - Comprehensive guide for Convex pagination patterns
+  - `usePaginatedQuery` hook usage with gapless pagination
+  - Reference implementations and common pitfalls
+
+### Changed
+- **Teams Pagination Migration** (`convex/teams.ts`, `src/routes/admin/teams.tsx`):
+  - Migrated from manual cursor/limit to `paginationOptsValidator`
+  - Frontend uses `usePaginatedQuery` hook for reactive pagination
+  - "Load More" button with proper loading states
+- **Teams Table UI** (`src/routes/admin/teams.tsx`):
+  - Restructured for better column alignment and symmetry
+  - Combined avatar + team name into single "Team" column
+  - Centered all headers and content for balanced design
+  - Fixed edge cell padding for proper visual spacing
+- **listSessions Pagination**:
+  - Simplified to single-status queries for correctness
+  - Uses `paginationOptsValidator` for gapless reactive pagination
+
+### Removed
+- Unused `sessionObjectValidator` and `teamObjectValidator` (dead code cleanup)
+
+---
+
 ## [0.4.0] - 2026-01-14
 
 ### Added

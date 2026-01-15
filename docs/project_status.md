@@ -2,7 +2,7 @@
 
 Current progress and next steps for the WTCS Map Vote project.
 
-**Last Updated:** January 14, 2026
+**Last Updated:** January 15, 2026
 
 ---
 
@@ -74,6 +74,9 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] Session cleanup for privacy (`convex/sessionCleanup.ts`)
 - [x] listTeams pagination support
 - [x] React performance optimizations (useMemo, React.memo)
+- [x] Sessions CRUD operations (`convex/sessions.ts`)
+- [x] `paginationOptsValidator` migration for teams and sessions
+- [x] Pagination best practices documentation
 
 ---
 
@@ -92,8 +95,8 @@ Implement the Convex functions to power the application:
 2. **Core Functions**
    - [x] Teams CRUD operations (create, update, delete, list)
    - [x] Maps CRUD operations (create, update, deactivate, reactivate, list, get, upload URL)
-   - [ ] Sessions CRUD operations
-   - [ ] Session lifecycle mutations (create, finalize, start, pause, resume, end)
+   - [x] Sessions CRUD operations (create, update, delete, list, get, setMaps, duplicate)
+   - [ ] Session lifecycle mutations (finalize, start, pause, resume, end)
    - [ ] Player token validation and IP locking
    - [ ] Voting mutations (submitBan, submitVote)
    - [x] Cascade delete helpers for data integrity
