@@ -30,9 +30,9 @@ WTCS Map Vote - A React application for map voting functionality.
 ```
 /
 ├── convex/
-│   ├── schema.ts         # Database schema (8 tables, 14 indexes)
+│   ├── schema.ts         # Database schema (8 tables, 21 indexes)
 │   ├── _generated/       # Auto-generated types (do not edit)
-│   ├── lib/              # Shared utilities (cascadeDelete, types)
+│   ├── lib/              # Shared utilities (validators, validation, constants, etc.)
 │   └── *.ts              # Convex functions (queries, mutations, actions)
 ├── docs/
 │   ├── plans/            # Working plans (gitignored)
@@ -162,6 +162,61 @@ Key tools:
 - `mcp__convex__run` - Execute Convex functions
 - `mcp__convex__logs` - View function execution logs
 
+### Convex Pagination Pattern
+
+Use `paginationOptsValidator` for all paginated queries. This is the standard pattern:
+
+**Backend (Convex function):**
+```typescript
+import { paginationOptsValidator } from "convex/server";
+
+export const listItems = query({
+  args: {
+    paginationOpts: paginationOptsValidator,
+  },
+  handler: async (ctx, args) => {
+    return await ctx.db
+      .query("items")
+      .withIndex("by_name")
+      .order("asc")
+      .paginate(args.paginationOpts);
+  },
+});
+```
+
+**Frontend (React component):**
+```typescript
+import { usePaginatedQuery } from "convex/react";
+
+const { results, status, loadMore } = usePaginatedQuery(
+  api.items.listItems,
+  {},
+  { initialNumItems: 50 }
+);
+
+const isLoading = status === "LoadingFirstPage";
+const canLoadMore = status === "CanLoadMore";
+```
+
+See `docs/solutions/pagination/convex-pagination-best-practices.md` for comprehensive guidance.
+
+### Convex Shared Utilities
+
+Reusable modules in `convex/lib/`:
+
+| Module | Purpose |
+|--------|---------|
+| `validators.ts` | Shared validators (`mapIdsValidator`, reusable arg validators) |
+| `validation.ts` | Input validation helpers (`validateName`, `validateRange`) |
+| `constants.ts` | Shared constants (`MAX_NAME_LENGTH`, `ACTIVE_SESSION_STATUSES`) |
+| `urlValidation.ts` | SSRF-safe URL validation for external images |
+| `storageValidation.ts` | Convex storage file validation (size, MIME type) |
+| `cascadeDelete.ts` | Atomic cascade delete for sessions and related data |
+| `types.ts` | Shared TypeScript types (`PlayerRole`, `AuditAction`) |
+| `imageConstants.ts` | Image upload constraints (max size, allowed types) |
+
+**Always check for existing utilities** before creating new validation or helper functions.
+
 ### Database Schema
 
 The schema is defined in `convex/schema.ts` with 8 tables:
@@ -194,12 +249,14 @@ The schema is defined in `convex/schema.ts` with 8 tables:
 
 ## Documentation
 
-- [Project Spec](docs/SPECIFICATION.md) - Full project requirements, API specs, tech details. Product and Engineering Design document essentially.
+- [Project Spec](docs/SPECIFICATION.md) - Full project requirements, API specs, tech details
 - [Architecture](docs/architecture.md) - System design and data flow
-- [Changelog](docs/changelog.md) - Version history and changelog for changes over time, new changes in changelog should be appended instead of overwriting the changelog entirely
-- [Project Status](docs/project_status.md) - Current progress and immediate things that we are currently working on
-- Update files in the docs folder after major milestones and major additions to the project
-- Use the /update-docs-and-commit slash command when making git commits to automatically update documentation and keep it up to date with the project (also run the command after finishing a feature and/or merging a PR)
+- [Convex Rules](docs/convex_rules.md) - Convex coding guidelines and best practices
+- [Changelog](docs/changelog.md) - Version history (append only, never overwrite)
+- [Project Status](docs/project_status.md) - Current progress and next steps
+- [Pagination Guide](docs/solutions/pagination/convex-pagination-best-practices.md) - Convex pagination patterns
+- Update docs after major milestones and feature completions
+- Use `/update-docs-and-commit` after finishing features or merging PRs
 
 ### Working Plans
 
