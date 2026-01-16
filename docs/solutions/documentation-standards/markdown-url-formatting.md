@@ -2,7 +2,7 @@
 
 ## Problem
 
-Bare URLs in markdown files trigger linting warnings (MD034) and reduce readability:
+Bare URLs in Markdown files trigger linting warnings (MD034) and reduce readability:
 
 ```markdown
 ## Resources
@@ -13,7 +13,7 @@ Bare URLs in markdown files trigger linting warnings (MD034) and reduce readabil
 
 ## Solution
 
-Format all URLs as markdown links with descriptive text:
+Format all URLs as Markdown links with descriptive text:
 
 ```markdown
 ## Resources
@@ -55,7 +55,7 @@ Format all URLs as markdown links with descriptive text:
 
 ## Prevention
 
-When writing markdown documentation:
+When writing Markdown documentation:
 1. Never paste bare URLs - always wrap in `[text](url)` syntax
 2. Use descriptive link text that indicates the destination
 3. For PRs/issues, use the `#number` format in backticks for emphasis
