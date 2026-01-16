@@ -317,9 +317,10 @@ export const updateSession = mutation({
     await ctx.db.patch(args.sessionId, updates);
 
     // Create audit log for session update
-    const changedFields = [];
-    if (args.matchName !== undefined) changedFields.push("matchName");
-    if (args.turnTimerSeconds !== undefined) changedFields.push("turnTimerSeconds");
+    // Derive changedFields from updates object for maintainability
+    const changedFields = Object.keys(updates).filter(
+      (key) => key !== "updatedAt"
+    );
     await logAction(ctx, {
       sessionId: args.sessionId,
       action: "SESSION_UPDATED",
