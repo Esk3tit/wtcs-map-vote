@@ -32,3 +32,54 @@ export const mapStateValidator = v.union(
   v.literal("BANNED"),
   v.literal("WINNER")
 );
+
+/**
+ * Validator for audit action types.
+ * Keep in sync with AuditAction type in types.ts
+ *
+ * @see docs/SPECIFICATION.md Appendix C
+ */
+export const auditActionValidator = v.union(
+  // Session lifecycle
+  v.literal("SESSION_CREATED"),
+  v.literal("SESSION_UPDATED"),
+  v.literal("SESSION_FINALIZED"),
+  v.literal("SESSION_STARTED"),
+  v.literal("SESSION_PAUSED"),
+  v.literal("SESSION_RESUMED"),
+  v.literal("SESSION_ENDED"),
+  // Player events
+  v.literal("PLAYER_CONNECTED"),
+  v.literal("PLAYER_DISCONNECTED"),
+  // Voting actions
+  v.literal("MAP_BANNED"),
+  v.literal("VOTE_SUBMITTED"),
+  // Round/Timer events
+  v.literal("ROUND_RESOLVED"),
+  v.literal("TIMER_EXPIRED"),
+  v.literal("RANDOM_SELECTION"),
+  v.literal("WINNER_DECLARED")
+);
+
+/**
+ * Validator for audit actor type field.
+ * Matches the actorType union in convex/schema.ts auditLogs table.
+ */
+export const actorTypeValidator = v.union(
+  v.literal("ADMIN"),
+  v.literal("PLAYER"),
+  v.literal("SYSTEM")
+);
+
+/**
+ * Validator for audit details object.
+ * Matches the details object in convex/schema.ts auditLogs table.
+ */
+export const auditDetailsValidator = v.object({
+  mapId: v.optional(v.id("sessionMaps")),
+  mapName: v.optional(v.string()),
+  teamName: v.optional(v.string()),
+  turn: v.optional(v.number()),
+  round: v.optional(v.number()),
+  reason: v.optional(v.string()),
+});
