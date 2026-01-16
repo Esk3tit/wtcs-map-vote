@@ -133,17 +133,17 @@ This project uses **Base UI** (not Radix UI). Base UI does NOT support `asChild`
 - **Run linting before commits** - always run `bun run lint` before committing to catch issues early
 - **Run build to type-check** - use `bun run build` to verify no TypeScript errors
 
-## MCP Tools for Testing
+## Testing Tools
 
-### Playwright MCP (UI Testing)
+### Dev Browser Skill (UI Testing)
 
-**Always use Playwright MCP to test the UI** when:
+**Always use the `/dev-browser` skill to test the UI** when:
 - Adding new UI features or components
 - Making any visual or layout changes
 - Modifying user interactions or flows
 - Fixing UI-related bugs
 
-Use `browser_snapshot` for accessibility-based testing and `browser_take_screenshot` for visual verification. Navigate with `browser_navigate` to `http://localhost:5173` (ensure dev server is running).
+Invoke with `/dev-browser` or use the Skill tool. The skill provides browser automation with persistent page state for navigating, clicking, filling forms, taking screenshots, and testing web apps. Navigate to `http://localhost:5173` (ensure dev server is running).
 
 ### Convex MCP (Backend Testing)
 

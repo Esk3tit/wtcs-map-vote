@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as audit from "../audit.js";
 import type * as crons from "../crons.js";
 import type * as lib_cascadeDelete from "../lib/cascadeDelete.js";
 import type * as lib_constants from "../lib/constants.js";
@@ -30,6 +31,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  audit: typeof audit;
   crons: typeof crons;
   "lib/cascadeDelete": typeof lib_cascadeDelete;
   "lib/constants": typeof lib_constants;

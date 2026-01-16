@@ -8,7 +8,25 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-*No unreleased changes.*
+### Added
+- **Centralized Audit Logging Module** (`convex/audit.ts`):
+  - `logAction()` helper for same-transaction logging from mutations
+  - `logActionMutation` internal mutation for actions/cross-function calls
+  - `getSessionAuditLog` paginated query (sorted by timestamp desc)
+  - `getRecentLogs` convenience query (capped at 100 entries)
+  - 19 audit action types covering session lifecycle, player events, voting actions
+  - DRY pattern with `createAuditLogEntry()` helper to eliminate duplication
+
+### Changed
+- **Type Organization** (`convex/lib/types.ts`):
+  - Added `ActorType` ("ADMIN" | "PLAYER" | "SYSTEM")
+  - Added `AuditDetails` interface for audit log metadata
+  - Expanded `AuditAction` with SESSION_DELETED, SESSION_EXPIRED, PLAYER_ASSIGNED, MAPS_ASSIGNED
+- **Validators** (`convex/lib/validators.ts`):
+  - Added `actorTypeValidator`, `auditDetailsValidator`
+  - Updated `auditActionValidator` with 4 new action types
+- **CLAUDE.md**:
+  - Updated testing section to use `/dev-browser` skill instead of Playwright MCP
 
 ---
 

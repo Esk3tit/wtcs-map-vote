@@ -2,7 +2,7 @@
 
 Current progress and next steps for the WTCS Map Vote project.
 
-**Last Updated:** January 15, 2026
+**Last Updated:** January 16, 2026
 
 ---
 
@@ -77,6 +77,8 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] Sessions CRUD operations (`convex/sessions.ts`)
 - [x] `paginationOptsValidator` migration for teams and sessions
 - [x] Pagination best practices documentation
+- [x] Centralized audit logging module (`convex/audit.ts`)
+- [x] Audit action types and validators
 
 ---
 
@@ -116,7 +118,7 @@ Implement the Convex functions to power the application:
 
 - [ ] Timer expiration handling (scheduled functions)
 - [x] Session cleanup cron job (complete)
-- [ ] Audit logging
+- [x] Audit logging (complete - `convex/audit.ts`)
 - [x] File upload for team logos (complete)
 - [x] File upload for map images (complete)
 - [ ] Rate limiting

@@ -6,6 +6,8 @@
  * compile-time safety when used in Convex functions.
  */
 
+import type { Id } from "../_generated/dataModel";
+
 /**
  * Player roles for different session formats
  * ABBA format: PLAYER_A, PLAYER_B
@@ -29,27 +31,47 @@ export type PlayerRole =
 export type AuditAction =
   // Session lifecycle
   | "SESSION_CREATED"
+  | "SESSION_UPDATED"
+  | "SESSION_FINALIZED"
   | "SESSION_STARTED"
   | "SESSION_PAUSED"
   | "SESSION_RESUMED"
-  | "SESSION_COMPLETED"
+  | "SESSION_ENDED"
+  | "SESSION_DELETED"
   | "SESSION_EXPIRED"
   // Player events
-  | "PLAYER_JOINED"
+  | "PLAYER_CONNECTED"
   | "PLAYER_DISCONNECTED"
-  | "PLAYER_RECONNECTED"
-  // Voting actions
+  | "PLAYER_ASSIGNED"
+  // Map events
   | "MAP_BANNED"
-  | "MAP_SELECTED"
+  | "MAPS_ASSIGNED"
+  // Voting actions
   | "VOTE_SUBMITTED"
-  | "VOTE_CHANGED"
-  // Timer events
-  | "TIMER_STARTED"
-  | "TIMER_PAUSED"
+  // Round/Timer events
+  | "ROUND_RESOLVED"
   | "TIMER_EXPIRED"
-  // Admin overrides
-  | "ADMIN_OVERRIDE"
-  | "ADMIN_FORCE_BAN"
-  | "ADMIN_FORCE_VOTE"
-  | "ADMIN_KICK_PLAYER"
-  | "ADMIN_RESET_TURN";
+  | "RANDOM_SELECTION"
+  | "WINNER_DECLARED";
+
+/**
+ * Actor types for audit logging
+ *
+ * ADMIN: Actions performed by authenticated admins
+ * PLAYER: Actions performed by players in a session
+ * SYSTEM: Automated actions (timers, cleanup, etc.)
+ */
+export type ActorType = "ADMIN" | "PLAYER" | "SYSTEM";
+
+/**
+ * Optional details attached to audit log entries.
+ * All fields are optional to allow flexible logging.
+ */
+export interface AuditDetails {
+  mapId?: Id<"sessionMaps">;
+  mapName?: string;
+  teamName?: string;
+  turn?: number;
+  round?: number;
+  reason?: string;
+}
