@@ -172,6 +172,8 @@ export const getSessionAuditLog = query({
     continueCursor: v.string(),
   }),
   handler: async (ctx, args) => {
+    // TODO: Add authentication check when auth is integrated (Phase 2)
+    // See todos/014-pending-p1-audit-queries-missing-authorization.md
     return await ctx.db
       .query("auditLogs")
       .withIndex("by_sessionId_and_timestamp", (q) =>
@@ -201,6 +203,8 @@ export const getRecentLogs = query({
   },
   returns: v.array(auditLogValidator),
   handler: async (ctx, args) => {
+    // TODO: Add authentication check when auth is integrated (Phase 2)
+    // See todos/014-pending-p1-audit-queries-missing-authorization.md
     // Clamp limit to 1-100 range to prevent unexpected behavior with non-positive values
     const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
     return await ctx.db
