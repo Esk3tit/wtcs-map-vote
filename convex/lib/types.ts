@@ -6,6 +6,8 @@
  * compile-time safety when used in Convex functions.
  */
 
+import type { Id } from "../_generated/dataModel";
+
 /**
  * Player roles for different session formats
  * ABBA format: PLAYER_A, PLAYER_B
@@ -35,14 +37,41 @@ export type AuditAction =
   | "SESSION_PAUSED"
   | "SESSION_RESUMED"
   | "SESSION_ENDED"
+  | "SESSION_DELETED"
+  | "SESSION_EXPIRED"
   // Player events
   | "PLAYER_CONNECTED"
   | "PLAYER_DISCONNECTED"
-  // Voting actions
+  | "PLAYER_ASSIGNED"
+  // Map events
   | "MAP_BANNED"
+  | "MAPS_ASSIGNED"
+  // Voting actions
   | "VOTE_SUBMITTED"
   // Round/Timer events
   | "ROUND_RESOLVED"
   | "TIMER_EXPIRED"
   | "RANDOM_SELECTION"
   | "WINNER_DECLARED";
+
+/**
+ * Actor types for audit logging
+ *
+ * ADMIN: Actions performed by authenticated admins
+ * PLAYER: Actions performed by players in a session
+ * SYSTEM: Automated actions (timers, cleanup, etc.)
+ */
+export type ActorType = "ADMIN" | "PLAYER" | "SYSTEM";
+
+/**
+ * Optional details attached to audit log entries.
+ * All fields are optional to allow flexible logging.
+ */
+export interface AuditDetails {
+  mapId?: Id<"sessionMaps">;
+  mapName?: string;
+  teamName?: string;
+  turn?: number;
+  round?: number;
+  reason?: string;
+}

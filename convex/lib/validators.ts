@@ -48,11 +48,16 @@ export const auditActionValidator = v.union(
   v.literal("SESSION_PAUSED"),
   v.literal("SESSION_RESUMED"),
   v.literal("SESSION_ENDED"),
+  v.literal("SESSION_DELETED"),
+  v.literal("SESSION_EXPIRED"),
   // Player events
   v.literal("PLAYER_CONNECTED"),
   v.literal("PLAYER_DISCONNECTED"),
-  // Voting actions
+  v.literal("PLAYER_ASSIGNED"),
+  // Map events
   v.literal("MAP_BANNED"),
+  v.literal("MAPS_ASSIGNED"),
+  // Voting actions
   v.literal("VOTE_SUBMITTED"),
   // Round/Timer events
   v.literal("ROUND_RESOLVED"),

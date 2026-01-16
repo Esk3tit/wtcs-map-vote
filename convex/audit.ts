@@ -14,7 +14,7 @@ import { paginationOptsValidator } from "convex/server";
 import { v } from "convex/values";
 import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
-import type { AuditAction } from "./lib/types";
+import type { AuditAction, ActorType, AuditDetails } from "./lib/types";
 import {
   auditActionValidator,
   actorTypeValidator,
@@ -22,19 +22,27 @@ import {
 } from "./lib/validators";
 
 // ============================================================================
-// Types
+// Validators
 // ============================================================================
 
-export type ActorType = "ADMIN" | "PLAYER" | "SYSTEM";
+/**
+ * Validator for audit log entries returned by queries.
+ * Matches the auditLogs table schema.
+ */
+const auditLogValidator = v.object({
+  _id: v.id("auditLogs"),
+  _creationTime: v.number(),
+  sessionId: v.id("sessions"),
+  action: v.string(),
+  actorType: actorTypeValidator,
+  actorId: v.optional(v.string()),
+  details: auditDetailsValidator,
+  timestamp: v.number(),
+});
 
-export interface AuditDetails {
-  mapId?: Id<"sessionMaps">;
-  mapName?: string;
-  teamName?: string;
-  turn?: number;
-  round?: number;
-  reason?: string;
-}
+// ============================================================================
+// Types
+// ============================================================================
 
 export interface LogActionArgs {
   sessionId: Id<"sessions">;
@@ -153,6 +161,11 @@ export const getSessionAuditLog = query({
     sessionId: v.id("sessions"),
     paginationOpts: paginationOptsValidator,
   },
+  returns: v.object({
+    page: v.array(auditLogValidator),
+    isDone: v.boolean(),
+    continueCursor: v.string(),
+  }),
   handler: async (ctx, args) => {
     return await ctx.db
       .query("auditLogs")
@@ -181,6 +194,7 @@ export const getRecentLogs = query({
     sessionId: v.id("sessions"),
     limit: v.optional(v.number()),
   },
+  returns: v.array(auditLogValidator),
   handler: async (ctx, args) => {
     const limit = Math.min(args.limit ?? 50, 100);
     return await ctx.db
