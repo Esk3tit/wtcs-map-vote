@@ -106,6 +106,6 @@ export const getSessionAuditLog = query({
 
 ## Resources
 
-- PR: https://github.com/Esk3tit/wtcs-map-vote/pull/21
-- OWASP Broken Access Control: https://owasp.org/Top10/A01_2021-Broken_Access_Control/
+- PR: [`#21`](https://github.com/Esk3tit/wtcs-map-vote/pull/21)
+- [OWASP Broken Access Control](https://owasp.org/Top10/A01_2021-Broken_Access_Control/)
 - CLAUDE.md mentions auth is next phase
