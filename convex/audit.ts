@@ -53,6 +53,25 @@ export interface LogActionArgs {
 }
 
 // ============================================================================
+// Private Helpers
+// ============================================================================
+
+/**
+ * Create the audit log entry object from args.
+ * Used by both logAction helper and logActionMutation to ensure DRY.
+ */
+function createAuditLogEntry(args: LogActionArgs) {
+  return {
+    sessionId: args.sessionId,
+    action: args.action,
+    actorType: args.actorType,
+    actorId: args.actorId,
+    details: args.details ?? {},
+    timestamp: Date.now(),
+  };
+}
+
+// ============================================================================
 // Helper Function (Recommended - Same Transaction)
 // ============================================================================
 
@@ -84,14 +103,7 @@ export async function logAction(
   ctx: MutationCtx,
   args: LogActionArgs
 ): Promise<Id<"auditLogs">> {
-  return await ctx.db.insert("auditLogs", {
-    sessionId: args.sessionId,
-    action: args.action,
-    actorType: args.actorType,
-    actorId: args.actorId,
-    details: args.details ?? {},
-    timestamp: Date.now(),
-  });
+  return await ctx.db.insert("auditLogs", createAuditLogEntry(args));
 }
 
 // ============================================================================
@@ -125,14 +137,7 @@ export const logActionMutation = internalMutation({
   },
   returns: v.id("auditLogs"),
   handler: async (ctx, args) => {
-    return await ctx.db.insert("auditLogs", {
-      sessionId: args.sessionId,
-      action: args.action,
-      actorType: args.actorType,
-      actorId: args.actorId,
-      details: args.details ?? {},
-      timestamp: Date.now(),
-    });
+    return await ctx.db.insert("auditLogs", createAuditLogEntry(args));
   },
 });
 
@@ -196,7 +201,8 @@ export const getRecentLogs = query({
   },
   returns: v.array(auditLogValidator),
   handler: async (ctx, args) => {
-    const limit = Math.min(args.limit ?? 50, 100);
+    // Clamp limit to 1-100 range to prevent unexpected behavior with non-positive values
+    const limit = Math.min(Math.max(args.limit ?? 50, 1), 100);
     return await ctx.db
       .query("auditLogs")
       .withIndex("by_sessionId_and_timestamp", (q) =>
