@@ -20,6 +20,7 @@ import {
   sessionFormatValidator,
   mapStateValidator,
 } from "./lib/validators";
+import { logAction } from "./audit";
 
 const validateMatchName = (name: string) => validateName(name, "Match");
 
@@ -253,13 +254,11 @@ export const createSession = mutation({
     });
 
     // Create audit log
-    await ctx.db.insert("auditLogs", {
+    await logAction(ctx, {
       sessionId,
       action: "SESSION_CREATED",
       actorType: "ADMIN",
       actorId: args.createdBy,
-      details: {},
-      timestamp: now,
     });
 
     return { sessionId };
@@ -318,18 +317,15 @@ export const updateSession = mutation({
     await ctx.db.patch(args.sessionId, updates);
 
     // Create audit log for session update
-    // Use reason field to store what was updated (schema has fixed detail fields)
-    const changedFields = [];
-    if (args.matchName !== undefined) changedFields.push("matchName");
-    if (args.turnTimerSeconds !== undefined) changedFields.push("turnTimerSeconds");
-    await ctx.db.insert("auditLogs", {
+    // Derive changedFields from updates object for maintainability
+    const changedFields = Object.keys(updates).filter(
+      (key) => key !== "updatedAt"
+    );
+    await logAction(ctx, {
       sessionId: args.sessionId,
       action: "SESSION_UPDATED",
       actorType: "ADMIN",
-      details: {
-        reason: `Updated: ${changedFields.join(", ")}`,
-      },
-      timestamp: Date.now(),
+      details: { reason: `Updated: ${changedFields.join(", ")}` },
     });
 
     return { success: true };
@@ -390,12 +386,10 @@ export const deleteSession = mutation({
     await ctx.db.delete(args.sessionId);
 
     // Create audit log (preserve for history - note: sessionId will be orphaned reference)
-    await ctx.db.insert("auditLogs", {
+    await logAction(ctx, {
       sessionId: args.sessionId,
       action: "SESSION_DELETED",
       actorType: "ADMIN",
-      details: {},
-      timestamp: Date.now(),
     });
 
     return { success: true };
@@ -492,14 +486,11 @@ export const assignPlayer = mutation({
     });
 
     // Create audit log
-    await ctx.db.insert("auditLogs", {
+    await logAction(ctx, {
       sessionId: args.sessionId,
       action: "PLAYER_ASSIGNED",
       actorType: "ADMIN",
-      details: {
-        teamName: args.teamName,
-      },
-      timestamp: now,
+      details: { teamName: args.teamName },
     });
 
     return { playerId, token };
@@ -596,12 +587,10 @@ export const setSessionMaps = mutation({
     });
 
     // Create audit log
-    await ctx.db.insert("auditLogs", {
+    await logAction(ctx, {
       sessionId: args.sessionId,
       action: "MAPS_ASSIGNED",
       actorType: "ADMIN",
-      details: {},
-      timestamp: Date.now(),
     });
 
     return { success: true };
