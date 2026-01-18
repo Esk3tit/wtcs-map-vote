@@ -96,5 +96,5 @@ Option A - Add skip tests as placeholders, consider Option B for Phase 2
 
 ## Resources
 
-- PR #27: https://github.com/Esk3tit/wtcs-map-vote/pull/27
-- convex-test docs: https://docs.convex.dev/testing/convex-test
+- PR #27: <https://github.com/Esk3tit/wtcs-map-vote/pull/27>
+- convex-test docs: <https://docs.convex.dev/testing/convex-test>

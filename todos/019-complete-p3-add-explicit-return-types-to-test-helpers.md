@@ -77,4 +77,4 @@ Option A - Add explicit return types (can be done when consolidating helpers in 
 
 ## Resources
 
-- PR #27: https://github.com/Esk3tit/wtcs-map-vote/pull/27
+- PR #27: <https://github.com/Esk3tit/wtcs-map-vote/pull/27>
