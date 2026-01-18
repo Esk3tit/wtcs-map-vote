@@ -11,13 +11,6 @@ export default defineConfig({
     },
   },
   test: {
-    // Edge-runtime for Convex tests, jsdom for React tests
-    environmentMatchGlobs: [
-      ["convex/**", "edge-runtime"],
-      ["src/**", "jsdom"],
-    ],
-    // Required for convex-test to work
-    server: { deps: { inline: ["convex-test"] } },
     // GitHub Actions integration
     reporters: process.env.GITHUB_ACTIONS
       ? ["dot", "github-actions"]
@@ -41,5 +34,23 @@ export default defineConfig({
       //   statements: 80,
       // },
     },
+    // Use projects instead of deprecated environmentMatchGlobs
+    projects: [
+      {
+        test: {
+          name: "convex",
+          include: ["convex/**/*.test.ts"],
+          environment: "edge-runtime",
+          server: { deps: { inline: ["convex-test"] } },
+        },
+      },
+      {
+        test: {
+          name: "react",
+          include: ["src/**/*.test.{ts,tsx}"],
+          environment: "jsdom",
+        },
+      },
+    ],
   },
 });
