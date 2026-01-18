@@ -92,6 +92,6 @@ describe("convex-test scheduled functions", () => {
     // Can use finishInProgressScheduledFunctions
     await t.finishInProgressScheduledFunctions();
 
-    expect(true).toBe(true); // Setup works
+    // Smoke test passes if no exceptions are thrown
   });
 });

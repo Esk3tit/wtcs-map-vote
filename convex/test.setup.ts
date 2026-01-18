@@ -7,10 +7,19 @@
  */
 
 import { convexTest } from "convex-test";
+
 import schema from "./schema";
 
-// Glob all Convex function files (excludes _generated and test files)
+// ============================================================================
+// Module Configuration
+// ============================================================================
+
+/** Glob all Convex function files (excludes _generated and test files) */
 export const modules = import.meta.glob("./**/!(*.*.*)*.*s");
+
+// ============================================================================
+// Test Context Factories
+// ============================================================================
 
 /**
  * Create a fresh convex-test instance with schema.
@@ -22,6 +31,8 @@ export function createTestContext() {
 
 /**
  * Create an authenticated test context with identity.
+ *
+ * @param identity - Auth identity to attach to the test context
  */
 export function createAuthenticatedContext(identity: {
   name: string;

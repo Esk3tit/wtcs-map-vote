@@ -19,6 +19,8 @@ const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Factory for admin test data.
+ *
+ * @param overrides - Optional field overrides
  */
 export const adminFactory = (
   overrides: Partial<{
@@ -38,6 +40,8 @@ export const adminFactory = (
 
 /**
  * Factory for team test data.
+ *
+ * @param overrides - Optional field overrides
  */
 export const teamFactory = (
   overrides: Partial<{
@@ -53,6 +57,8 @@ export const teamFactory = (
 
 /**
  * Factory for map test data.
+ *
+ * @param overrides - Optional field overrides
  */
 export const mapFactory = (
   overrides: Partial<{
@@ -94,16 +100,19 @@ export const sessionFactory = (
     updatedAt: number;
     expiresAt: number;
   }> = {}
-) => ({
-  matchName: overrides.matchName ?? "Test Match",
-  format: overrides.format ?? "ABBA",
-  status: overrides.status ?? "DRAFT",
-  turnTimerSeconds: overrides.turnTimerSeconds ?? 30,
-  mapPoolSize: overrides.mapPoolSize ?? 7,
-  playerCount: overrides.playerCount ?? 2,
-  currentTurn: overrides.currentTurn ?? 0,
-  currentRound: overrides.currentRound ?? 0,
-  createdBy,
-  updatedAt: overrides.updatedAt ?? Date.now(),
-  expiresAt: overrides.expiresAt ?? Date.now() + ONE_DAY_MS,
-});
+) => {
+  const now = Date.now();
+  return {
+    matchName: overrides.matchName ?? "Test Match",
+    format: overrides.format ?? "ABBA",
+    status: overrides.status ?? "DRAFT",
+    turnTimerSeconds: overrides.turnTimerSeconds ?? 30,
+    mapPoolSize: overrides.mapPoolSize ?? 7,
+    playerCount: overrides.playerCount ?? 2,
+    currentTurn: overrides.currentTurn ?? 0,
+    currentRound: overrides.currentRound ?? 0,
+    createdBy,
+    updatedAt: overrides.updatedAt ?? now,
+    expiresAt: overrides.expiresAt ?? now + ONE_DAY_MS,
+  };
+};
