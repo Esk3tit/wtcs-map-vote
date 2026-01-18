@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,6 +57,10 @@ function TeamsPage() {
 
   const isLoading = status === "LoadingFirstPage";
   const hasNoTeams = teams.length === 0 && status !== "LoadingFirstPage";
+
+  // Common styles for table header cells
+  const tableHeadClasses =
+    "h-9 text-muted-foreground text-xs font-medium uppercase tracking-wide";
 
   const resetDialog = useCallback(() => {
     setTeamName("");
@@ -236,46 +241,58 @@ function TeamsPage() {
           ) : (
             // Teams Table
             <div className="space-y-4">
-              <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
+              <Card className="border-border/50 bg-card/50 backdrop-blur-sm rounded-lg">
                 <CardContent className="p-0">
                   <div className="overflow-x-auto">
                     <Table className="min-w-[600px] table-fixed">
                       <TableHeader>
                         <TableRow className="border-border/50 hover:bg-transparent">
-                          <TableHead className="w-[40%] text-center">Team</TableHead>
-                          <TableHead className="w-[35%] text-center">Date Added</TableHead>
-                          <TableHead className="w-[25%] text-center">Actions</TableHead>
+                          <TableHead className={cn("w-[40%]", tableHeadClasses)}>
+                            Team
+                          </TableHead>
+                          <TableHead
+                            className={cn("w-[35%] text-center", tableHeadClasses)}
+                          >
+                            Date Added
+                          </TableHead>
+                          <TableHead
+                            className={cn("w-[25%] text-right pr-4", tableHeadClasses)}
+                          >
+                            Actions
+                          </TableHead>
                         </TableRow>
                       </TableHeader>
                       <TableBody>
                         {teams.map((team) => (
                           <TableRow key={team._id} className="border-border/50">
-                            <TableCell>
-                              <div className="flex items-center justify-center gap-3">
-                                <Avatar className="w-10 h-10">
+                            <TableCell className="py-3 md:py-2">
+                              <div className="flex items-center gap-3 md:gap-2">
+                                <Avatar className="h-8 w-8 md:h-7 md:w-7">
                                   {team.logoUrl && (
                                     <AvatarImage
                                       src={team.logoUrl}
                                       alt={team.name}
                                     />
                                   )}
-                                  <AvatarFallback className="bg-primary/20 text-primary font-semibold">
+                                  <AvatarFallback className="bg-primary/20 text-primary text-[10px] md:text-xs font-semibold">
                                     {team.name.substring(0, 2).toUpperCase()}
                                   </AvatarFallback>
                                 </Avatar>
-                                <span className="font-medium">{team.name}</span>
+                                <span className="font-medium text-foreground">
+                                  {team.name}
+                                </span>
                               </div>
                             </TableCell>
-                            <TableCell className="text-center text-muted-foreground">
+                            <TableCell className="py-3 md:py-2 text-center text-xs md:text-sm text-muted-foreground">
                               {formatDate(team._creationTime)}
                             </TableCell>
-                            <TableCell>
-                              <div className="flex items-center justify-center gap-2">
+                            <TableCell className="py-3 md:py-2">
+                              <div className="flex items-center justify-end gap-1 md:gap-2">
                                 <Button
                                   onClick={() => handleEditTeam(team)}
                                   variant="ghost"
                                   size="icon"
-                                  className="h-8 w-8"
+                                  className="h-9 w-9 md:h-8 md:w-8"
                                 >
                                   <Pencil className="w-4 h-4" />
                                   <span className="sr-only">Edit {team.name}</span>
@@ -286,7 +303,7 @@ function TeamsPage() {
                                   }
                                   variant="ghost"
                                   size="icon"
-                                  className="h-8 w-8 text-destructive hover:text-destructive"
+                                  className="h-9 w-9 md:h-8 md:w-8 text-destructive hover:text-destructive"
                                 >
                                   <Trash2 className="w-4 h-4" />
                                   <span className="sr-only">
