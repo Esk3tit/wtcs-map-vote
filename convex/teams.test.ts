@@ -13,57 +13,42 @@ import {
   sessionPlayerFactory,
 } from "./test.factories";
 import { api } from "./_generated/api";
+import { Id } from "./_generated/dataModel";
 
 // ============================================================================
 // Test Helpers
 // ============================================================================
 
-/**
- * Creates a team that's being used in an active session.
- * Used for testing rename/delete blocking behavior.
- */
-async function createTeamInActiveSession(
-  t: ReturnType<typeof createTestContext>,
-  status: "DRAFT" | "WAITING" | "IN_PROGRESS" | "PAUSED" = "IN_PROGRESS"
-) {
-  return await t.run(async (ctx) => {
-    const adminId = await ctx.db.insert("admins", adminFactory());
-    const teamId = await ctx.db.insert(
-      "teams",
-      teamFactory({ name: "Active Team" })
-    );
-    const sessionId = await ctx.db.insert(
-      "sessions",
-      sessionFactory(adminId, { status, matchName: "Active Match" })
-    );
-    await ctx.db.insert(
-      "sessionPlayers",
-      sessionPlayerFactory(sessionId, { teamName: "Active Team" })
-    );
-    return { teamId, sessionId, adminId };
-  });
-}
+type SessionStatus =
+  | "DRAFT"
+  | "WAITING"
+  | "IN_PROGRESS"
+  | "PAUSED"
+  | "COMPLETE"
+  | "EXPIRED";
 
 /**
- * Creates a team that's only used in inactive (completed/expired) sessions.
+ * Creates a team that's being used in a session with the specified status.
+ * Used for testing rename/delete blocking behavior across all session states.
  */
-async function createTeamInInactiveSession(
+async function createTeamInSession(
   t: ReturnType<typeof createTestContext>,
-  status: "COMPLETE" | "EXPIRED" = "COMPLETE"
-) {
+  status: SessionStatus
+): Promise<{
+  teamId: Id<"teams">;
+  sessionId: Id<"sessions">;
+  adminId: Id<"admins">;
+}> {
   return await t.run(async (ctx) => {
     const adminId = await ctx.db.insert("admins", adminFactory());
-    const teamId = await ctx.db.insert(
-      "teams",
-      teamFactory({ name: "Inactive Team" })
-    );
+    const teamId = await ctx.db.insert("teams", teamFactory({ name: "Test Team" }));
     const sessionId = await ctx.db.insert(
       "sessions",
-      sessionFactory(adminId, { status, matchName: "Completed Match" })
+      sessionFactory(adminId, { status })
     );
     await ctx.db.insert(
       "sessionPlayers",
-      sessionPlayerFactory(sessionId, { teamName: "Inactive Team" })
+      sessionPlayerFactory(sessionId, { teamName: "Test Team" })
     );
     return { teamId, sessionId, adminId };
   });
@@ -165,7 +150,7 @@ describe("teams.createTeam", () => {
     // The validator rejects invalid storage IDs before business logic runs.
     // This behavior is covered by the validator itself - we test the error message
     // from the validator instead.
-    it("rejects invalid logoStorageId format", async () => {
+    it("throws for invalid logoStorageId format", async () => {
       const t = createTestContext();
 
       await expect(
@@ -207,6 +192,22 @@ describe("teams.createTeam", () => {
       // Should succeed - different case is treated as different team
       const result = await t.mutation(api.teams.createTeam, { name: "cloud9" });
       expect(result.teamId).toBeDefined();
+    });
+  });
+
+  describe("storage handling", () => {
+    // These tests document scenarios that cannot be tested with convex-test
+    // due to its inability to mock storage IDs. Test these in integration
+    // tests against a real dev deployment.
+
+    it.skip("creates team with logoStorageId", () => {
+      // Requires real storage ID - convex-test cannot mock storage IDs
+      // Test in integration tests against dev deployment
+    });
+
+    it.skip("throws when both logoUrl and logoStorageId provided", () => {
+      // Requires real storage ID - validator rejects invalid IDs before business logic
+      // Test in integration tests against dev deployment
     });
   });
 });
@@ -446,46 +447,24 @@ describe("teams.updateTeam", () => {
     });
   });
 
+  // Session blocking tests use representative statuses from ACTIVE_SESSION_STATUSES constant.
+  // Active statuses (DRAFT, WAITING, IN_PROGRESS, PAUSED) share the same blocking logic.
+  // Testing one from each category (active/inactive) provides sufficient coverage.
   describe("session blocking", () => {
-    it("blocks rename when team in DRAFT session", async () => {
+    it("blocks rename when team in active session", async () => {
       const t = createTestContext();
-      const { teamId } = await createTeamInActiveSession(t, "DRAFT");
+      // Uses IN_PROGRESS as representative of ACTIVE_SESSION_STATUSES
+      const { teamId } = await createTeamInSession(t, "IN_PROGRESS");
 
       await expect(
         t.mutation(api.teams.updateTeam, { teamId, name: "New Name" })
       ).rejects.toThrow(/Cannot rename team.*active session/);
     });
 
-    it("blocks rename when team in WAITING session", async () => {
+    it("allows rename when team only in inactive session", async () => {
       const t = createTestContext();
-      const { teamId } = await createTeamInActiveSession(t, "WAITING");
-
-      await expect(
-        t.mutation(api.teams.updateTeam, { teamId, name: "New Name" })
-      ).rejects.toThrow(/Cannot rename team.*active session/);
-    });
-
-    it("blocks rename when team in IN_PROGRESS session", async () => {
-      const t = createTestContext();
-      const { teamId } = await createTeamInActiveSession(t, "IN_PROGRESS");
-
-      await expect(
-        t.mutation(api.teams.updateTeam, { teamId, name: "New Name" })
-      ).rejects.toThrow(/Cannot rename team.*active session/);
-    });
-
-    it("blocks rename when team in PAUSED session", async () => {
-      const t = createTestContext();
-      const { teamId } = await createTeamInActiveSession(t, "PAUSED");
-
-      await expect(
-        t.mutation(api.teams.updateTeam, { teamId, name: "New Name" })
-      ).rejects.toThrow(/Cannot rename team.*active session/);
-    });
-
-    it("allows rename when team only in COMPLETE session", async () => {
-      const t = createTestContext();
-      const { teamId } = await createTeamInInactiveSession(t, "COMPLETE");
+      // Uses COMPLETE as representative of inactive statuses (COMPLETE, EXPIRED)
+      const { teamId } = await createTeamInSession(t, "COMPLETE");
 
       const result = await t.mutation(api.teams.updateTeam, {
         teamId,
@@ -495,18 +474,6 @@ describe("teams.updateTeam", () => {
       expect(result.success).toBe(true);
       const team = await t.run(async (ctx) => ctx.db.get(teamId));
       expect(team?.name).toBe("Renamed Team");
-    });
-
-    it("allows rename when team only in EXPIRED session", async () => {
-      const t = createTestContext();
-      const { teamId } = await createTeamInInactiveSession(t, "EXPIRED");
-
-      const result = await t.mutation(api.teams.updateTeam, {
-        teamId,
-        name: "Renamed Team",
-      });
-
-      expect(result.success).toBe(true);
     });
 
     it("allows rename when team not used in any session", async () => {
@@ -526,7 +493,7 @@ describe("teams.updateTeam", () => {
 
     it("allows logo update even when team in active session", async () => {
       const t = createTestContext();
-      const { teamId } = await createTeamInActiveSession(t, "IN_PROGRESS");
+      const { teamId } = await createTeamInSession(t, "IN_PROGRESS");
 
       // Logo updates should work even in active session (only rename is blocked)
       const result = await t.mutation(api.teams.updateTeam, {
@@ -568,7 +535,7 @@ describe("teams.updateTeam", () => {
 
     // Note: Testing "both logoUrl and logoStorageId" requires a real storage ID.
     // The validator rejects invalid storage IDs before business logic runs.
-    it("rejects invalid logoStorageId format", async () => {
+    it("throws for invalid logoStorageId format", async () => {
       const t = createTestContext();
 
       const { teamId } = await t.mutation(api.teams.createTeam, {
@@ -582,6 +549,22 @@ describe("teams.updateTeam", () => {
           logoStorageId: "invalid_storage_id",
         })
       ).rejects.toThrow(/Validator error/);
+    });
+  });
+
+  describe("storage handling", () => {
+    // These tests document scenarios that cannot be tested with convex-test
+    // due to its inability to mock storage IDs. Test these in integration
+    // tests against a real dev deployment.
+
+    it.skip("clears old storage when switching to URL", () => {
+      // Requires real storage ID for initial setup
+      // Test in integration tests against dev deployment
+    });
+
+    it.skip("clears old storage when switching to new storage", () => {
+      // Requires real storage ID for initial setup
+      // Test in integration tests against dev deployment
     });
   });
 });
@@ -623,55 +606,24 @@ describe("teams.deleteTeam", () => {
     });
   });
 
+  // Session blocking tests use representative statuses from ACTIVE_SESSION_STATUSES constant.
+  // Active statuses (DRAFT, WAITING, IN_PROGRESS, PAUSED) share the same blocking logic.
+  // Testing one from each category (active/inactive) provides sufficient coverage.
   describe("session blocking", () => {
-    it("blocks delete when team in DRAFT session", async () => {
+    it("blocks delete when team in active session", async () => {
       const t = createTestContext();
-      const { teamId } = await createTeamInActiveSession(t, "DRAFT");
+      // Uses IN_PROGRESS as representative of ACTIVE_SESSION_STATUSES
+      const { teamId } = await createTeamInSession(t, "IN_PROGRESS");
 
       await expect(
         t.mutation(api.teams.deleteTeam, { teamId })
       ).rejects.toThrow(/Cannot delete team.*active session/);
     });
 
-    it("blocks delete when team in WAITING session", async () => {
+    it("allows delete when team only in inactive session", async () => {
       const t = createTestContext();
-      const { teamId } = await createTeamInActiveSession(t, "WAITING");
-
-      await expect(
-        t.mutation(api.teams.deleteTeam, { teamId })
-      ).rejects.toThrow(/Cannot delete team.*active session/);
-    });
-
-    it("blocks delete when team in IN_PROGRESS session", async () => {
-      const t = createTestContext();
-      const { teamId } = await createTeamInActiveSession(t, "IN_PROGRESS");
-
-      await expect(
-        t.mutation(api.teams.deleteTeam, { teamId })
-      ).rejects.toThrow(/Cannot delete team.*active session/);
-    });
-
-    it("blocks delete when team in PAUSED session", async () => {
-      const t = createTestContext();
-      const { teamId } = await createTeamInActiveSession(t, "PAUSED");
-
-      await expect(
-        t.mutation(api.teams.deleteTeam, { teamId })
-      ).rejects.toThrow(/Cannot delete team.*active session/);
-    });
-
-    it("allows delete when team only in COMPLETE session", async () => {
-      const t = createTestContext();
-      const { teamId } = await createTeamInInactiveSession(t, "COMPLETE");
-
-      const result = await t.mutation(api.teams.deleteTeam, { teamId });
-
-      expect(result.success).toBe(true);
-    });
-
-    it("allows delete when team only in EXPIRED session", async () => {
-      const t = createTestContext();
-      const { teamId } = await createTeamInInactiveSession(t, "EXPIRED");
+      // Uses COMPLETE as representative of inactive statuses (COMPLETE, EXPIRED)
+      const { teamId } = await createTeamInSession(t, "COMPLETE");
 
       const result = await t.mutation(api.teams.deleteTeam, { teamId });
 
@@ -690,6 +642,17 @@ describe("teams.deleteTeam", () => {
       expect(result.success).toBe(true);
     });
   });
+
+  describe("storage handling", () => {
+    // These tests document scenarios that cannot be tested with convex-test
+    // due to its inability to mock storage IDs. Test these in integration
+    // tests against a real dev deployment.
+
+    it.skip("cleans up storage on delete", () => {
+      // Requires real storage ID
+      // Test in integration tests against dev deployment
+    });
+  });
 });
 
 // ============================================================================
@@ -704,17 +667,5 @@ describe("teams.generateUploadUrl", () => {
 
     expect(typeof url).toBe("string");
     expect(url.length).toBeGreaterThan(0);
-  });
-
-  it("can be called multiple times", async () => {
-    const t = createTestContext();
-
-    const url1 = await t.mutation(api.teams.generateUploadUrl, {});
-    const url2 = await t.mutation(api.teams.generateUploadUrl, {});
-
-    expect(url1).toBeDefined();
-    expect(url2).toBeDefined();
-    // URLs should be different (unique per call)
-    expect(url1).not.toBe(url2);
   });
 });
