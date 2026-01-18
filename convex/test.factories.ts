@@ -4,6 +4,19 @@
  * Provides factory functions for creating test data consistently.
  */
 
+import { Id } from "./_generated/dataModel";
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+/** One day in milliseconds (24 hours) */
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+
+// ============================================================================
+// Factories
+// ============================================================================
+
 /**
  * Factory for admin test data.
  */
@@ -57,8 +70,12 @@ export const mapFactory = (
 
 /**
  * Factory for session test data.
+ *
+ * @param createdBy - Admin ID (required, must be provided by test)
+ * @param overrides - Optional field overrides
  */
 export const sessionFactory = (
+  createdBy: Id<"admins">,
   overrides: Partial<{
     matchName: string;
     format: "ABBA" | "MULTIPLAYER";
@@ -86,6 +103,7 @@ export const sessionFactory = (
   playerCount: overrides.playerCount ?? 2,
   currentTurn: overrides.currentTurn ?? 0,
   currentRound: overrides.currentRound ?? 0,
+  createdBy,
   updatedAt: overrides.updatedAt ?? Date.now(),
-  expiresAt: overrides.expiresAt ?? Date.now() + 24 * 60 * 60 * 1000,
+  expiresAt: overrides.expiresAt ?? Date.now() + ONE_DAY_MS,
 });

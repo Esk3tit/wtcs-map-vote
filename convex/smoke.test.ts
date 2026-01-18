@@ -6,7 +6,7 @@
 
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createTestContext, createAuthenticatedContext } from "./test.setup";
-import { adminFactory, teamFactory } from "./test.factories";
+import { teamFactory } from "./test.factories";
 
 describe("convex-test setup", () => {
   it("can create test context", () => {
@@ -63,18 +63,14 @@ describe("convex-test setup", () => {
       email: "user@test.com",
     });
 
-    // Should be able to access identity in functions
-    await t.run(async (ctx) => {
-      await ctx.db.insert(
-        "admins",
-        adminFactory({
-          email: "user@test.com",
-          name: "Test User",
-        })
-      );
+    // Verify identity is correctly passed through authenticated context
+    const identity = await asUser.run(async (ctx) => {
+      return await ctx.auth.getUserIdentity();
     });
 
-    expect(asUser).toBeDefined();
+    expect(identity).toBeDefined();
+    expect(identity?.name).toBe("Test User");
+    expect(identity?.email).toBe("user@test.com");
   });
 });
 
