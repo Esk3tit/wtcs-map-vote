@@ -1,9 +1,21 @@
+/**
+ * Storage Module
+ *
+ * Handles Convex storage maintenance tasks such as orphaned file cleanup.
+ * Contains internal mutations designed to be called by cron jobs.
+ */
+
 import { internalMutation } from "./_generated/server";
-import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
 
+import { v } from "convex/values";
+
+// ============================================================================
+// Internal Mutations
+// ============================================================================
+
 /**
- * Cleans up storage files that are not referenced by any team or map.
+ * Clean up storage files that are not referenced by any team or map.
  * Files must be older than 1 hour to avoid race conditions with active uploads.
  *
  * This mutation queries the _storage system table to find all files,

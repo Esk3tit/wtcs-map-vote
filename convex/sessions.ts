@@ -1,7 +1,16 @@
+/**
+ * Sessions Module
+ *
+ * Handles voting session lifecycle: creation, configuration, player assignment,
+ * map pool setup, and session state management.
+ */
+
 import { query, mutation } from "./_generated/server";
-import { paginationOptsValidator } from "convex/server";
 import type { Doc } from "./_generated/dataModel";
+
+import { paginationOptsValidator } from "convex/server";
 import { v, ConvexError } from "convex/values";
+
 import {
   SESSION_EXPIRY_MS,
   TOKEN_EXPIRY_MS,
@@ -20,6 +29,7 @@ import {
   sessionFormatValidator,
   mapStateValidator,
 } from "./lib/validators";
+
 import { logAction } from "./audit";
 
 const validateMatchName = (name: string) => validateName(name, "Match");

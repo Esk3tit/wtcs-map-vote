@@ -126,6 +126,49 @@ This project uses **Base UI** (not Radix UI). Base UI does NOT support `asChild`
 - `routeTree.gen.ts` is auto-generated - do not edit manually
 - Use `<Link to="/path">` for navigation
 
+### Convex Function Style
+
+Follow these conventions for all Convex function files (`convex/*.ts`, excluding `_generated/` and `lib/`):
+
+**Module Header** (required):
+```typescript
+/**
+ * Module Name
+ *
+ * Brief description of what this module handles.
+ */
+```
+
+**Section Dividers** (when file has multiple categories):
+```typescript
+// ============================================================================
+// Section Name (Validators, Types, Private Helpers, Queries, Mutations)
+// ============================================================================
+```
+
+**Import Order** (with blank lines between groups):
+1. Convex generated imports (`"./_generated/*"`)
+2. Convex library imports (`"convex/*"`)
+3. Local lib imports (`"./lib/*"`)
+4. Other local imports (sibling modules)
+
+**JSDoc** (required for all exported functions):
+```typescript
+/**
+ * Brief description. Additional context if needed.
+ *
+ * @param paramName - Description
+ */
+```
+
+**Error Messages**:
+- Short: `"Entity not found"` (no period)
+- With context: `"Cannot update. Only DRAFT state allowed."` (period)
+
+**TODO Format**: `// TODO: Description (Phase 2)`
+
+**Reference**: See `convex/audit.ts` as the style reference implementation.
+
 ## Code Quality
 
 - **TypeScript strict mode** - the project uses strict TypeScript, ensure all types are properly defined
