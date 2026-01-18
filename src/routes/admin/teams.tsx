@@ -1,4 +1,5 @@
 import { createFileRoute } from "@tanstack/react-router";
+import { cn } from "@/lib/utils";
 import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -56,6 +57,10 @@ function TeamsPage() {
 
   const isLoading = status === "LoadingFirstPage";
   const hasNoTeams = teams.length === 0 && status !== "LoadingFirstPage";
+
+  // Common styles for table header cells
+  const tableHeadClasses =
+    "h-9 text-muted-foreground text-xs font-medium uppercase tracking-wide";
 
   const resetDialog = useCallback(() => {
     setTeamName("");
@@ -242,13 +247,17 @@ function TeamsPage() {
                     <Table className="min-w-[600px] table-fixed">
                       <TableHeader>
                         <TableRow className="border-border/50 hover:bg-transparent">
-                          <TableHead className="w-[40%] h-9 text-muted-foreground text-xs font-medium uppercase tracking-wide">
+                          <TableHead className={cn("w-[40%]", tableHeadClasses)}>
                             Team
                           </TableHead>
-                          <TableHead className="w-[35%] h-9 text-center text-muted-foreground text-xs font-medium uppercase tracking-wide">
+                          <TableHead
+                            className={cn("w-[35%] text-center", tableHeadClasses)}
+                          >
                             Date Added
                           </TableHead>
-                          <TableHead className="w-[25%] h-9 text-right pr-4 text-muted-foreground text-xs font-medium uppercase tracking-wide">
+                          <TableHead
+                            className={cn("w-[25%] text-right pr-4", tableHeadClasses)}
+                          >
                             Actions
                           </TableHead>
                         </TableRow>
