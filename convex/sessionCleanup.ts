@@ -1,8 +1,20 @@
+/**
+ * Session Cleanup Module
+ *
+ * Handles session lifecycle cleanup tasks including IP address clearing for privacy
+ * compliance and stale session expiration. Contains internal mutations designed
+ * to be called by cron jobs or other internal processes.
+ */
+
 import { internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
+// ============================================================================
+// Internal Mutations
+// ============================================================================
+
 /**
- * Clears IP addresses from all players in a session.
+ * Clear IP addresses from all players in a session.
  *
  * This is called when sessions reach terminal states (COMPLETE or EXPIRED)
  * to comply with GDPR/privacy requirements. IP addresses are only stored

@@ -1,11 +1,23 @@
+/**
+ * Maps Module
+ *
+ * Manages the master map pool for voting sessions.
+ * Maps can have images via URL or Convex storage upload, and support soft-delete (deactivation).
+ */
+
 import { query, mutation } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
 import { v, ConvexError } from "convex/values";
+
 import { ACTIVE_SESSION_STATUSES } from "./lib/constants";
 import { isSecureUrl } from "./lib/urlValidation";
 import { validateName } from "./lib/validation";
 import { validateStorageFile } from "./lib/storageValidation";
+
+// ============================================================================
+// Private Helpers
+// ============================================================================
 
 const validateMapName = (name: string) => validateName(name, "Map");
 
@@ -28,7 +40,14 @@ function validateImageUrl(
   return trimmed;
 }
 
-// Reusable validator for map objects returned by queries
+// ============================================================================
+// Validators
+// ============================================================================
+
+/**
+ * Validator for map objects returned by queries.
+ * Matches the maps table schema.
+ */
 const mapObjectValidator = v.object({
   _id: v.id("maps"),
   _creationTime: v.number(),
@@ -39,7 +58,13 @@ const mapObjectValidator = v.object({
   updatedAt: v.number(),
 });
 
-// Type for map document from database
+// ============================================================================
+// Types
+// ============================================================================
+
+/**
+ * Type for map document from database.
+ */
 type MapDoc = {
   _id: Id<"maps">;
   _creationTime: number;
@@ -68,6 +93,10 @@ async function resolveMapImageUrl(
   }
   return map;
 }
+
+// ============================================================================
+// Queries
+// ============================================================================
 
 /**
  * List all maps, optionally including inactive ones.
@@ -114,6 +143,10 @@ export const getMap = query({
     return resolveMapImageUrl(ctx, map);
   },
 });
+
+// ============================================================================
+// Mutations
+// ============================================================================
 
 /**
  * Create a new map with validation.

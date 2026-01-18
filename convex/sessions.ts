@@ -1,3 +1,10 @@
+/**
+ * Sessions Module
+ *
+ * Handles voting session lifecycle: creation, configuration, player assignment,
+ * map pool setup, and session state management.
+ */
+
 import { query, mutation } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import type { Doc } from "./_generated/dataModel";

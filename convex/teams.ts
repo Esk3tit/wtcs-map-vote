@@ -1,10 +1,22 @@
+/**
+ * Teams Module
+ *
+ * Manages the reusable team registry for voting sessions.
+ * Teams can have logos via URL or Convex storage upload.
+ */
+
 import { query, mutation } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
 import { v, ConvexError } from "convex/values";
+
 import { ACTIVE_SESSION_STATUSES } from "./lib/constants";
 import { isSecureUrl } from "./lib/urlValidation";
 import { validateName } from "./lib/validation";
 import { validateStorageFile } from "./lib/storageValidation";
+
+// ============================================================================
+// Private Helpers
+// ============================================================================
 
 const validateTeamName = (name: string) => validateName(name, "Team");
 
@@ -24,6 +36,10 @@ function validateLogoUrl(logoUrl: string | undefined | null): string | undefined
   }
   return trimmed;
 }
+
+// ============================================================================
+// Queries
+// ============================================================================
 
 /**
  * List teams sorted by name (ascending) with pagination.
@@ -68,6 +84,10 @@ export const listTeams = query({
     };
   },
 });
+
+// ============================================================================
+// Mutations
+// ============================================================================
 
 /**
  * Create a new team with uniqueness validation.
