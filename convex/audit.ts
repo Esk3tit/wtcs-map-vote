@@ -10,10 +10,12 @@
  */
 
 import { internalMutation, query } from "./_generated/server";
-import { paginationOptsValidator } from "convex/server";
-import { v } from "convex/values";
 import type { MutationCtx } from "./_generated/server";
 import type { Id } from "./_generated/dataModel";
+
+import { paginationOptsValidator } from "convex/server";
+import { v } from "convex/values";
+
 import type { AuditAction, ActorType, AuditDetails } from "./lib/types";
 import {
   auditActionValidator,
