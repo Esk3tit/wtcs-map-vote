@@ -337,15 +337,9 @@ export const updateMap = mutation({
     }
 
     // Final validation: ensure at least one image source will remain after update
-    // Use hasOwnProperty to distinguish "set to undefined" from "never set"
-    const hasImageUrlUpdate = Object.prototype.hasOwnProperty.call(
-      updates,
-      "imageUrl"
-    );
-    const hasImageStorageIdUpdate = Object.prototype.hasOwnProperty.call(
-      updates,
-      "imageStorageId"
-    );
+    // Use hasOwn to distinguish "set to undefined" from "never set"
+    const hasImageUrlUpdate = Object.hasOwn(updates, "imageUrl");
+    const hasImageStorageIdUpdate = Object.hasOwn(updates, "imageStorageId");
 
     // Determine final state of each field after applying updates
     const finalImageUrl = hasImageUrlUpdate
