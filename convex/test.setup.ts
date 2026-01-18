@@ -14,7 +14,15 @@ import schema from "./schema";
 // Module Configuration
 // ============================================================================
 
-/** Glob all Convex function files (excludes _generated and test files) */
+/**
+ * Glob all Convex function files for convex-test.
+ *
+ * The extglob pattern matches files with single-extension names (.ts, .js)
+ * while excluding multi-dot files (.d.ts). This is from the convex-test docs:
+ * - Includes _generated JS files (required for convex-test module resolution)
+ * - Excludes _generated .d.ts files (type definitions not needed at runtime)
+ * - Excludes test files by pattern naturally
+ */
 export const modules = import.meta.glob("./**/!(*.*.*)*.*s");
 
 // ============================================================================
