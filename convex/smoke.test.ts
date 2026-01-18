@@ -7,6 +7,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { createTestContext, createAuthenticatedContext } from "./test.setup";
 import { teamFactory } from "./test.factories";
+import { api } from "./_generated/api";
 
 describe("convex-test setup", () => {
   it("can create test context", () => {
@@ -43,6 +44,25 @@ describe("convex-test setup", () => {
     });
 
     expect(teams).toEqual([]);
+  });
+
+  it("can call Convex functions via api reference", async () => {
+    const t = createTestContext();
+
+    // Seed some data
+    await t.run(async (ctx) => {
+      await ctx.db.insert("teams", teamFactory({ name: "API Test Team" }));
+    });
+
+    // Call actual Convex query through api reference
+    const result = await t.query(api.teams.listTeams, {
+      paginationOpts: { numItems: 10, cursor: null },
+    });
+
+    // Verify the query returns expected structure
+    expect(result.page).toHaveLength(1);
+    expect(result.page[0].name).toBe("API Test Team");
+    expect(result.isDone).toBe(true);
   });
 
   it("can create authenticated context", async () => {
