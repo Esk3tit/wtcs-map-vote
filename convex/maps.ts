@@ -166,21 +166,22 @@ export const createMap = mutation({
 
     const trimmedName = validateMapName(args.name);
 
+    // Normalize imageUrl first (handles whitespace-only strings)
+    const trimmedImageUrl = validateImageUrl(args.imageUrl);
+
     // Validate mutual exclusivity: can't provide both imageUrl and imageStorageId
-    if (args.imageUrl && args.imageStorageId) {
+    if (trimmedImageUrl && args.imageStorageId) {
       throw new ConvexError(
         "Cannot provide both imageUrl and imageStorageId. Choose one."
       );
     }
 
     // Require at least one image source
-    if (!args.imageUrl && !args.imageStorageId) {
+    if (!trimmedImageUrl && !args.imageStorageId) {
       throw new ConvexError(
         "An image is required. Provide imageUrl or upload a file."
       );
     }
-
-    const trimmedImageUrl = validateImageUrl(args.imageUrl);
 
     // Validate storage file if provided (size and content type)
     if (args.imageStorageId) {
@@ -336,13 +337,23 @@ export const updateMap = mutation({
     }
 
     // Final validation: ensure at least one image source will remain after update
+    // Use hasOwnProperty to distinguish "set to undefined" from "never set"
+    const hasImageUrlUpdate = Object.prototype.hasOwnProperty.call(
+      updates,
+      "imageUrl"
+    );
+    const hasImageStorageIdUpdate = Object.prototype.hasOwnProperty.call(
+      updates,
+      "imageStorageId"
+    );
+
     // Determine final state of each field after applying updates
-    const finalImageUrl =
-      updates.imageUrl !== undefined ? updates.imageUrl : existing.imageUrl;
-    const finalStorageId =
-      updates.imageStorageId !== undefined
-        ? updates.imageStorageId
-        : existing.imageStorageId;
+    const finalImageUrl = hasImageUrlUpdate
+      ? updates.imageUrl
+      : existing.imageUrl;
+    const finalStorageId = hasImageStorageIdUpdate
+      ? updates.imageStorageId
+      : existing.imageStorageId;
 
     if (!finalImageUrl && !finalStorageId) {
       throw new ConvexError(
@@ -353,9 +364,7 @@ export const updateMap = mutation({
     // Check for active session usage if name or image is changing
     const nameChanging =
       updates.name !== undefined && updates.name !== existing.name;
-    const imageChanging =
-      updates.imageUrl !== undefined ||
-      updates.imageStorageId !== undefined;
+    const imageChanging = hasImageUrlUpdate || hasImageStorageIdUpdate;
 
     if (nameChanging || imageChanging) {
       const sessionMapsWithMap = await ctx.db
