@@ -82,6 +82,7 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] convex-test unit testing framework setup
 - [x] Teams CRUD unit tests (`convex/teams.test.ts`)
 - [x] Maps CRUD unit tests (`convex/maps.test.ts`)
+- [x] Sessions CRUD unit tests (`convex/sessions.test.ts`)
 - [x] Test infrastructure and smoke tests (`convex/smoke.test.ts`)
 
 ---
