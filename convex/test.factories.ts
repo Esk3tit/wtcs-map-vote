@@ -4,7 +4,10 @@
  * Provides factory functions for creating test data consistently.
  */
 
-import { Id } from "./_generated/dataModel";
+import { convexTest } from "convex-test";
+
+import { Id, TableNames, DataModel } from "./_generated/dataModel";
+import { GenericMutationCtx } from "convex/server";
 
 // ============================================================================
 // Constants
@@ -237,3 +240,65 @@ export const auditLogFactory = (
   details: overrides.details ?? {},
   timestamp: overrides.timestamp ?? Date.now(),
 });
+
+// ============================================================================
+// Test Helpers
+// ============================================================================
+
+/**
+ * Mutation context type for test setup functions.
+ */
+type MutationCtx = GenericMutationCtx<DataModel>;
+
+/**
+ * Test context type from convex-test.
+ */
+type TestContext = ReturnType<typeof convexTest>;
+
+/**
+ * Creates an entity, deletes it, and returns the deleted ID.
+ * Useful for testing "not found" scenarios with valid but non-existent IDs.
+ *
+ * @param t - Test context from createTestContext()
+ * @param setup - Function that creates the entity and returns its ID
+ */
+export async function createDeletedId<T extends TableNames>(
+  t: TestContext,
+  setup: (ctx: MutationCtx) => Promise<Id<T>>
+): Promise<Id<T>> {
+  return await t.run(async (ctx) => {
+    const id = await setup(ctx);
+    await ctx.db.delete(id);
+    return id;
+  });
+}
+
+/**
+ * Creates a deleted admin ID for testing non-existent admin scenarios.
+ *
+ * @param t - Test context from createTestContext()
+ */
+export async function createDeletedAdminId(
+  t: TestContext
+): Promise<Id<"admins">> {
+  return createDeletedId(t, async (ctx) =>
+    ctx.db.insert("admins", adminFactory())
+  );
+}
+
+/**
+ * Creates a deleted session ID for testing non-existent session scenarios.
+ * Automatically creates the required admin first.
+ *
+ * @param t - Test context from createTestContext()
+ * @param sessionOverrides - Optional session factory overrides
+ */
+export async function createDeletedSessionId(
+  t: TestContext,
+  sessionOverrides: Parameters<typeof sessionFactory>[1] = {}
+): Promise<Id<"sessions">> {
+  return createDeletedId(t, async (ctx) => {
+    const adminId = await ctx.db.insert("admins", adminFactory());
+    return ctx.db.insert("sessions", sessionFactory(adminId, sessionOverrides));
+  });
+}

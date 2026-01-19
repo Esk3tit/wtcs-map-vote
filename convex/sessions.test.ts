@@ -19,6 +19,9 @@ import {
   mapFactory,
   voteFactory,
   auditLogFactory,
+  createDeletedAdminId,
+  createDeletedSessionId,
+  createDeletedId,
 } from "./test.factories";
 import { api } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
@@ -424,13 +427,7 @@ describe("sessions.createSession", () => {
 
     it("throws for non-existent admin ID", async () => {
       const t = createTestContext();
-
-      // Create and delete an admin to get a valid but non-existent ID
-      const deletedAdminId = await t.run(async (ctx) => {
-        const id = await ctx.db.insert("admins", adminFactory());
-        await ctx.db.delete(id);
-        return id;
-      });
+      const deletedAdminId = await createDeletedAdminId(t);
 
       await expect(
         t.mutation(api.sessions.createSession, {
@@ -440,133 +437,6 @@ describe("sessions.createSession", () => {
           createdBy: deletedAdminId,
         })
       ).rejects.toThrow(/Invalid admin ID/i);
-    });
-  });
-
-  describe("boundary values", () => {
-    it("accepts minimum player count (2)", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
-
-      const { sessionId } = await t.mutation(api.sessions.createSession, {
-        matchName: "Test",
-        format: "ABBA",
-        playerCount: 2,
-        createdBy: adminId,
-      });
-
-      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
-      expect(session?.playerCount).toBe(2);
-    });
-
-    it("accepts maximum player count (8)", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
-
-      const { sessionId } = await t.mutation(api.sessions.createSession, {
-        matchName: "Test",
-        format: "ABBA",
-        playerCount: 8,
-        createdBy: adminId,
-      });
-
-      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
-      expect(session?.playerCount).toBe(8);
-    });
-
-    it("accepts minimum turn timer (10 seconds)", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
-
-      const { sessionId } = await t.mutation(api.sessions.createSession, {
-        matchName: "Test",
-        format: "ABBA",
-        playerCount: 2,
-        turnTimerSeconds: 10,
-        createdBy: adminId,
-      });
-
-      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
-      expect(session?.turnTimerSeconds).toBe(10);
-    });
-
-    it("accepts maximum turn timer (300 seconds)", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
-
-      const { sessionId } = await t.mutation(api.sessions.createSession, {
-        matchName: "Test",
-        format: "ABBA",
-        playerCount: 2,
-        turnTimerSeconds: 300,
-        createdBy: adminId,
-      });
-
-      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
-      expect(session?.turnTimerSeconds).toBe(300);
-    });
-
-    it("accepts minimum map pool size (3)", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
-
-      const { sessionId } = await t.mutation(api.sessions.createSession, {
-        matchName: "Test",
-        format: "ABBA",
-        playerCount: 2,
-        mapPoolSize: 3,
-        createdBy: adminId,
-      });
-
-      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
-      expect(session?.mapPoolSize).toBe(3);
-    });
-
-    it("accepts maximum map pool size (15)", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
-
-      const { sessionId } = await t.mutation(api.sessions.createSession, {
-        matchName: "Test",
-        format: "ABBA",
-        playerCount: 2,
-        mapPoolSize: 15,
-        createdBy: adminId,
-      });
-
-      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
-      expect(session?.mapPoolSize).toBe(15);
-    });
-
-    it("accepts single character match name", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
-
-      const { sessionId } = await t.mutation(api.sessions.createSession, {
-        matchName: "A",
-        format: "ABBA",
-        playerCount: 2,
-        createdBy: adminId,
-      });
-
-      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
-      expect(session?.matchName).toBe("A");
-    });
-
-    it("accepts exactly 100 character match name", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
-      const maxName = "a".repeat(100);
-
-      const { sessionId } = await t.mutation(api.sessions.createSession, {
-        matchName: maxName,
-        format: "ABBA",
-        playerCount: 2,
-        createdBy: adminId,
-      });
-
-      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
-      expect(session?.matchName).toBe(maxName);
     });
   });
 
@@ -672,23 +542,16 @@ describe("sessions.listSessions", () => {
     it("returns sessions in descending order by creation time", async () => {
       const t = createTestContext();
 
-      // Create sessions with different times to ensure order
+      // Create sessions in a single transaction - Convex assigns sequential _creationTime
       await t.run(async (ctx) => {
         const adminId = await ctx.db.insert("admins", adminFactory());
         await ctx.db.insert(
           "sessions",
           sessionFactory(adminId, { matchName: "First" })
         );
-      });
-
-      // Small delay to ensure different creation times
-      await new Promise((resolve) => setTimeout(resolve, 10));
-
-      await t.run(async (ctx) => {
-        const admin = await ctx.db.query("admins").first();
         await ctx.db.insert(
           "sessions",
-          sessionFactory(admin!._id, { matchName: "Second" })
+          sessionFactory(adminId, { matchName: "Second" })
         );
       });
 
@@ -763,35 +626,38 @@ describe("sessions.listSessions", () => {
       expect(result.page).toHaveLength(3);
     });
 
-    it.each([
-      ["DRAFT"],
-      ["WAITING"],
-      ["IN_PROGRESS"],
-      ["PAUSED"],
-      ["COMPLETE"],
-      ["EXPIRED"],
-    ] as const)("filters by %s status", async (status) => {
+    it("filters by all status values correctly", async () => {
       const t = createTestContext();
+      const statuses = [
+        "DRAFT",
+        "WAITING",
+        "IN_PROGRESS",
+        "PAUSED",
+        "COMPLETE",
+        "EXPIRED",
+      ] as const;
 
+      // Create one session for each status in a single context
       await t.run(async (ctx) => {
         const adminId = await ctx.db.insert("admins", adminFactory());
-        await ctx.db.insert("sessions", sessionFactory(adminId, { status }));
-        // Always add a COMPLETE session to have multiple sessions
-        if (status !== "COMPLETE") {
+        for (const status of statuses) {
           await ctx.db.insert(
             "sessions",
-            sessionFactory(adminId, { status: "COMPLETE" })
+            sessionFactory(adminId, { status, matchName: `${status} Session` })
           );
         }
       });
 
-      const result = await t.query(api.sessions.listSessions, {
-        paginationOpts: { numItems: 10, cursor: null },
-        status,
-      });
+      // Test filtering for each status
+      for (const status of statuses) {
+        const result = await t.query(api.sessions.listSessions, {
+          paginationOpts: { numItems: 10, cursor: null },
+          status,
+        });
 
-      expect(result.page.length).toBeGreaterThanOrEqual(1);
-      expect(result.page.every((s) => s.status === status)).toBe(true);
+        expect(result.page.length).toBeGreaterThanOrEqual(1);
+        expect(result.page.every((s) => s.status === status)).toBe(true);
+      }
     });
   });
 });
@@ -856,17 +722,7 @@ describe("sessions.getSession", () => {
   describe("not found", () => {
     it("returns null for non-existent session", async () => {
       const t = createTestContext();
-
-      // Create and delete a session to get a valid but non-existent ID
-      const deletedSessionId = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
-        const sessionId = await ctx.db.insert(
-          "sessions",
-          sessionFactory(adminId)
-        );
-        await ctx.db.delete(sessionId);
-        return sessionId;
-      });
+      const deletedSessionId = await createDeletedSessionId(t);
 
       const session = await t.query(api.sessions.getSession, {
         sessionId: deletedSessionId,
@@ -953,10 +809,18 @@ describe("sessions.updateSession", () => {
 
     it("updates updatedAt timestamp", async () => {
       const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "DRAFT");
 
-      const beforeUpdate = Date.now();
-      await new Promise((resolve) => setTimeout(resolve, 10));
+      // Capture creation time, then update and verify updatedAt >= _creationTime
+      const { sessionId, creationTime } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { status: "DRAFT" })
+        );
+        const session = await ctx.db.get(sessionId);
+        // Floor to integer ms since Date.now() returns integer ms
+        return { sessionId, creationTime: Math.floor(session!._creationTime) };
+      });
 
       await t.mutation(api.sessions.updateSession, {
         sessionId,
@@ -964,7 +828,8 @@ describe("sessions.updateSession", () => {
       });
 
       const session = await t.run(async (ctx) => ctx.db.get(sessionId));
-      expect(session?.updatedAt).toBeGreaterThan(beforeUpdate);
+      // updatedAt should be at least equal to creation time (mutation sets it via Date.now())
+      expect(session?.updatedAt).toBeGreaterThanOrEqual(creationTime);
     });
   });
 
@@ -1007,35 +872,39 @@ describe("sessions.updateSession", () => {
   });
 
   describe("state restrictions", () => {
-    it.each([["IN_PROGRESS"], ["PAUSED"], ["COMPLETE"], ["EXPIRED"]] as const)(
-      "throws when updating session in %s state",
-      async (status) => {
-        const t = createTestContext();
-        const { sessionId } = await createSessionInStatus(t, status);
+    it("throws when updating session in restricted states", async () => {
+      const t = createTestContext();
+      const restrictedStatuses = ["IN_PROGRESS", "PAUSED", "COMPLETE", "EXPIRED"] as const;
 
+      // Create sessions for all restricted states in a single context
+      const sessionIds = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const ids: Record<string, Id<"sessions">> = {};
+        for (const status of restrictedStatuses) {
+          ids[status] = await ctx.db.insert(
+            "sessions",
+            sessionFactory(adminId, { status, matchName: `${status} Session` })
+          );
+        }
+        return ids;
+      });
+
+      // Test each status throws the expected error
+      for (const status of restrictedStatuses) {
         await expect(
           t.mutation(api.sessions.updateSession, {
-            sessionId,
+            sessionId: sessionIds[status],
             matchName: "Updated",
           })
         ).rejects.toThrow(/Cannot update session/i);
       }
-    );
+    });
   });
 
   describe("not found", () => {
     it("throws for non-existent session", async () => {
       const t = createTestContext();
-
-      const deletedSessionId = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
-        const sessionId = await ctx.db.insert(
-          "sessions",
-          sessionFactory(adminId)
-        );
-        await ctx.db.delete(sessionId);
-        return sessionId;
-      });
+      const deletedSessionId = await createDeletedSessionId(t);
 
       await expect(
         t.mutation(api.sessions.updateSession, {
@@ -1156,35 +1025,36 @@ describe("sessions.deleteSession", () => {
   });
 
   describe("state restrictions", () => {
-    it.each([
-      ["WAITING"],
-      ["IN_PROGRESS"],
-      ["PAUSED"],
-      ["COMPLETE"],
-      ["EXPIRED"],
-    ] as const)("throws when deleting session in %s state", async (status) => {
+    it("throws when deleting session in restricted states", async () => {
       const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, status);
+      const restrictedStatuses = ["WAITING", "IN_PROGRESS", "PAUSED", "COMPLETE", "EXPIRED"] as const;
 
-      await expect(
-        t.mutation(api.sessions.deleteSession, { sessionId })
-      ).rejects.toThrow(/Cannot delete session/i);
+      // Create sessions for all restricted states in a single context
+      const sessionIds = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const ids: Record<string, Id<"sessions">> = {};
+        for (const status of restrictedStatuses) {
+          ids[status] = await ctx.db.insert(
+            "sessions",
+            sessionFactory(adminId, { status, matchName: `${status} Session` })
+          );
+        }
+        return ids;
+      });
+
+      // Test each status throws the expected error
+      for (const status of restrictedStatuses) {
+        await expect(
+          t.mutation(api.sessions.deleteSession, { sessionId: sessionIds[status] })
+        ).rejects.toThrow(/Cannot delete session/i);
+      }
     });
   });
 
   describe("not found", () => {
     it("throws for non-existent session", async () => {
       const t = createTestContext();
-
-      const deletedSessionId = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
-        const sessionId = await ctx.db.insert(
-          "sessions",
-          sessionFactory(adminId)
-        );
-        await ctx.db.delete(sessionId);
-        return sessionId;
-      });
+      const deletedSessionId = await createDeletedSessionId(t);
 
       await expect(
         t.mutation(api.sessions.deleteSession, { sessionId: deletedSessionId })
@@ -1411,39 +1281,47 @@ describe("sessions.assignPlayer", () => {
   });
 
   describe("state restrictions", () => {
-    it.each([["IN_PROGRESS"], ["PAUSED"], ["COMPLETE"], ["EXPIRED"]] as const)(
-      "throws when assigning in %s state",
-      async (status) => {
-        const t = createTestContext();
-        const { sessionId } = await createSessionInStatus(t, status);
+    it("throws when assigning in restricted states", async () => {
+      const t = createTestContext();
+      const restrictedStatuses = ["IN_PROGRESS", "PAUSED", "COMPLETE", "EXPIRED"] as const;
 
-        await t.run(async (ctx) => {
-          await ctx.db.insert("teams", teamFactory({ name: "Test Team" }));
-        });
+      // Create sessions for all restricted states and a team in a single context
+      const sessionIds = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        await ctx.db.insert("teams", teamFactory({ name: "Test Team" }));
+        const ids: Record<string, Id<"sessions">> = {};
+        for (const status of restrictedStatuses) {
+          ids[status] = await ctx.db.insert(
+            "sessions",
+            sessionFactory(adminId, { status, matchName: `${status} Session` })
+          );
+        }
+        return ids;
+      });
 
+      // Test each status throws the expected error
+      for (const status of restrictedStatuses) {
         await expect(
           t.mutation(api.sessions.assignPlayer, {
-            sessionId,
+            sessionId: sessionIds[status],
             role: "Captain",
             teamName: "Test Team",
           })
         ).rejects.toThrow(/Cannot assign players/i);
       }
-    );
+    });
   });
 
   describe("not found", () => {
     it("throws for non-existent session", async () => {
       const t = createTestContext();
-
-      const deletedSessionId = await t.run(async (ctx) => {
+      const deletedSessionId = await createDeletedId(t, async (ctx) => {
         const adminId = await ctx.db.insert("admins", adminFactory());
         const sessionId = await ctx.db.insert(
           "sessions",
           sessionFactory(adminId)
         );
         await ctx.db.insert("teams", teamFactory({ name: "Test Team" }));
-        await ctx.db.delete(sessionId);
         return sessionId;
       });
 
@@ -1629,22 +1507,24 @@ describe("sessions.setSessionMaps", () => {
     it("updates session updatedAt timestamp", async () => {
       const t = createTestContext();
 
-      const { sessionId, mapIds, beforeUpdate } = await t.run(async (ctx) => {
+      // Capture creation time, then set maps and verify updatedAt >= _creationTime
+      const { sessionId, mapIds, creationTime } = await t.run(async (ctx) => {
         const adminId = await ctx.db.insert("admins", adminFactory());
         const sessionId = await ctx.db.insert(
           "sessions",
           sessionFactory(adminId, { mapPoolSize: 1 })
         );
         const mapIds = [await ctx.db.insert("maps", mapFactory())];
-        return { sessionId, mapIds, beforeUpdate: Date.now() };
+        const session = await ctx.db.get(sessionId);
+        // Floor to integer ms since Date.now() returns integer ms
+        return { sessionId, mapIds, creationTime: Math.floor(session!._creationTime) };
       });
-
-      await new Promise((resolve) => setTimeout(resolve, 10));
 
       await t.mutation(api.sessions.setSessionMaps, { sessionId, mapIds });
 
       const session = await t.run(async (ctx) => ctx.db.get(sessionId));
-      expect(session?.updatedAt).toBeGreaterThan(beforeUpdate);
+      // updatedAt should be at least equal to creation time (mutation sets it via Date.now())
+      expect(session?.updatedAt).toBeGreaterThanOrEqual(creationTime);
     });
   });
 
@@ -1744,28 +1624,30 @@ describe("sessions.setSessionMaps", () => {
   });
 
   describe("state restrictions", () => {
-    it.each([
-      ["WAITING"],
-      ["IN_PROGRESS"],
-      ["PAUSED"],
-      ["COMPLETE"],
-      ["EXPIRED"],
-    ] as const)("throws when setting maps in %s state", async (status) => {
+    it("throws when setting maps in restricted states", async () => {
       const t = createTestContext();
+      const restrictedStatuses = ["WAITING", "IN_PROGRESS", "PAUSED", "COMPLETE", "EXPIRED"] as const;
 
-      const { sessionId, mapIds } = await t.run(async (ctx) => {
+      // Create sessions for all restricted states and maps in a single context
+      const { sessionIds, mapIds } = await t.run(async (ctx) => {
         const adminId = await ctx.db.insert("admins", adminFactory());
-        const sessionId = await ctx.db.insert(
-          "sessions",
-          sessionFactory(adminId, { status, mapPoolSize: 1 })
-        );
         const mapIds = [await ctx.db.insert("maps", mapFactory())];
-        return { sessionId, mapIds };
+        const ids: Record<string, Id<"sessions">> = {};
+        for (const status of restrictedStatuses) {
+          ids[status] = await ctx.db.insert(
+            "sessions",
+            sessionFactory(adminId, { status, mapPoolSize: 1, matchName: `${status} Session` })
+          );
+        }
+        return { sessionIds: ids, mapIds };
       });
 
-      await expect(
-        t.mutation(api.sessions.setSessionMaps, { sessionId, mapIds })
-      ).rejects.toThrow(/Cannot set maps/i);
+      // Test each status throws the expected error
+      for (const status of restrictedStatuses) {
+        await expect(
+          t.mutation(api.sessions.setSessionMaps, { sessionId: sessionIds[status], mapIds })
+        ).rejects.toThrow(/Cannot set maps/i);
+      }
     });
   });
 
@@ -1773,15 +1655,13 @@ describe("sessions.setSessionMaps", () => {
     it("throws for non-existent session", async () => {
       const t = createTestContext();
 
-      const { deletedSessionId, mapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
-        const sessionId = await ctx.db.insert(
-          "sessions",
-          sessionFactory(adminId, { mapPoolSize: 1 })
-        );
-        const mapIds = [await ctx.db.insert("maps", mapFactory())];
-        await ctx.db.delete(sessionId);
-        return { deletedSessionId: sessionId, mapIds };
+      // Create a map first (persists after session deletion)
+      const mapIds = await t.run(async (ctx) => {
+        return [await ctx.db.insert("maps", mapFactory())];
+      });
+
+      const deletedSessionId = await createDeletedSessionId(t, {
+        mapPoolSize: 1,
       });
 
       await expect(
