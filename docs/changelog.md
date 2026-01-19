@@ -9,6 +9,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Audit Logging Unit Tests** (`convex/audit.test.ts`):
+  - 45 tests covering all audit logging functions
+  - `logActionMutation`: success cases, actor types, action types, details validation
+  - `getSessionAuditLog`: empty state, pagination, ordering, session filtering
+  - `getRecentLogs`: default behavior, limit handling, limit clamping
+  - Edge cases: boundary conditions, identical timestamps, optional fields
+  - Performance optimization: shared test data in `beforeAll` for limit clamping tests
+- **GitHub Actions CI Workflow** (`.github/workflows/ci.yml`):
+  - Runs on push to main and all PRs
+  - Steps: typecheck app, typecheck convex, lint, test
+  - Catches convex TypeScript errors before deployment
+- **TypeScript Commands**:
+  - `bun run typecheck` - Check both app and convex TypeScript
+  - `bun run typecheck:convex` - Check only convex folder
 - **Sessions CRUD Unit Tests** (`convex/sessions.test.ts`):
   - 102 tests covering all sessions CRUD operations
   - Test helpers: `createAdmin()`, `createSessionInStatus()`, `createFullSession()`
