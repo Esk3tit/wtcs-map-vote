@@ -1,5 +1,5 @@
-import * as React from "react"
+import { useRef } from "react"
 
 export function useComboboxAnchor() {
-  return React.useRef<HTMLDivElement | null>(null)
+  return useRef<HTMLDivElement | null>(null)
 }

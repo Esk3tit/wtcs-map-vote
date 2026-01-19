@@ -102,6 +102,7 @@ export function ImageSourcePicker({
   const [prevValue, setPrevValue] = useState(value);
   if (prevValue !== value) {
     setPrevValue(value);
+    setErrorForUrl(null); // Clear error state to allow retry of same URL
     if (value.type === "url") {
       setUrlInput(value.url);
     } else if (value.type === "none") {
@@ -196,6 +197,7 @@ export function ImageSourcePicker({
     setUrlInput("");
     setUrlError(null);
     setLocalError(null);
+    setErrorForUrl(null); // Clear error state to allow retry of same URL
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
