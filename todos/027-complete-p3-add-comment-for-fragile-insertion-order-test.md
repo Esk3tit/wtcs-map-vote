@@ -91,9 +91,9 @@ Option A for now - Add comment. Option B can be tracked separately for productio
 
 ## Acceptance Criteria
 
-- [ ] Comment added explaining insertion order dependency
-- [ ] Comment explains Convex `.first()` behavior
-- [ ] Test remains passing
+- [x] Comment added explaining insertion order dependency
+- [x] Comment explains Convex `.first()` behavior
+- [x] Test remains passing
 
 ## Work Log
 
@@ -101,6 +101,7 @@ Option A for now - Add comment. Option B can be tracked separately for productio
 |------|--------|-----------|
 | 2026-01-19 | Created during PR #28 review | Fragile test pattern identified |
 | 2026-01-19 | Approved in triage | Ready to implement Option A |
+| 2026-01-19 | Completed in PR #28 | Comment rewritten to accurately explain behavior |
 
 ## Resources
 

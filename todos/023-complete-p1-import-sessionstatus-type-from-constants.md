@@ -67,9 +67,9 @@ Option A - Import from constants module
 
 ## Acceptance Criteria
 
-- [ ] `SessionStatus` type imported from `convex/lib/constants`
-- [ ] Local type definition removed
-- [ ] All tests pass
+- [x] `SessionStatus` type imported from `convex/lib/constants`
+- [x] Local type definition removed
+- [x] All tests pass
 
 ## Work Log
 
@@ -77,6 +77,7 @@ Option A - Import from constants module
 |------|--------|-----------|
 | 2026-01-19 | Created during PR #28 review | TypeScript type duplication detected |
 | 2026-01-19 | Approved in triage | Ready to implement Option A |
+| 2026-01-19 | Completed in PR #28 | Import added, local type removed, all tests pass |
 
 ## Resources
 

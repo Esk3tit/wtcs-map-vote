@@ -65,9 +65,9 @@ Option A - Add case-sensitivity test
 
 ## Acceptance Criteria
 
-- [ ] Case-sensitivity test added to createMap section
-- [ ] Test documents actual behavior (case-sensitive or insensitive)
-- [ ] All tests pass
+- [x] Case-sensitivity test added to createMap section
+- [x] Test documents actual behavior (case-sensitive or insensitive)
+- [x] All tests pass
 
 ## Work Log
 
@@ -75,6 +75,7 @@ Option A - Add case-sensitivity test
 |------|--------|-----------|
 | 2026-01-19 | Created during PR #28 review | Missing boundary test identified |
 | 2026-01-19 | Approved in triage | Ready to implement Option A |
+| 2026-01-19 | Completed in PR #28 | Test added confirming names are case-sensitive |
 
 ## Resources
 
