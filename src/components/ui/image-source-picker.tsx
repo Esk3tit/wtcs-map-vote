@@ -77,7 +77,8 @@ export function ImageSourcePicker({
   const [urlError, setUrlError] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
-  const [imageLoadError, setImageLoadError] = useState(false);
+  // Track which URL caused the error - imageLoadError is derived from this
+  const [errorForUrl, setErrorForUrl] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Track blob URL for cleanup on unmount (avoids stale closure issue)
   const blobUrlRef = useRef<string | null>(null);
@@ -94,19 +95,19 @@ export function ImageSourcePicker({
         ? value.url
         : currentImageUrl;
 
-  // Reset image load error when preview URL changes
-  useEffect(() => {
-    setImageLoadError(false);
-  }, [previewUrl]);
+  // Derive imageLoadError from errorForUrl - automatically resets when previewUrl changes
+  const imageLoadError = errorForUrl !== null && errorForUrl === previewUrl;
 
-  // Sync urlInput when value changes externally (controlled component pattern)
-  useEffect(() => {
+  // Track previous value for controlled component sync (React pattern: update state during render)
+  const [prevValue, setPrevValue] = useState(value);
+  if (prevValue !== value) {
+    setPrevValue(value);
     if (value.type === "url") {
       setUrlInput(value.url);
     } else if (value.type === "none") {
       setUrlInput("");
     }
-  }, [value]);
+  }
 
   const handleFileSelect = useCallback(
     (file: File) => {
@@ -246,7 +247,7 @@ export function ImageSourcePicker({
                   src={previewUrl}
                   alt="Logo preview"
                   className="w-full h-full object-cover"
-                  onError={() => setImageLoadError(true)}
+                  onError={() => setErrorForUrl(previewUrl ?? null)}
                 />
               )}
               {imageLoadError && (
