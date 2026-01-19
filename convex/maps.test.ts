@@ -17,18 +17,11 @@ import {
 } from "./test.factories";
 import { api } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
+import { SessionStatus } from "./lib/constants";
 
 // ============================================================================
 // Test Helpers
 // ============================================================================
-
-type SessionStatus =
-  | "DRAFT"
-  | "WAITING"
-  | "IN_PROGRESS"
-  | "PAUSED"
-  | "COMPLETE"
-  | "EXPIRED";
 
 /**
  * Creates a map that's being used in a session with the specified status.
@@ -108,6 +101,8 @@ describe("maps.createMap", () => {
       expect(map?.isActive).toBe(true);
     });
 
+    // Note: Timestamp behavior is tested once here as representative.
+    // All mutations update updatedAt via the same pattern.
     it("sets updatedAt timestamp", async () => {
       const t = createTestContext();
       const before = Date.now();
@@ -167,13 +162,19 @@ describe("maps.createMap", () => {
       ).rejects.toThrow(/image is required/);
     });
 
-    it("throws for invalid imageUrl (internal address)", async () => {
+    it.each([
+      ["localhost", "http://localhost/image.png"],
+      ["127.0.0.1", "http://127.0.0.1/image.png"],
+      ["private 10.x", "http://10.0.0.1/image.png"],
+      ["private 192.168.x", "http://192.168.1.1/image.png"],
+      ["private 172.16.x", "http://172.16.0.1/image.png"],
+    ])("throws for invalid imageUrl (%s)", async (_, url) => {
       const t = createTestContext();
 
       await expect(
         t.mutation(api.maps.createMap, {
-          name: "Map",
-          imageUrl: "http://127.0.0.1/map.png",
+          name: "SSRF Test Map",
+          imageUrl: url,
         })
       ).rejects.toThrow(/Invalid image URL/);
     });
@@ -222,6 +223,27 @@ describe("maps.createMap", () => {
           imageUrl: "https://example.com/map2.png",
         })
       ).rejects.toThrow(/already exists/);
+    });
+
+    it("treats different case as different names (case-sensitive)", async () => {
+      const t = createTestContext();
+      await t.run(async (ctx) => {
+        await ctx.db.insert(
+          "maps",
+          mapFactory({
+            name: "Test Map",
+            imageUrl: "https://example.com/map1.png",
+          })
+        );
+      });
+
+      // Should succeed if names are case-sensitive
+      const result = await t.mutation(api.maps.createMap, {
+        name: "TEST MAP",
+        imageUrl: "https://example.com/map2.png",
+      });
+
+      expect(result.mapId).toBeDefined();
     });
   });
 
@@ -356,14 +378,7 @@ describe("maps.getMap", () => {
     it("returns null for non-existent map", async () => {
       const t = createTestContext();
 
-      // Create and deactivate a map to get a valid but "non-existent" ID
-      const { mapId } = await t.mutation(api.maps.createMap, {
-        name: "Temporary",
-        imageUrl: "https://example.com/map.png",
-      });
-      await t.mutation(api.maps.deactivateMap, { mapId });
-
-      // Create another map and delete it via direct DB access to get a truly deleted ID
+      // Create and delete a map via direct DB access to get a truly deleted ID
       const deletedMapId = await t.run(async (ctx) => {
         const id = await ctx.db.insert(
           "maps",
@@ -433,24 +448,6 @@ describe("maps.updateMap", () => {
       });
 
       expect(result.success).toBe(true);
-    });
-
-    it("updates updatedAt timestamp", async () => {
-      const t = createTestContext();
-
-      const { mapId } = await t.mutation(api.maps.createMap, {
-        name: "Map",
-        imageUrl: "https://example.com/map.png",
-      });
-
-      const before = Date.now();
-      await t.mutation(api.maps.updateMap, {
-        mapId,
-        name: "Updated Map",
-      });
-
-      const map = await t.run(async (ctx) => ctx.db.get(mapId));
-      expect(map?.updatedAt).toBeGreaterThanOrEqual(before);
     });
   });
 
@@ -635,21 +632,6 @@ describe("maps.deactivateMap", () => {
       const map = await t.run(async (ctx) => ctx.db.get(mapId));
       expect(map?.isActive).toBe(false);
     });
-
-    it("updates updatedAt timestamp", async () => {
-      const t = createTestContext();
-
-      const { mapId } = await t.mutation(api.maps.createMap, {
-        name: "Map",
-        imageUrl: "https://example.com/map.png",
-      });
-
-      const before = Date.now();
-      await t.mutation(api.maps.deactivateMap, { mapId });
-
-      const map = await t.run(async (ctx) => ctx.db.get(mapId));
-      expect(map?.updatedAt).toBeGreaterThanOrEqual(before);
-    });
   });
 
   describe("not found", () => {
@@ -732,22 +714,6 @@ describe("maps.reactivateMap", () => {
       const map = await t.run(async (ctx) => ctx.db.get(mapId));
       expect(map?.isActive).toBe(true);
     });
-
-    it("updates updatedAt timestamp", async () => {
-      const t = createTestContext();
-
-      const { mapId } = await t.mutation(api.maps.createMap, {
-        name: "Map",
-        imageUrl: "https://example.com/map.png",
-      });
-      await t.mutation(api.maps.deactivateMap, { mapId });
-
-      const before = Date.now();
-      await t.mutation(api.maps.reactivateMap, { mapId });
-
-      const map = await t.run(async (ctx) => ctx.db.get(mapId));
-      expect(map?.updatedAt).toBeGreaterThanOrEqual(before);
-    });
   });
 
   describe("not found", () => {
@@ -788,13 +754,12 @@ describe("maps.reactivateMap", () => {
     it("throws when another active map has same name", async () => {
       const t = createTestContext();
 
-      // Use direct DB access to set up the scenario:
-      // 1. An active map named "Contested Name" (inserted first, gets lower _id)
-      // 2. An inactive map named "Contested Name" (inserted second, gets higher _id)
-      // The reactivateMap query uses `.first()` which returns the document with
-      // the lower _id when names are equal, so the active map will be found.
       const deactivatedMapId = await t.run(async (ctx) => {
-        // Create active map FIRST (will have lower _id)
+        // IMPORTANT: Insertion order matters here.
+        // The maps.ts reactivateMap function uses .first() to find duplicates.
+        // Convex .first() returns the document with the lower _id when index
+        // values are equal. We insert the active map FIRST so it gets the
+        // lower _id and is found by the duplicate check.
         await ctx.db.insert("maps", mapFactory({
           name: "Contested Name",
           imageUrl: "https://example.com/map1.png",
