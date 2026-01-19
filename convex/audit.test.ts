@@ -197,7 +197,7 @@ describe("audit.logActionMutation", () => {
       ["ROUND_RESOLVED" as const, "round/timer event"],
       ["TIMER_EXPIRED" as const, "round/timer event"],
       ["WINNER_DECLARED" as const, "round/timer event"],
-    ])("creates log for %s (%s)", async (action) => {
+    ])("creates log for %s (%s)", async (action, _category) => {
       const t = createTestContext();
       const { sessionId } = await createSessionWithAdmin(t);
 
