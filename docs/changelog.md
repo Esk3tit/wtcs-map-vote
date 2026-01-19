@@ -9,6 +9,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Sessions CRUD Unit Tests** (`convex/sessions.test.ts`):
+  - 102 tests covering all sessions CRUD operations
+  - Test helpers: `createAdmin()`, `createSessionInStatus()`, `createFullSession()`
+  - `createSession`: 29 tests (success, validation, boundary values, audit)
+  - `listSessions`: 8 tests (empty, pagination, filtering by status)
+  - `getSession`: 5 tests (success with relations, not found)
+  - `updateSession`: 11 tests (success, validation, state restrictions, audit)
+  - `deleteSession`: 9 tests (cascade delete with players/maps/votes, state restrictions, audit)
+  - `assignPlayer`: 12 tests (success, validation, capacity, state restrictions, audit)
+  - `setSessionMaps`: 12 tests (success, validation, state restrictions, audit)
+  - Session state machine tests (DRAFT, WAITING, IN_PROGRESS, PAUSED, COMPLETE, EXPIRED)
+  - Cascade delete verification for related entities
 - **Maps CRUD Unit Tests** (`convex/maps.test.ts`):
   - 125+ tests covering all maps CRUD operations
   - Factory pattern for test data creation
