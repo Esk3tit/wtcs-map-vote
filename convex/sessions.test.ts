@@ -1020,7 +1020,7 @@ describe("sessions.deleteSession", () => {
       );
 
       // Should have original log plus SESSION_DELETED log
-      expect(logs.length).toBeGreaterThanOrEqual(1);
+      expect(logs).toHaveLength(2);
     });
   });
 
