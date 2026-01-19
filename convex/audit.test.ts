@@ -331,7 +331,7 @@ describe("audit.getSessionAuditLog", () => {
         paginationOpts: { numItems: 2, cursor: page1.continueCursor },
       });
 
-      expect(page2.page.length).toBeGreaterThan(0);
+      expect(page2.page).toHaveLength(2);
     });
 
     it("sets isDone correctly for last page", async () => {
@@ -657,17 +657,20 @@ describe("audit log edge cases", () => {
       const { sessionId } = await createSessionWithAdmin(t);
       const sameTimestamp = 1000000;
 
-      // Create multiple logs with identical timestamps
-      await t.run(async (ctx) => {
+      // Create multiple logs with identical timestamps and capture their IDs
+      const logIds = await t.run(async (ctx) => {
+        const ids: Id<"auditLogs">[] = [];
         for (let i = 0; i < 5; i++) {
-          await ctx.db.insert(
+          const logId = await ctx.db.insert(
             "auditLogs",
             auditLogFactory(sessionId, {
               timestamp: sameTimestamp,
               action: "SESSION_UPDATED",
             })
           );
+          ids.push(logId);
         }
+        return ids;
       });
 
       const result = await t.query(api.audit.getSessionAuditLog, {
@@ -681,6 +684,11 @@ describe("audit log edge cases", () => {
       expect(result.page.every((log) => log.timestamp === sameTimestamp)).toBe(
         true
       );
+
+      // Verify deterministic order (Convex uses _id descending as tie-breaker)
+      const returnedIds = result.page.map((log) => log._id);
+      const expectedOrder = [...logIds].reverse();
+      expect(returnedIds).toEqual(expectedOrder);
     });
   });
 
