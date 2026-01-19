@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "bunx --bun vite",
     "build": "tsc -b && bunx --bun vite build",
+    "typecheck": "tsc -b && tsc --noEmit -p convex/tsconfig.json",
+    "typecheck:convex": "tsc --noEmit -p convex/tsconfig.json",
     "lint": "eslint .",
     "preview": "bunx --bun vite preview",
     "test": "vitest",
