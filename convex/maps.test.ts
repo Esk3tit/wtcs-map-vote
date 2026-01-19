@@ -751,22 +751,63 @@ describe("maps.reactivateMap", () => {
   });
 
   describe("duplicate name conflict", () => {
+    // NOTE: The following test documents a potential bug in reactivateMap.
+    // The production code (maps.ts:483-486) checks for ANY map with the same
+    // name, not just ACTIVE maps. This means reactivating a map fails if
+    // another INACTIVE map has the same name, which may not be intended.
+    // This test is skipped to document the current behavior vs expected.
+    it.skip("allows reactivating when another inactive map has same name", async () => {
+      const t = createTestContext();
+
+      const { mapToReactivateId } = await t.run(async (ctx) => {
+        // Create another inactive map with the same name (with a lower _id)
+        await ctx.db.insert(
+          "maps",
+          mapFactory({
+            name: "Contested Name",
+            imageUrl: "https://example.com/map1.png",
+            isActive: false,
+          })
+        );
+
+        // Create the map we intend to reactivate
+        const mapToReactivateId = await ctx.db.insert(
+          "maps",
+          mapFactory({
+            name: "Contested Name",
+            imageUrl: "https://example.com/map2.png",
+            isActive: false,
+          })
+        );
+
+        return { mapToReactivateId };
+      });
+
+      // This SHOULD succeed since there's no ACTIVE map with the same name.
+      // Currently fails due to production code not filtering by isActive.
+      await expect(
+        t.mutation(api.maps.reactivateMap, { mapId: mapToReactivateId })
+      ).resolves.toEqual({ success: true });
+    });
+
     it("throws when another active map has same name", async () => {
       const t = createTestContext();
 
       const deactivatedMapId = await t.run(async (ctx) => {
-        // IMPORTANT: Insertion order matters here.
-        // The maps.ts reactivateMap function uses .first() to find duplicates.
-        // Convex .first() returns the document with the lower _id when index
-        // values are equal. We insert the active map FIRST so it gets the
-        // lower _id and is found by the duplicate check.
+        // NOTE: The reactivateMap function queries by name only (maps.ts:483-486)
+        // without filtering by isActive. It uses .first() which returns the
+        // document with the lower _id. We insert the active map FIRST so it
+        // has the lower _id and is found by the duplicate check.
+        //
+        // This test verifies the current behavior: reactivation fails when
+        // ANY other map (active or inactive) with the same name exists and
+        // has a lower _id than the map being reactivated.
         await ctx.db.insert("maps", mapFactory({
           name: "Contested Name",
           imageUrl: "https://example.com/map1.png",
           isActive: true,
         }));
 
-        // Create inactive map SECOND (will have higher _id)
         const inactiveId = await ctx.db.insert("maps", mapFactory({
           name: "Contested Name",
           imageUrl: "https://example.com/map2.png",
