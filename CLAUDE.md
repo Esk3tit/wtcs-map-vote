@@ -21,7 +21,9 @@ WTCS Map Vote - A React application for map voting functionality.
 ## Commands
 
 - `bun run dev` - Start development server
-- `bun run build` - Type-check and build for production
+- `bun run build` - Type-check app and build for production
+- `bun run typecheck` - Type-check both app and convex (run before commits)
+- `bun run typecheck:convex` - Type-check only convex folder
 - `bun run lint` - Run ESLint
 - `bun run preview` - Preview production build
 
@@ -173,8 +175,10 @@ Follow these conventions for all Convex function files (`convex/*.ts`, excluding
 
 - **TypeScript strict mode** - the project uses strict TypeScript, ensure all types are properly defined
 - **No `any` types** - avoid using `any` without clear justification; prefer `unknown` or proper typing
+- **Run typecheck before commits** - always run `bun run typecheck` to catch TypeScript errors in both app and convex
 - **Run linting before commits** - always run `bun run lint` before committing to catch issues early
-- **Run build to type-check** - use `bun run build` to verify no TypeScript errors
+
+**Important:** The app (`src/`) and convex (`convex/`) folders have separate TypeScript configs. `bun run build` only checks `src/`, so always use `bun run typecheck` to check both before pushing.
 
 ## Testing Tools
 
@@ -192,6 +196,8 @@ bun test convex/maps.test.ts  # Run specific test file
 - `convex/smoke.test.ts` - Infrastructure smoke tests
 - `convex/teams.test.ts` - Teams CRUD unit tests
 - `convex/maps.test.ts` - Maps CRUD unit tests
+- `convex/sessions.test.ts` - Sessions CRUD unit tests
+- `convex/audit.test.ts` - Audit logging unit tests
 
 **Key patterns:**
 ```typescript
@@ -334,6 +340,17 @@ The schema is defined in `convex/schema.ts` with 8 tables:
 - **Always create a new branch** when starting major changes
 - **Never commit directly to main** - use feature branches and PRs
 - Branch naming: `feature/<description>`, `fix/<description>`, etc.
+
+## CI/CD
+
+GitHub Actions runs on all PRs and pushes to main (`.github/workflows/ci.yml`):
+
+1. **Typecheck (App)** - `bun run build`
+2. **Typecheck (Convex)** - `bunx tsc --noEmit -p convex/tsconfig.json`
+3. **Lint** - `bun run lint`
+4. **Test** - `bun run test:once`
+
+PRs will fail if any step fails. Run `bun run typecheck && bun run lint && bun run test:once` locally before pushing.
 
 ## Documentation
 
