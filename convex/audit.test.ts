@@ -9,7 +9,7 @@
  * public API and internal mutation directly.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, beforeAll } from "vitest";
 import { createTestContext } from "./test.setup";
 import {
   adminFactory,
@@ -157,21 +157,6 @@ describe("audit.logActionMutation", () => {
       const log = await t.run(async (ctx) => ctx.db.get(logId));
       expect(log?.details).toEqual({});
     });
-
-    it("returns created document ID", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionWithAdmin(t);
-
-      const logId = await t.mutation(internal.audit.logActionMutation, {
-        sessionId,
-        action: "SESSION_CREATED",
-        actorType: "SYSTEM",
-      });
-
-      expect(typeof logId).toBe("string");
-      // Convex IDs can have formats like "10002;auditLogs" in test environment
-      expect(logId.length).toBeGreaterThan(0);
-    });
   });
 
   describe("actor type variations", () => {
@@ -300,7 +285,7 @@ describe("audit.logActionMutation", () => {
 
 describe("audit.getSessionAuditLog", () => {
   describe("empty state", () => {
-    it("returns empty page when no audit logs exist", async () => {
+    it("returns empty result for session with no logs", async () => {
       const t = createTestContext();
       const { sessionId } = await createSessionWithAdmin(t);
 
@@ -310,17 +295,6 @@ describe("audit.getSessionAuditLog", () => {
       });
 
       expect(result.page).toEqual([]);
-    });
-
-    it("returns isDone: true for empty results", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionWithAdmin(t);
-
-      const result = await t.query(api.audit.getSessionAuditLog, {
-        sessionId,
-        paginationOpts: { numItems: 10, cursor: null },
-      });
-
       expect(result.isDone).toBe(true);
     });
   });
@@ -592,6 +566,27 @@ describe("audit.getRecentLogs", () => {
   });
 
   describe("limit clamping", () => {
+    // Share test data across all limit clamping tests to reduce database inserts
+    // (6 tests × 150 logs = 900 inserts → 150 inserts once)
+    let sharedSessionId: Id<"sessions">;
+    let sharedContext: ReturnType<typeof createTestContext>;
+
+    beforeAll(async () => {
+      sharedContext = createTestContext();
+      const { sessionId } = await createSessionWithAdmin(sharedContext);
+      sharedSessionId = sessionId;
+
+      // Create more logs than max limit to ensure clamping is testable
+      await sharedContext.run(async (ctx) => {
+        for (let i = 0; i < 150; i++) {
+          await ctx.db.insert(
+            "auditLogs",
+            auditLogFactory(sharedSessionId, { timestamp: Date.now() + i })
+          );
+        }
+      });
+    });
+
     it.each([
       { input: 0, expected: 1, description: "clamps 0 to minimum of 1" },
       { input: -5, expected: 1, description: "clamps negative to minimum of 1" },
@@ -600,21 +595,8 @@ describe("audit.getRecentLogs", () => {
       { input: 100, expected: 100, description: "accepts maximum boundary (100)" },
       { input: 200, expected: 100, description: "clamps over-limit to maximum of 100" },
     ])("$description (limit: $input)", async ({ input, expected }) => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionWithAdmin(t);
-
-      // Create more logs than max limit to ensure clamping is testable
-      await t.run(async (ctx) => {
-        for (let i = 0; i < 150; i++) {
-          await ctx.db.insert(
-            "auditLogs",
-            auditLogFactory(sessionId, { timestamp: Date.now() + i })
-          );
-        }
-      });
-
-      const result = await t.query(api.audit.getRecentLogs, {
-        sessionId,
+      const result = await sharedContext.query(api.audit.getRecentLogs, {
+        sessionId: sharedSessionId,
         limit: input,
       });
 
@@ -624,47 +606,21 @@ describe("audit.getRecentLogs", () => {
 });
 
 // ============================================================================
-// Immutability Tests
+// Audit Log Immutability (Design Documentation - No Tests Required)
 // ============================================================================
-
-describe("audit log immutability", () => {
-  // The audit module is immutable by design - it only exposes query functions
-  // and an internal mutation. There are no public update/delete mutations.
-  //
-  // This is verified by:
-  // 1. Code inspection: convex/audit.ts only exports getSessionAuditLog and
-  //    getRecentLogs queries, plus logActionMutation as an internal mutation
-  // 2. TypeScript: The api.audit type only includes the query functions
-  // 3. The orphaned reference test in sessions.test.ts verifies logs survive
-  //    session deletion (they are intentionally kept as orphaned references)
-
-  it("verifies queries work without modification capabilities", async () => {
-    // This test implicitly verifies immutability by confirming that:
-    // - We can create logs (via internal mutation only)
-    // - We can read logs (via queries)
-    // - There is no way to update or delete logs through the public API
-    const t = createTestContext();
-    const { sessionId } = await createSessionWithAdmin(t);
-
-    // Create a log via internal mutation
-    const logId = await t.mutation(internal.audit.logActionMutation, {
-      sessionId,
-      action: "SESSION_CREATED",
-      actorType: "SYSTEM",
-    });
-
-    // Verify we can read it
-    const log = await t.run(async (ctx) => ctx.db.get(logId));
-    expect(log).toBeDefined();
-    expect(log?.action).toBe("SESSION_CREATED");
-
-    // The only way to modify would be through mutations that don't exist
-    // This is enforced by the module design, not runtime checks
-  });
-
-  // Note: Orphaned reference preservation (logs survive session deletion)
-  // is tested in sessions.test.ts under "deleteSession preserves audit logs"
-});
+//
+// The audit module is immutable by design - it only exposes query functions
+// and an internal mutation. There are no public update/delete mutations.
+//
+// This is verified by:
+// 1. Code inspection: convex/audit.ts only exports getSessionAuditLog and
+//    getRecentLogs queries, plus logActionMutation as an internal mutation
+// 2. TypeScript: The api.audit type only includes the query functions
+// 3. The orphaned reference test in sessions.test.ts verifies logs survive
+//    session deletion (they are intentionally kept as orphaned references)
+//
+// Note: Orphaned reference preservation (logs survive session deletion)
+// is tested in sessions.test.ts under "deleteSession preserves audit logs"
 
 // ============================================================================
 // Edge Cases
