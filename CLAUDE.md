@@ -178,6 +178,51 @@ Follow these conventions for all Convex function files (`convex/*.ts`, excluding
 
 ## Testing Tools
 
+### Convex Unit Tests
+
+The project uses `convex-test` for backend unit testing. Test files are in `convex/*.test.ts`.
+
+**Run tests:**
+```bash
+bun test                    # Run all tests
+bun test convex/maps.test.ts  # Run specific test file
+```
+
+**Test structure:**
+- `convex/smoke.test.ts` - Infrastructure smoke tests
+- `convex/teams.test.ts` - Teams CRUD unit tests
+- `convex/maps.test.ts` - Maps CRUD unit tests
+
+**Key patterns:**
+```typescript
+import { convexTest } from "convex-test";
+import { api } from "./_generated/api";
+import schema from "./schema";
+
+// Create test context with schema
+const createTestContext = () => convexTest(schema);
+
+// Use factories for test data
+const mapFactory = (overrides = {}) => ({
+  name: "Test Map",
+  imageUrl: "https://example.com/map.png",
+  isActive: true,
+  ...overrides,
+});
+
+// Test mutations and queries
+it("creates a map", async () => {
+  const t = createTestContext();
+  const result = await t.mutation(api.maps.createMap, {
+    name: "New Map",
+    imageUrl: "https://example.com/map.png",
+  });
+  expect(result.success).toBe(true);
+});
+```
+
+**Note:** Convex storage IDs cannot be tested directly with convex-test. Tests requiring storage validation are skipped with documentation.
+
 ### Dev Browser Skill (UI Testing)
 
 **Always use the `/dev-browser` skill to test the UI** when:

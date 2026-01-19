@@ -9,6 +9,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Maps CRUD Unit Tests** (`convex/maps.test.ts`):
+  - 125+ tests covering all maps CRUD operations
+  - Factory pattern for test data creation
+  - Comprehensive validation tests (name, URL, SSRF protection)
+  - Session blocking tests for active map protection
+  - Soft-delete pattern tests (deactivate/reactivate)
+  - Edge cases: case-sensitivity, whitespace trimming, duplicate names
+  - SSRF protection tests using `it.each` for private IP ranges
+- **Teams CRUD Unit Tests** (`convex/teams.test.ts`):
+  - Complete coverage for teams CRUD operations
+  - Session blocking protection tests
+  - Validation and uniqueness tests
+- **Test Infrastructure** (`convex/smoke.test.ts`):
+  - convex-test framework integration
+  - Bun test runner configuration
+  - Factory pattern helpers
 - **Centralized Audit Logging Module** (`convex/audit.ts`):
   - `logAction()` helper for same-transaction logging from mutations
   - `logActionMutation` internal mutation for actions/cross-function calls
