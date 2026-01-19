@@ -2,7 +2,7 @@
 
 Current progress and next steps for the WTCS Map Vote project.
 
-**Last Updated:** January 16, 2026
+**Last Updated:** January 19, 2026
 
 ---
 
@@ -79,6 +79,10 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] Pagination best practices documentation
 - [x] Centralized audit logging module (`convex/audit.ts`)
 - [x] Audit action types and validators
+- [x] convex-test unit testing framework setup
+- [x] Teams CRUD unit tests (`convex/teams.test.ts`)
+- [x] Maps CRUD unit tests (`convex/maps.test.ts`)
+- [x] Test infrastructure and smoke tests (`convex/smoke.test.ts`)
 
 ---
 
