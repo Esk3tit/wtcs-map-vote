@@ -25,7 +25,11 @@ import {
 } from "./test.factories";
 import { api } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
-import { SessionStatus } from "./lib/constants";
+import {
+  SessionStatus,
+  MIN_MAP_POOL_SIZE,
+  MAX_MAP_POOL_SIZE,
+} from "./lib/constants";
 
 // ============================================================================
 // Test Helpers
@@ -1761,25 +1765,32 @@ describe("sessions.setSessionMaps", () => {
       // Should have two MAPS_ASSIGNED logs
       const mapsAssignedLogs = logs.filter((l) => l.action === "MAPS_ASSIGNED");
       expect(mapsAssignedLogs).toHaveLength(2);
+
+      // Verify log content structure (most recent first due to desc order)
+      expect(mapsAssignedLogs[0]).toMatchObject({
+        action: "MAPS_ASSIGNED",
+        sessionId,
+      });
+      expect(mapsAssignedLogs[0].timestamp).toBeDefined();
     });
   });
 
   describe("boundary tests", () => {
-    it("handles minimum map pool size (3 maps)", async () => {
+    it(`handles minimum map pool size (${MIN_MAP_POOL_SIZE} maps)`, async () => {
       const t = createTestContext();
 
       const { sessionId, mapIds } = await t.run(async (ctx) => {
         const adminId = await ctx.db.insert("admins", adminFactory());
         const sessionId = await ctx.db.insert(
           "sessions",
-          sessionFactory(adminId, { mapPoolSize: 3 })
+          sessionFactory(adminId, { mapPoolSize: MIN_MAP_POOL_SIZE })
         );
 
-        const mapIds = await Promise.all([
-          ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
-          ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
-          ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
-        ]);
+        const mapIds = await Promise.all(
+          Array.from({ length: MIN_MAP_POOL_SIZE }, (_, i) =>
+            ctx.db.insert("maps", mapFactory({ name: `Map ${i + 1}` }))
+          )
+        );
 
         return { sessionId, mapIds };
       });
@@ -1798,27 +1809,24 @@ describe("sessions.setSessionMaps", () => {
           .collect()
       );
 
-      expect(sessionMaps).toHaveLength(3);
+      expect(sessionMaps).toHaveLength(MIN_MAP_POOL_SIZE);
     });
 
-    it("handles maximum map pool size (15 maps)", async () => {
+    it(`handles maximum map pool size (${MAX_MAP_POOL_SIZE} maps)`, async () => {
       const t = createTestContext();
 
       const { sessionId, mapIds } = await t.run(async (ctx) => {
         const adminId = await ctx.db.insert("admins", adminFactory());
         const sessionId = await ctx.db.insert(
           "sessions",
-          sessionFactory(adminId, { mapPoolSize: 15 })
+          sessionFactory(adminId, { mapPoolSize: MAX_MAP_POOL_SIZE })
         );
 
-        const mapIds: Id<"maps">[] = [];
-        for (let i = 0; i < 15; i++) {
-          const id = await ctx.db.insert(
-            "maps",
-            mapFactory({ name: `Map ${i + 1}` })
-          );
-          mapIds.push(id);
-        }
+        const mapIds = await Promise.all(
+          Array.from({ length: MAX_MAP_POOL_SIZE }, (_, i) =>
+            ctx.db.insert("maps", mapFactory({ name: `Map ${i + 1}` }))
+          )
+        );
 
         return { sessionId, mapIds };
       });
@@ -1837,8 +1845,12 @@ describe("sessions.setSessionMaps", () => {
           .collect()
       );
 
-      expect(sessionMaps).toHaveLength(15);
+      expect(sessionMaps).toHaveLength(MAX_MAP_POOL_SIZE);
     });
+
+    // Note: MIN/MAX_MAP_POOL_SIZE validation is enforced at session creation,
+    // not at map assignment. Tests for pool size range validation belong in
+    // session creation tests, not setSessionMaps tests.
   });
 
   describe("snapshot persistence", () => {
@@ -1949,10 +1961,12 @@ describe("sessions.setSessionMaps", () => {
         return { sessionId, mapId };
       });
 
-      await t.mutation(api.sessions.setSessionMaps, {
+      const result = await t.mutation(api.sessions.setSessionMaps, {
         sessionId,
         mapIds: [mapId],
       });
+
+      expect(result.success).toBe(true);
 
       const sessionMaps = await t.run(async (ctx) =>
         ctx.db
@@ -1982,10 +1996,12 @@ describe("sessions.setSessionMaps", () => {
         return { sessionId, mapId };
       });
 
-      await t.mutation(api.sessions.setSessionMaps, {
+      const result = await t.mutation(api.sessions.setSessionMaps, {
         sessionId,
         mapIds: [mapId],
       });
+
+      expect(result.success).toBe(true);
 
       const sessionMaps = await t.run(async (ctx) =>
         ctx.db
@@ -2036,15 +2052,18 @@ describe("sessions.setSessionMaps", () => {
       );
 
       // Assign maps to both sessions
-      await t.mutation(api.sessions.setSessionMaps, {
+      const result1 = await t.mutation(api.sessions.setSessionMaps, {
         sessionId: session1Id,
         mapIds: maps1,
       });
 
-      await t.mutation(api.sessions.setSessionMaps, {
+      const result2 = await t.mutation(api.sessions.setSessionMaps, {
         sessionId: session2Id,
         mapIds: maps2,
       });
+
+      expect(result1.success).toBe(true);
+      expect(result2.success).toBe(true);
 
       // Verify session 1 maps
       const session1Maps = await t.run(async (ctx) =>
@@ -2107,20 +2126,24 @@ describe("sessions.setSessionMaps", () => {
       });
 
       // Rapid sequential reassignments
-      await t.mutation(api.sessions.setSessionMaps, {
+      const result1 = await t.mutation(api.sessions.setSessionMaps, {
         sessionId,
         mapIds: mapSets[0],
       });
 
-      await t.mutation(api.sessions.setSessionMaps, {
+      const result2 = await t.mutation(api.sessions.setSessionMaps, {
         sessionId,
         mapIds: mapSets[1],
       });
 
-      await t.mutation(api.sessions.setSessionMaps, {
+      const result3 = await t.mutation(api.sessions.setSessionMaps, {
         sessionId,
         mapIds: mapSets[2],
       });
+
+      expect(result1.success).toBe(true);
+      expect(result2.success).toBe(true);
+      expect(result3.success).toBe(true);
 
       // Verify final state has only the last set
       const sessionMaps = await t.run(async (ctx) =>
