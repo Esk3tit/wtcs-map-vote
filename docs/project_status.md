@@ -2,7 +2,7 @@
 
 Current progress and next steps for the WTCS Map Vote project.
 
-**Last Updated:** January 19, 2026
+**Last Updated:** January 20, 2026
 
 ---
 
@@ -83,6 +83,8 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] Teams CRUD unit tests (`convex/teams.test.ts`)
 - [x] Maps CRUD unit tests (`convex/maps.test.ts`)
 - [x] Sessions CRUD unit tests (`convex/sessions.test.ts`)
+- [x] Session players edge case tests (WAR-18) - token expiry, capacity, state restrictions
+- [x] Session maps edge case tests (WAR-19) - snapshots, boundaries, unicode, rapid reassignments
 - [x] Test infrastructure and smoke tests (`convex/smoke.test.ts`)
 
 ---

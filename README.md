@@ -85,6 +85,25 @@ docs/
 └── project_status.md # Current progress
 ```
 
+## Testing
+
+The project uses `convex-test` with Vitest for backend unit testing.
+
+```bash
+bun test                        # Run all tests
+bun test convex/sessions.test.ts  # Run specific test file
+bun run test:coverage           # Run tests with coverage report
+```
+
+**Test Coverage:**
+- Teams CRUD operations
+- Maps CRUD operations (including SSRF protection)
+- Sessions CRUD operations (93+ tests)
+- Audit logging functions
+- URL validation (34 security tests)
+
+Coverage thresholds are enforced at 70% lines, 75% functions, 70% branches.
+
 ## Documentation
 
 - [Specification](docs/SPECIFICATION.md) - Complete product requirements

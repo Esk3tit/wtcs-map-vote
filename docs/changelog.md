@@ -9,6 +9,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Session Maps Edge Case Tests** (WAR-19):
+  - Audit log on reassignment with content verification
+  - Boundary tests at MIN_MAP_POOL_SIZE (3) and MAX_MAP_POOL_SIZE (15)
+  - Snapshot persistence when source map is updated or deactivated
+  - Edge cases: long names (100 chars), special characters/unicode, multiple sessions isolation
+  - Rapid sequential reassignments verification
+  - Optional field initialization tests
+  - Uses constants from `convex/lib/constants.ts` for maintainability
+- **Session Players Edge Case Tests** (WAR-18):
+  - Token expiry handling with `TOKEN_EXPIRY_MS` constant
+  - Comprehensive `assignPlayer` mutation coverage
+  - Player capacity and state restriction tests
 - **Audit Logging Unit Tests** (`convex/audit.test.ts`):
   - 45 tests covering all audit logging functions
   - `logActionMutation`: success cases, actor types, action types, details validation
@@ -28,15 +40,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `bun run typecheck` - Check both app and convex TypeScript
   - `bun run typecheck:convex` - Check only convex folder
 - **Sessions CRUD Unit Tests** (`convex/sessions.test.ts`):
-  - 102 tests covering all sessions CRUD operations
+  - 93+ tests covering all sessions CRUD operations (expanded via WAR-18/WAR-19)
   - Test helpers: `createAdmin()`, `createSessionInStatus()`, `createFullSession()`
   - `createSession`: 29 tests (success, validation, boundary values, audit)
   - `listSessions`: 8 tests (empty, pagination, filtering by status)
   - `getSession`: 5 tests (success with relations, not found)
   - `updateSession`: 11 tests (success, validation, state restrictions, audit)
   - `deleteSession`: 9 tests (cascade delete with players/maps/votes, state restrictions, audit)
-  - `assignPlayer`: 12 tests (success, validation, capacity, state restrictions, audit)
-  - `setSessionMaps`: 12 tests (success, validation, state restrictions, audit)
+  - `assignPlayer`: 20+ tests (success, validation, capacity, state restrictions, token expiry, audit)
+  - `setSessionMaps`: 20+ tests (success, validation, state restrictions, snapshots, edge cases, audit)
   - Session state machine tests (DRAFT, WAITING, IN_PROGRESS, PAUSED, COMPLETE, EXPIRED)
   - Cascade delete verification for related entities
 - **Maps CRUD Unit Tests** (`convex/maps.test.ts`):
