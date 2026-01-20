@@ -25,7 +25,7 @@ import {
 } from "./test.factories";
 import { api } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
-import { SessionStatus } from "./lib/constants";
+import { SessionStatus, TOKEN_EXPIRY_MS } from "./lib/constants";
 
 // ============================================================================
 // Test Helpers
@@ -1387,10 +1387,8 @@ describe("sessions.assignPlayer", () => {
       });
 
       const player = await t.run(async (ctx) => ctx.db.get(playerId));
-      // TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000 (24 hours)
-      const twentyFourHoursMs = 24 * 60 * 60 * 1000;
-      const expectedMinExpiry = beforeAssign + twentyFourHoursMs - 1000; // Allow 1s tolerance
-      const expectedMaxExpiry = beforeAssign + twentyFourHoursMs + 1000;
+      const expectedMinExpiry = beforeAssign + TOKEN_EXPIRY_MS - 1000; // Allow 1s tolerance
+      const expectedMaxExpiry = beforeAssign + TOKEN_EXPIRY_MS + 1000;
       expect(player?.tokenExpiresAt).toBeGreaterThanOrEqual(expectedMinExpiry);
       expect(player?.tokenExpiresAt).toBeLessThanOrEqual(expectedMaxExpiry);
     });
@@ -1517,7 +1515,11 @@ describe("sessions.assignPlayer", () => {
   });
 
   describe("role validation", () => {
-    it("throws for empty role", async () => {
+    it.each([
+      ["empty role", "", /cannot be empty/i],
+      ["whitespace-only role", "   ", /cannot be empty/i],
+      ["role exceeding 100 characters", "a".repeat(101), /100 characters/i],
+    ])("throws for %s", async (_description, role, expectedError) => {
       const t = createTestContext();
       const { sessionId } = await createSessionInStatus(t, "DRAFT", {
         playerCount: 2,
@@ -1530,50 +1532,10 @@ describe("sessions.assignPlayer", () => {
       await expect(
         t.mutation(api.sessions.assignPlayer, {
           sessionId,
-          role: "",
+          role,
           teamName: "Test Team",
         })
-      ).rejects.toThrow(/cannot be empty/i);
-    });
-
-    it("throws for whitespace-only role", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "DRAFT", {
-        playerCount: 2,
-      });
-
-      await t.run(async (ctx) => {
-        await ctx.db.insert("teams", teamFactory({ name: "Test Team" }));
-      });
-
-      await expect(
-        t.mutation(api.sessions.assignPlayer, {
-          sessionId,
-          role: "   ",
-          teamName: "Test Team",
-        })
-      ).rejects.toThrow(/cannot be empty/i);
-    });
-
-    it("throws for role exceeding 100 characters", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "DRAFT", {
-        playerCount: 2,
-      });
-
-      await t.run(async (ctx) => {
-        await ctx.db.insert("teams", teamFactory({ name: "Test Team" }));
-      });
-
-      const longRole = "a".repeat(101);
-
-      await expect(
-        t.mutation(api.sessions.assignPlayer, {
-          sessionId,
-          role: longRole,
-          teamName: "Test Team",
-        })
-      ).rejects.toThrow(/100 characters/i);
+      ).rejects.toThrow(expectedError);
     });
   });
 });
