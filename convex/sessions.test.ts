@@ -25,7 +25,12 @@ import {
 } from "./test.factories";
 import { api } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
-import { SessionStatus, TOKEN_EXPIRY_MS } from "./lib/constants";
+import {
+  SessionStatus,
+  MIN_MAP_POOL_SIZE,
+  MAX_MAP_POOL_SIZE,
+  TOKEN_EXPIRY_MS,
+} from "./lib/constants";
 
 // ============================================================================
 // Test Helpers
@@ -1882,6 +1887,478 @@ describe("sessions.setSessionMaps", () => {
         action: "MAPS_ASSIGNED",
         actorType: "ADMIN",
       });
+    });
+
+    it("creates MAPS_ASSIGNED audit log on reassignment", async () => {
+      const t = createTestContext();
+
+      const { sessionId, oldMapIds, newMapIds } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { mapPoolSize: 2 })
+        );
+
+        // Create old maps and assign them
+        const oldMapIds = await Promise.all([
+          ctx.db.insert("maps", mapFactory({ name: "Old Map 1" })),
+          ctx.db.insert("maps", mapFactory({ name: "Old Map 2" })),
+        ]);
+
+        // Create new maps for reassignment
+        const newMapIds = await Promise.all([
+          ctx.db.insert("maps", mapFactory({ name: "New Map 1" })),
+          ctx.db.insert("maps", mapFactory({ name: "New Map 2" })),
+        ]);
+
+        return { sessionId, oldMapIds, newMapIds };
+      });
+
+      // Initial assignment
+      await t.mutation(api.sessions.setSessionMaps, {
+        sessionId,
+        mapIds: oldMapIds,
+      });
+
+      // Reassignment
+      await t.mutation(api.sessions.setSessionMaps, {
+        sessionId,
+        mapIds: newMapIds,
+      });
+
+      const logs = await t.run(async (ctx) =>
+        ctx.db
+          .query("auditLogs")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+          .order("desc")
+          .collect()
+      );
+
+      // Should have two MAPS_ASSIGNED logs
+      const mapsAssignedLogs = logs.filter((l) => l.action === "MAPS_ASSIGNED");
+      expect(mapsAssignedLogs).toHaveLength(2);
+
+      // Verify log content structure (most recent first due to desc order)
+      expect(mapsAssignedLogs[0]).toMatchObject({
+        action: "MAPS_ASSIGNED",
+        sessionId,
+      });
+      expect(mapsAssignedLogs[0].timestamp).toBeDefined();
+    });
+  });
+
+  describe("boundary tests", () => {
+    it(`handles minimum map pool size (${MIN_MAP_POOL_SIZE} maps)`, async () => {
+      const t = createTestContext();
+
+      const { sessionId, mapIds } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { mapPoolSize: MIN_MAP_POOL_SIZE })
+        );
+
+        const mapIds = await Promise.all(
+          Array.from({ length: MIN_MAP_POOL_SIZE }, (_, i) =>
+            ctx.db.insert("maps", mapFactory({ name: `Map ${i + 1}` }))
+          )
+        );
+
+        return { sessionId, mapIds };
+      });
+
+      const result = await t.mutation(api.sessions.setSessionMaps, {
+        sessionId,
+        mapIds,
+      });
+
+      expect(result.success).toBe(true);
+
+      const sessionMaps = await t.run(async (ctx) =>
+        ctx.db
+          .query("sessionMaps")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+          .collect()
+      );
+
+      expect(sessionMaps).toHaveLength(MIN_MAP_POOL_SIZE);
+    });
+
+    it(`handles maximum map pool size (${MAX_MAP_POOL_SIZE} maps)`, async () => {
+      const t = createTestContext();
+
+      const { sessionId, mapIds } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { mapPoolSize: MAX_MAP_POOL_SIZE })
+        );
+
+        const mapIds = await Promise.all(
+          Array.from({ length: MAX_MAP_POOL_SIZE }, (_, i) =>
+            ctx.db.insert("maps", mapFactory({ name: `Map ${i + 1}` }))
+          )
+        );
+
+        return { sessionId, mapIds };
+      });
+
+      const result = await t.mutation(api.sessions.setSessionMaps, {
+        sessionId,
+        mapIds,
+      });
+
+      expect(result.success).toBe(true);
+
+      const sessionMaps = await t.run(async (ctx) =>
+        ctx.db
+          .query("sessionMaps")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+          .collect()
+      );
+
+      expect(sessionMaps).toHaveLength(MAX_MAP_POOL_SIZE);
+    });
+
+    // Note: MIN/MAX_MAP_POOL_SIZE validation is enforced at session creation,
+    // not at map assignment. Tests for pool size range validation belong in
+    // session creation tests, not setSessionMaps tests.
+  });
+
+  describe("snapshot persistence", () => {
+    it("preserves snapshot when source map is updated", async () => {
+      const t = createTestContext();
+
+      const { sessionId, mapId } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { mapPoolSize: 1 })
+        );
+        const mapId = await ctx.db.insert(
+          "maps",
+          mapFactory({ name: "Original Name", imageUrl: "https://original.png" })
+        );
+        return { sessionId, mapId };
+      });
+
+      // Assign map to session
+      await t.mutation(api.sessions.setSessionMaps, {
+        sessionId,
+        mapIds: [mapId],
+      });
+
+      // Update source map in master pool
+      await t.run(async (ctx) => {
+        await ctx.db.patch(mapId, {
+          name: "Updated Name",
+          imageUrl: "https://updated.png",
+        });
+      });
+
+      // Verify session map snapshot still has original values
+      const sessionMaps = await t.run(async (ctx) =>
+        ctx.db
+          .query("sessionMaps")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+          .collect()
+      );
+
+      expect(sessionMaps[0]).toMatchObject({
+        name: "Original Name",
+        imageUrl: "https://original.png",
+      });
+
+      // Verify source map was actually updated
+      const sourceMap = await t.run(async (ctx) => ctx.db.get(mapId));
+      expect(sourceMap?.name).toBe("Updated Name");
+    });
+
+    it("preserves snapshot when source map is deactivated", async () => {
+      const t = createTestContext();
+
+      const { sessionId, mapId } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { mapPoolSize: 1 })
+        );
+        const mapId = await ctx.db.insert(
+          "maps",
+          mapFactory({ name: "Active Map", isActive: true })
+        );
+        return { sessionId, mapId };
+      });
+
+      // Assign map to session
+      await t.mutation(api.sessions.setSessionMaps, {
+        sessionId,
+        mapIds: [mapId],
+      });
+
+      // Deactivate source map
+      await t.run(async (ctx) => {
+        await ctx.db.patch(mapId, { isActive: false });
+      });
+
+      // Verify session map snapshot still exists
+      const sessionMaps = await t.run(async (ctx) =>
+        ctx.db
+          .query("sessionMaps")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+          .collect()
+      );
+
+      expect(sessionMaps).toHaveLength(1);
+      expect(sessionMaps[0].name).toBe("Active Map");
+      expect(sessionMaps[0].state).toBe("AVAILABLE");
+    });
+  });
+
+  describe("edge cases", () => {
+    it("handles maps with very long names (max 100 characters)", async () => {
+      const t = createTestContext();
+      const longName = "A".repeat(100);
+
+      const { sessionId, mapId } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { mapPoolSize: 1 })
+        );
+        const mapId = await ctx.db.insert(
+          "maps",
+          mapFactory({ name: longName })
+        );
+        return { sessionId, mapId };
+      });
+
+      const result = await t.mutation(api.sessions.setSessionMaps, {
+        sessionId,
+        mapIds: [mapId],
+      });
+
+      expect(result.success).toBe(true);
+
+      const sessionMaps = await t.run(async (ctx) =>
+        ctx.db
+          .query("sessionMaps")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+          .collect()
+      );
+
+      expect(sessionMaps[0].name).toBe(longName);
+      expect(sessionMaps[0].name).toHaveLength(100);
+    });
+
+    it("handles maps with special characters in name", async () => {
+      const t = createTestContext();
+      const specialName = "Mäp with émojis & spëcial <chars> 中文 🗺️";
+
+      const { sessionId, mapId } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { mapPoolSize: 1 })
+        );
+        const mapId = await ctx.db.insert(
+          "maps",
+          mapFactory({ name: specialName })
+        );
+        return { sessionId, mapId };
+      });
+
+      const result = await t.mutation(api.sessions.setSessionMaps, {
+        sessionId,
+        mapIds: [mapId],
+      });
+
+      expect(result.success).toBe(true);
+
+      const sessionMaps = await t.run(async (ctx) =>
+        ctx.db
+          .query("sessionMaps")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+          .collect()
+      );
+
+      expect(sessionMaps[0].name).toBe(specialName);
+    });
+
+    it("maintains correct sessionId reference when multiple sessions exist", async () => {
+      const t = createTestContext();
+
+      const { session1Id, session2Id, maps1, maps2 } = await t.run(
+        async (ctx) => {
+          const adminId = await ctx.db.insert("admins", adminFactory());
+
+          const session1Id = await ctx.db.insert(
+            "sessions",
+            sessionFactory(adminId, {
+              mapPoolSize: 2,
+              matchName: "Session 1",
+            })
+          );
+
+          const session2Id = await ctx.db.insert(
+            "sessions",
+            sessionFactory(adminId, {
+              mapPoolSize: 2,
+              matchName: "Session 2",
+            })
+          );
+
+          // Create maps for each session
+          const maps1 = await Promise.all([
+            ctx.db.insert("maps", mapFactory({ name: "S1 Map A" })),
+            ctx.db.insert("maps", mapFactory({ name: "S1 Map B" })),
+          ]);
+
+          const maps2 = await Promise.all([
+            ctx.db.insert("maps", mapFactory({ name: "S2 Map X" })),
+            ctx.db.insert("maps", mapFactory({ name: "S2 Map Y" })),
+          ]);
+
+          return { session1Id, session2Id, maps1, maps2 };
+        }
+      );
+
+      // Assign maps to both sessions
+      const result1 = await t.mutation(api.sessions.setSessionMaps, {
+        sessionId: session1Id,
+        mapIds: maps1,
+      });
+
+      const result2 = await t.mutation(api.sessions.setSessionMaps, {
+        sessionId: session2Id,
+        mapIds: maps2,
+      });
+
+      expect(result1.success).toBe(true);
+      expect(result2.success).toBe(true);
+
+      // Verify session 1 maps
+      const session1Maps = await t.run(async (ctx) =>
+        ctx.db
+          .query("sessionMaps")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", session1Id))
+          .collect()
+      );
+
+      expect(session1Maps).toHaveLength(2);
+      expect(session1Maps.map((m) => m.name).sort()).toEqual([
+        "S1 Map A",
+        "S1 Map B",
+      ]);
+      expect(session1Maps.every((m) => m.sessionId === session1Id)).toBe(true);
+
+      // Verify session 2 maps
+      const session2Maps = await t.run(async (ctx) =>
+        ctx.db
+          .query("sessionMaps")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", session2Id))
+          .collect()
+      );
+
+      expect(session2Maps).toHaveLength(2);
+      expect(session2Maps.map((m) => m.name).sort()).toEqual([
+        "S2 Map X",
+        "S2 Map Y",
+      ]);
+      expect(session2Maps.every((m) => m.sessionId === session2Id)).toBe(true);
+    });
+
+    it("handles rapid sequential reassignments", async () => {
+      const t = createTestContext();
+
+      const { sessionId, mapSets } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { mapPoolSize: 2 })
+        );
+
+        // Create 3 sets of maps for sequential reassignments
+        const mapSets = await Promise.all([
+          Promise.all([
+            ctx.db.insert("maps", mapFactory({ name: "Set1 A" })),
+            ctx.db.insert("maps", mapFactory({ name: "Set1 B" })),
+          ]),
+          Promise.all([
+            ctx.db.insert("maps", mapFactory({ name: "Set2 A" })),
+            ctx.db.insert("maps", mapFactory({ name: "Set2 B" })),
+          ]),
+          Promise.all([
+            ctx.db.insert("maps", mapFactory({ name: "Set3 A" })),
+            ctx.db.insert("maps", mapFactory({ name: "Set3 B" })),
+          ]),
+        ]);
+
+        return { sessionId, mapSets };
+      });
+
+      // Rapid sequential reassignments
+      const result1 = await t.mutation(api.sessions.setSessionMaps, {
+        sessionId,
+        mapIds: mapSets[0],
+      });
+
+      const result2 = await t.mutation(api.sessions.setSessionMaps, {
+        sessionId,
+        mapIds: mapSets[1],
+      });
+
+      const result3 = await t.mutation(api.sessions.setSessionMaps, {
+        sessionId,
+        mapIds: mapSets[2],
+      });
+
+      expect(result1.success).toBe(true);
+      expect(result2.success).toBe(true);
+      expect(result3.success).toBe(true);
+
+      // Verify final state has only the last set
+      const sessionMaps = await t.run(async (ctx) =>
+        ctx.db
+          .query("sessionMaps")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+          .collect()
+      );
+
+      expect(sessionMaps).toHaveLength(2);
+      expect(sessionMaps.map((m) => m.name).sort()).toEqual([
+        "Set3 A",
+        "Set3 B",
+      ]);
+    });
+
+    it("initializes optional fields correctly (undefined)", async () => {
+      const t = createTestContext();
+
+      const { sessionId, mapIds } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { mapPoolSize: 1 })
+        );
+        const mapIds = [await ctx.db.insert("maps", mapFactory())];
+        return { sessionId, mapIds };
+      });
+
+      await t.mutation(api.sessions.setSessionMaps, { sessionId, mapIds });
+
+      const sessionMaps = await t.run(async (ctx) =>
+        ctx.db
+          .query("sessionMaps")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+          .collect()
+      );
+
+      expect(sessionMaps[0].state).toBe("AVAILABLE");
+      expect(sessionMaps[0].bannedByPlayerId).toBeUndefined();
+      expect(sessionMaps[0].bannedAtTurn).toBeUndefined();
+      expect(sessionMaps[0].bannedAtRound).toBeUndefined();
+      expect(sessionMaps[0].voteCount).toBeUndefined();
     });
   });
 });
