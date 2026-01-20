@@ -1728,16 +1728,16 @@ describe("sessions.setSessionMaps", () => {
         );
 
         // Create old maps and assign them
-        const oldMapIds = [
-          await ctx.db.insert("maps", mapFactory({ name: "Old Map 1" })),
-          await ctx.db.insert("maps", mapFactory({ name: "Old Map 2" })),
-        ];
+        const oldMapIds = await Promise.all([
+          ctx.db.insert("maps", mapFactory({ name: "Old Map 1" })),
+          ctx.db.insert("maps", mapFactory({ name: "Old Map 2" })),
+        ]);
 
         // Create new maps for reassignment
-        const newMapIds = [
-          await ctx.db.insert("maps", mapFactory({ name: "New Map 1" })),
-          await ctx.db.insert("maps", mapFactory({ name: "New Map 2" })),
-        ];
+        const newMapIds = await Promise.all([
+          ctx.db.insert("maps", mapFactory({ name: "New Map 1" })),
+          ctx.db.insert("maps", mapFactory({ name: "New Map 2" })),
+        ]);
 
         return { sessionId, oldMapIds, newMapIds };
       });
@@ -2037,15 +2037,15 @@ describe("sessions.setSessionMaps", () => {
           );
 
           // Create maps for each session
-          const maps1 = [
-            await ctx.db.insert("maps", mapFactory({ name: "S1 Map A" })),
-            await ctx.db.insert("maps", mapFactory({ name: "S1 Map B" })),
-          ];
+          const maps1 = await Promise.all([
+            ctx.db.insert("maps", mapFactory({ name: "S1 Map A" })),
+            ctx.db.insert("maps", mapFactory({ name: "S1 Map B" })),
+          ]);
 
-          const maps2 = [
-            await ctx.db.insert("maps", mapFactory({ name: "S2 Map X" })),
-            await ctx.db.insert("maps", mapFactory({ name: "S2 Map Y" })),
-          ];
+          const maps2 = await Promise.all([
+            ctx.db.insert("maps", mapFactory({ name: "S2 Map X" })),
+            ctx.db.insert("maps", mapFactory({ name: "S2 Map Y" })),
+          ]);
 
           return { session1Id, session2Id, maps1, maps2 };
         }
