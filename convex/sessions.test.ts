@@ -25,7 +25,7 @@ import {
 } from "./test.factories";
 import { api } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
-import { SessionStatus } from "./lib/constants";
+import { SessionStatus, TOKEN_EXPIRY_MS } from "./lib/constants";
 
 // ============================================================================
 // Test Helpers
@@ -1365,6 +1365,177 @@ describe("sessions.assignPlayer", () => {
         actorType: "ADMIN",
       });
       expect(logs[0].details?.teamName).toBe("Test Team");
+    });
+  });
+
+  describe("token generation", () => {
+    it("sets tokenExpiresAt following TOKEN_EXPIRY_MS constant (24 hours)", async () => {
+      const t = createTestContext();
+      const { sessionId } = await createSessionInStatus(t, "DRAFT", {
+        playerCount: 2,
+      });
+
+      await t.run(async (ctx) => {
+        await ctx.db.insert("teams", teamFactory({ name: "Test Team" }));
+      });
+
+      const beforeAssign = Date.now();
+      const { playerId } = await t.mutation(api.sessions.assignPlayer, {
+        sessionId,
+        role: "Captain",
+        teamName: "Test Team",
+      });
+
+      const player = await t.run(async (ctx) => ctx.db.get(playerId));
+      const expectedMinExpiry = beforeAssign + TOKEN_EXPIRY_MS - 1000; // Allow 1s tolerance
+      const expectedMaxExpiry = beforeAssign + TOKEN_EXPIRY_MS + 1000;
+      expect(player?.tokenExpiresAt).toBeGreaterThanOrEqual(expectedMinExpiry);
+      expect(player?.tokenExpiresAt).toBeLessThanOrEqual(expectedMaxExpiry);
+    });
+
+    it("generates unique tokens for each player in same session", async () => {
+      const t = createTestContext();
+      const { sessionId } = await createSessionInStatus(t, "DRAFT", {
+        playerCount: 3,
+      });
+
+      await t.run(async (ctx) => {
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team C" }));
+      });
+
+      const result1 = await t.mutation(api.sessions.assignPlayer, {
+        sessionId,
+        role: "Captain",
+        teamName: "Team A",
+      });
+      const result2 = await t.mutation(api.sessions.assignPlayer, {
+        sessionId,
+        role: "Vice Captain",
+        teamName: "Team B",
+      });
+      const result3 = await t.mutation(api.sessions.assignPlayer, {
+        sessionId,
+        role: "Reserve",
+        teamName: "Team C",
+      });
+
+      const tokens = [result1.token, result2.token, result3.token];
+      const uniqueTokens = new Set(tokens);
+      expect(uniqueTokens.size).toBe(3);
+    });
+
+    it("generates 32-character hex token from UUID", async () => {
+      const t = createTestContext();
+      const { sessionId } = await createSessionInStatus(t, "DRAFT", {
+        playerCount: 2,
+      });
+
+      await t.run(async (ctx) => {
+        await ctx.db.insert("teams", teamFactory({ name: "Test Team" }));
+      });
+
+      const { token } = await t.mutation(api.sessions.assignPlayer, {
+        sessionId,
+        role: "Captain",
+        teamName: "Test Team",
+      });
+
+      expect(token).toHaveLength(32);
+      expect(token).toMatch(/^[a-f0-9]+$/); // hex characters from UUID
+    });
+  });
+
+  describe("team name handling", () => {
+    it("allows same team with different roles in same session", async () => {
+      const t = createTestContext();
+      const { sessionId } = await createSessionInStatus(t, "DRAFT", {
+        playerCount: 3,
+      });
+
+      await t.run(async (ctx) => {
+        await ctx.db.insert("teams", teamFactory({ name: "Alpha Team" }));
+      });
+
+      // First assignment
+      const result1 = await t.mutation(api.sessions.assignPlayer, {
+        sessionId,
+        role: "Captain",
+        teamName: "Alpha Team",
+      });
+
+      // Second assignment with same team but different role - should succeed
+      const result2 = await t.mutation(api.sessions.assignPlayer, {
+        sessionId,
+        role: "Vice Captain",
+        teamName: "Alpha Team",
+      });
+
+      expect(result1.playerId).toBeDefined();
+      expect(result2.playerId).toBeDefined();
+      expect(result1.playerId).not.toBe(result2.playerId);
+    });
+
+    it("allows same team in different sessions", async () => {
+      const t = createTestContext();
+
+      // Create two sessions and a team
+      const { session1Id, session2Id } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const session1Id = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { playerCount: 2 })
+        );
+        const session2Id = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { playerCount: 2 })
+        );
+        await ctx.db.insert("teams", teamFactory({ name: "Shared Team" }));
+        return { session1Id, session2Id };
+      });
+
+      // Assign to session 1
+      const result1 = await t.mutation(api.sessions.assignPlayer, {
+        sessionId: session1Id,
+        role: "Captain",
+        teamName: "Shared Team",
+      });
+
+      // Assign same team to session 2 - should succeed
+      const result2 = await t.mutation(api.sessions.assignPlayer, {
+        sessionId: session2Id,
+        role: "Captain",
+        teamName: "Shared Team",
+      });
+
+      expect(result1.playerId).toBeDefined();
+      expect(result2.playerId).toBeDefined();
+    });
+  });
+
+  describe("role validation", () => {
+    it.each([
+      ["empty role", "", /cannot be empty/i],
+      ["whitespace-only role", "   ", /cannot be empty/i],
+      ["role exceeding 100 characters", "a".repeat(101), /100 characters/i],
+    ])("throws for %s", async (_description, role, expectedError) => {
+      const t = createTestContext();
+      const { sessionId } = await createSessionInStatus(t, "DRAFT", {
+        playerCount: 2,
+      });
+
+      await t.run(async (ctx) => {
+        await ctx.db.insert("teams", teamFactory({ name: "Test Team" }));
+      });
+
+      await expect(
+        t.mutation(api.sessions.assignPlayer, {
+          sessionId,
+          role,
+          teamName: "Test Team",
+        })
+      ).rejects.toThrow(expectedError);
     });
   });
 });
