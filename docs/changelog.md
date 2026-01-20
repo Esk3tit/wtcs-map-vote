@@ -8,6 +8,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+*No changes yet.*
+
+---
+
+## [0.6.0] - 2026-01-20
+
 ### Added
 - **Session Maps Edge Case Tests** (WAR-19):
   - Audit log on reassignment with content verification
