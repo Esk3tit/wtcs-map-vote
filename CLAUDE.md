@@ -343,14 +343,43 @@ The schema is defined in `convex/schema.ts` with 8 tables:
 
 ## CI/CD
 
-GitHub Actions runs on all PRs and pushes to main (`.github/workflows/ci.yml`):
+### GitHub Actions (`.github/workflows/ci.yml`)
 
-1. **Typecheck (App)** - `bun run build`
-2. **Typecheck (Convex)** - `bunx tsc --noEmit -p convex/tsconfig.json`
-3. **Lint** - `bun run lint`
-4. **Test** - `bun run test:once`
+Runs on all PRs and pushes to main:
 
-PRs will fail if any step fails. Run `bun run typecheck && bun run lint && bun run test:once` locally before pushing.
+| Step | Command | Purpose |
+|------|---------|---------|
+| Typecheck (App) | `bun run build` | Catch frontend TypeScript errors |
+| Typecheck (Convex) | `bunx tsc --noEmit -p convex/tsconfig.json` | Catch backend TypeScript errors |
+| Lint | `bun run lint` | Enforce code style |
+| Test with Coverage | `bun run test:coverage` | Run tests and generate coverage report |
+| Coverage Comment | vitest-coverage-report-action | Post coverage summary on PRs |
+
+**Coverage Thresholds** (enforced in `vitest.config.ts`):
+- Lines: 70%
+- Functions: 75%
+- Branches: 70%
+- Statements: 70%
+
+**Features:**
+- Dependency caching via `actions/cache@v4` for faster builds
+- Concurrency control - new pushes cancel in-progress runs
+- Coverage artifact uploaded and retained for 7 days
+- PR comments show coverage summary and file breakdown
+
+**Local Validation:**
+```bash
+bun run typecheck && bun run lint && bun run test:coverage
+```
+
+### Deployment (Netlify)
+
+Convex and frontend deployment are handled automatically by Netlify on merge to main:
+```bash
+npx convex deploy --cmd 'bun run build'
+```
+
+No additional GitHub Actions deploy job needed - Netlify manages both frontend hosting and Convex deployment.
 
 ## Documentation
 

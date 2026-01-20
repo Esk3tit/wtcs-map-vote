@@ -18,7 +18,7 @@ export default defineConfig({
     // Coverage with Istanbul (v8 doesn't work with edge-runtime)
     coverage: {
       provider: "istanbul",
-      reporter: ["text", "json", "html", "lcov"],
+      reporter: ["text", "json", "json-summary", "html", "lcov"],
       reportsDirectory: "./coverage",
       include: ["convex/**/*.ts"],
       exclude: [
@@ -26,13 +26,12 @@ export default defineConfig({
         "convex/**/*.test.ts",
         "convex/test.*.ts",
       ],
-      // TODO: Enable thresholds once Phase 6 testing is complete (WAR-13 to WAR-22)
-      // thresholds: {
-      //   lines: 80,
-      //   functions: 80,
-      //   branches: 70,
-      //   statements: 80,
-      // },
+      thresholds: {
+        lines: 70,
+        functions: 75,
+        branches: 70,
+        statements: 70,
+      },
     },
     // Use projects instead of deprecated environmentMatchGlobs
     projects: [

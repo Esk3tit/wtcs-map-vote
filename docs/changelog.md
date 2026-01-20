@@ -16,10 +16,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `getRecentLogs`: default behavior, limit handling, limit clamping
   - Edge cases: boundary conditions, identical timestamps, optional fields
   - Performance optimization: shared test data in `beforeAll` for limit clamping tests
-- **GitHub Actions CI Workflow** (`.github/workflows/ci.yml`):
+- **GitHub Actions CI Workflow Enhancements** (`.github/workflows/ci.yml`):
   - Runs on push to main and all PRs
-  - Steps: typecheck app, typecheck convex, lint, test
+  - Steps: typecheck app, typecheck convex, lint, test with coverage
   - Catches convex TypeScript errors before deployment
+  - Coverage reporting with `vitest-coverage-report-action` (PR comments)
+  - Coverage artifact upload with 7-day retention
+  - Bun dependency caching via `actions/cache@v4`
+  - Concurrency control - new pushes cancel in-progress runs
 - **TypeScript Commands**:
   - `bun run typecheck` - Check both app and convex TypeScript
   - `bun run typecheck:convex` - Check only convex folder
@@ -60,6 +64,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - DRY pattern with `createAuditLogEntry()` helper to eliminate duplication
 
 ### Changed
+- **Vitest Coverage Configuration** (`vitest.config.ts`):
+  - Added `json-summary` reporter for PR coverage comments
+  - Enabled coverage thresholds: 70% lines, 75% functions, 70% branches, 70% statements
+  - Changed test command from `test:once` to `test:coverage` in CI
 - **Type Organization** (`convex/lib/types.ts`):
   - Added `ActorType` ("ADMIN" | "PLAYER" | "SYSTEM")
   - Added `AuditDetails` interface for audit log metadata
@@ -68,6 +76,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - Added `actorTypeValidator`, `auditDetailsValidator`
   - Updated `auditActionValidator` with 4 new action types
 - **CLAUDE.md**:
+  - Updated CI/CD section with coverage thresholds and deployment info
   - Updated testing section to use `/dev-browser` skill instead of Playwright MCP
 
 ---
