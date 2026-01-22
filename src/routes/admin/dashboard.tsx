@@ -60,6 +60,9 @@ function DashboardPage() {
     (a, b) => b._creationTime - a._creationTime
   );
   const inactiveCount = inactiveSessions.length;
+  const isInactiveLoading =
+    completedStatus === "LoadingFirstPage" ||
+    expiredStatus === "LoadingFirstPage";
 
   if (isLoading) {
     return (
@@ -149,8 +152,7 @@ function DashboardPage() {
                 </div>
               </AccordionTrigger>
               <AccordionContent>
-                {completedStatus === "LoadingFirstPage" &&
-                expiredStatus === "LoadingFirstPage" ? (
+                {isInactiveLoading && inactiveCount === 0 ? (
                   <div className="space-y-2 pt-2">
                     {Array.from({ length: 3 }).map((_, i) => (
                       <CompletedSessionRowSkeleton key={i} />

@@ -15,7 +15,7 @@ Running Convex unit tests with `bun test` or `bunx vitest` without the `run` fla
 
 ### Symptom
 
-```
+```bash
 bun test convex/sessions.test.ts
 # Fails with import.meta.glob errors or other incompatibilities
 ```

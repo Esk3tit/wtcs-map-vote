@@ -32,6 +32,7 @@ export function CompletedSessionRow({ session }: CompletedSessionRowProps) {
         }
       >
         <Eye className="w-4 h-4" />
+        <span className="sr-only">View session</span>
       </Button>
     </div>
   );
