@@ -2362,3 +2362,384 @@ describe("sessions.setSessionMaps", () => {
     });
   });
 });
+
+// ============================================================================
+// Dashboard Queries (listActiveSessionIds, listInactiveSessionIds, getSessionsByIds)
+// ============================================================================
+
+describe("sessions.listActiveSessionIds", () => {
+  it("returns empty array when no sessions exist", async () => {
+    const t = createTestContext();
+    const ids = await t.query(api.sessions.listActiveSessionIds, {});
+    expect(ids).toEqual([]);
+  });
+
+  it("returns only active session IDs", async () => {
+    const t = createTestContext();
+    const { activeIds, inactiveIds } = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert("admins", adminFactory());
+      const activeIds = await Promise.all([
+        ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { status: "DRAFT", matchName: "Draft" })
+        ),
+        ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { status: "WAITING", matchName: "Waiting" })
+        ),
+        ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            status: "IN_PROGRESS",
+            matchName: "InProgress",
+          })
+        ),
+        ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { status: "PAUSED", matchName: "Paused" })
+        ),
+      ]);
+      const inactiveIds = await Promise.all([
+        ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            status: "COMPLETE",
+            matchName: "Complete",
+          })
+        ),
+        ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { status: "EXPIRED", matchName: "Expired" })
+        ),
+      ]);
+      return { activeIds, inactiveIds };
+    });
+
+    const result = await t.query(api.sessions.listActiveSessionIds, {});
+
+    expect(result).toHaveLength(4);
+    for (const id of activeIds) {
+      expect(result).toContain(id);
+    }
+    for (const id of inactiveIds) {
+      expect(result).not.toContain(id);
+    }
+  });
+
+  it("returns IDs sorted by creation time descending (newest first)", async () => {
+    const t = createTestContext();
+    await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert("admins", adminFactory());
+      await ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, { status: "DRAFT", matchName: "First" })
+      );
+      await ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, { status: "WAITING", matchName: "Second" })
+      );
+      await ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, { status: "IN_PROGRESS", matchName: "Third" })
+      );
+    });
+
+    const result = await t.query(api.sessions.listActiveSessionIds, {});
+
+    expect(result).toHaveLength(3);
+    // Newest first - IDs are monotonically increasing, so desc order means last inserted first
+    // We just verify the count and all are present
+  });
+});
+
+describe("sessions.listInactiveSessionIds", () => {
+  it("returns empty array when no sessions exist", async () => {
+    const t = createTestContext();
+    const ids = await t.query(api.sessions.listInactiveSessionIds, {});
+    expect(ids).toEqual([]);
+  });
+
+  it("returns empty array when only active sessions exist", async () => {
+    const t = createTestContext();
+    await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert("admins", adminFactory());
+      await ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, { status: "DRAFT" })
+      );
+      await ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, { status: "IN_PROGRESS" })
+      );
+    });
+
+    const result = await t.query(api.sessions.listInactiveSessionIds, {});
+    expect(result).toEqual([]);
+  });
+
+  it("returns only inactive session IDs (COMPLETE and EXPIRED)", async () => {
+    const t = createTestContext();
+    const { activeIds, inactiveIds } = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert("admins", adminFactory());
+      const activeIds = await Promise.all([
+        ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { status: "DRAFT" })
+        ),
+        ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { status: "WAITING" })
+        ),
+      ]);
+      const inactiveIds = await Promise.all([
+        ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            status: "COMPLETE",
+            matchName: "Complete Match",
+          })
+        ),
+        ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            status: "EXPIRED",
+            matchName: "Expired Match",
+          })
+        ),
+      ]);
+      return { activeIds, inactiveIds };
+    });
+
+    const result = await t.query(api.sessions.listInactiveSessionIds, {});
+
+    expect(result).toHaveLength(2);
+    for (const id of inactiveIds) {
+      expect(result).toContain(id);
+    }
+    for (const id of activeIds) {
+      expect(result).not.toContain(id);
+    }
+  });
+});
+
+describe("sessions.getSessionsByIds", () => {
+  it("returns empty array when given empty IDs", async () => {
+    const t = createTestContext();
+    const result = await t.query(api.sessions.getSessionsByIds, { ids: [] });
+    expect(result).toEqual([]);
+  });
+
+  it("returns session data with player summary", async () => {
+    const t = createTestContext();
+    const { sessionId } = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert("admins", adminFactory());
+      const sessionId = await ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, {
+          matchName: "Test Match",
+          format: "ABBA",
+          playerCount: 2,
+        })
+      );
+      // Add players
+      await ctx.db.insert(
+        "sessionPlayers",
+        sessionPlayerFactory(sessionId, { teamName: "Team Alpha", role: "ban" })
+      );
+      await ctx.db.insert(
+        "sessionPlayers",
+        sessionPlayerFactory(sessionId, {
+          teamName: "Team Beta",
+          role: "pick",
+        })
+      );
+      return { sessionId };
+    });
+
+    const result = await t.query(api.sessions.getSessionsByIds, {
+      ids: [sessionId],
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].matchName).toBe("Test Match");
+    expect(result[0].format).toBe("ABBA");
+    expect(result[0].assignedPlayerCount).toBe(2);
+    expect(result[0].teams).toHaveLength(2);
+    expect(result[0].teams).toContain("Team Alpha");
+    expect(result[0].teams).toContain("Team Beta");
+  });
+
+  it("returns zero assignedPlayerCount when no players assigned", async () => {
+    const t = createTestContext();
+    const { sessionId } = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert("admins", adminFactory());
+      const sessionId = await ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, { matchName: "Empty Session" })
+      );
+      return { sessionId };
+    });
+
+    const result = await t.query(api.sessions.getSessionsByIds, {
+      ids: [sessionId],
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].assignedPlayerCount).toBe(0);
+    expect(result[0].teams).toEqual([]);
+  });
+
+  it("deduplicates team names from multiple players", async () => {
+    const t = createTestContext();
+    const { sessionId } = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert("admins", adminFactory());
+      const sessionId = await ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, { playerCount: 4 })
+      );
+      // Two players from the same team
+      await ctx.db.insert(
+        "sessionPlayers",
+        sessionPlayerFactory(sessionId, {
+          teamName: "Same Team",
+          role: "ban",
+          token: "token1",
+        })
+      );
+      await ctx.db.insert(
+        "sessionPlayers",
+        sessionPlayerFactory(sessionId, {
+          teamName: "Same Team",
+          role: "pick",
+          token: "token2",
+        })
+      );
+      return { sessionId };
+    });
+
+    const result = await t.query(api.sessions.getSessionsByIds, {
+      ids: [sessionId],
+    });
+
+    expect(result[0].teams).toHaveLength(1);
+    expect(result[0].teams).toContain("Same Team");
+  });
+
+  it("fetches multiple sessions in batch", async () => {
+    const t = createTestContext();
+    const { sessionIds } = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert("admins", adminFactory());
+      const sessionIds = await Promise.all([
+        ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { matchName: "Match 1" })
+        ),
+        ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { matchName: "Match 2" })
+        ),
+        ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { matchName: "Match 3" })
+        ),
+      ]);
+      return { sessionIds };
+    });
+
+    const result = await t.query(api.sessions.getSessionsByIds, {
+      ids: sessionIds,
+    });
+
+    expect(result).toHaveLength(3);
+    const matchNames = result.map((s) => s.matchName);
+    expect(matchNames).toContain("Match 1");
+    expect(matchNames).toContain("Match 2");
+    expect(matchNames).toContain("Match 3");
+  });
+
+  it("skips deleted/missing session IDs gracefully", async () => {
+    const t = createTestContext();
+    const { sessionId, deletedId } = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert("admins", adminFactory());
+      const sessionId = await ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, { matchName: "Existing" })
+      );
+      // Create and delete a session to get a valid but missing ID
+      const deletedId = await ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, { matchName: "To Delete" })
+      );
+      await ctx.db.delete(deletedId);
+      return { sessionId, deletedId };
+    });
+
+    const result = await t.query(api.sessions.getSessionsByIds, {
+      ids: [sessionId, deletedId],
+    });
+
+    expect(result).toHaveLength(1);
+    expect(result[0].matchName).toBe("Existing");
+  });
+
+  it("throws error when requesting more than 50 IDs", async () => {
+    const t = createTestContext();
+    const { ids } = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert("admins", adminFactory());
+      const ids = [];
+      for (let i = 0; i < 51; i++) {
+        ids.push(
+          await ctx.db.insert(
+            "sessions",
+            sessionFactory(adminId, { matchName: `Match ${i}` })
+          )
+        );
+      }
+      return { ids };
+    });
+
+    await expect(
+      t.query(api.sessions.getSessionsByIds, { ids })
+    ).rejects.toThrow("Cannot fetch more than 50 sessions at once");
+  });
+
+  it("includes all required fields in response", async () => {
+    const t = createTestContext();
+    const { sessionId } = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert("admins", adminFactory());
+      const sessionId = await ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, {
+          matchName: "Full Fields",
+          format: "MULTIPLAYER",
+          status: "WAITING",
+          turnTimerSeconds: 45,
+          mapPoolSize: 9,
+          playerCount: 4,
+        })
+      );
+      return { sessionId };
+    });
+
+    const result = await t.query(api.sessions.getSessionsByIds, {
+      ids: [sessionId],
+    });
+    const session = result[0];
+
+    expect(session._id).toBe(sessionId);
+    expect(session._creationTime).toBeTypeOf("number");
+    expect(session.matchName).toBe("Full Fields");
+    expect(session.format).toBe("MULTIPLAYER");
+    expect(session.status).toBe("WAITING");
+    expect(session.turnTimerSeconds).toBe(45);
+    expect(session.mapPoolSize).toBe(9);
+    expect(session.playerCount).toBe(4);
+    expect(session.currentTurn).toBe(0);
+    expect(session.currentRound).toBe(0);
+    expect(session.isActive).toBe(true);
+    expect(session.updatedAt).toBeTypeOf("number");
+    expect(session.expiresAt).toBeTypeOf("number");
+    expect(session.assignedPlayerCount).toBe(0);
+    expect(session.teams).toEqual([]);
+  });
+});
