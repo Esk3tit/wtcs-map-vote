@@ -9,21 +9,14 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Eye } from "lucide-react";
-import type { Id } from "../../../convex/_generated/dataModel";
+import type { Doc } from "../../../convex/_generated/dataModel";
+import { formatTeamDisplay } from "./utils";
 
-export interface SessionCardData {
-  _id: Id<"sessions">;
-  _creationTime: number;
-  matchName: string;
-  format: "ABBA" | "MULTIPLAYER";
-  status:
-    | "DRAFT"
-    | "WAITING"
-    | "IN_PROGRESS"
-    | "PAUSED"
-    | "COMPLETE"
-    | "EXPIRED";
-  playerCount: number;
+export interface SessionCardData
+  extends Pick<
+    Doc<"sessions">,
+    "_id" | "_creationTime" | "matchName" | "format" | "status" | "playerCount"
+  > {
   assignedPlayerCount: number;
   teams: string[];
 }
@@ -68,12 +61,7 @@ interface SessionCardProps {
 }
 
 export function SessionCard({ session }: SessionCardProps) {
-  const teamDisplay =
-    session.teams.length >= 2
-      ? `${session.teams[0]} vs ${session.teams[1]}`
-      : session.teams.length === 1
-        ? session.teams[0]
-        : "No teams assigned";
+  const teamDisplay = formatTeamDisplay(session.teams);
 
   return (
     <Card className="border-border/50 bg-card/50 backdrop-blur-sm hover:border-primary/30 transition-colors">

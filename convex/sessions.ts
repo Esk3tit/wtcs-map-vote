@@ -191,12 +191,21 @@ export const listSessionsForDashboard = query({
     status: v.optional(sessionStatusValidator),
   },
   handler: async (ctx, args) => {
-    const sessionsQuery = args.status
+    const { status } = args;
+    const sessionsQuery = status
       ? ctx.db
           .query("sessions")
-          .withIndex("by_status", (q) => q.eq("status", args.status!))
+          .withIndex("by_status", (q) => q.eq("status", status))
           .order("desc")
-      : ctx.db.query("sessions").order("desc");
+      : ctx.db
+          .query("sessions")
+          .order("desc")
+          .filter((q) =>
+            q.and(
+              q.neq(q.field("status"), "COMPLETE"),
+              q.neq(q.field("status"), "EXPIRED")
+            )
+          );
 
     const paginatedResult = await sessionsQuery.paginate(args.paginationOpts);
 
@@ -211,7 +220,12 @@ export const listSessionsForDashboard = query({
         const teams = [...new Set(players.map((p) => p.teamName))];
 
         return {
-          ...session,
+          _id: session._id,
+          _creationTime: session._creationTime,
+          matchName: session.matchName,
+          format: session.format,
+          status: session.status,
+          playerCount: session.playerCount,
           assignedPlayerCount: players.length,
           teams,
         };

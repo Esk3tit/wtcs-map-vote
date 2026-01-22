@@ -787,12 +787,13 @@ describe("sessions.listSessionsForDashboard", () => {
       expect(result.page[0].status).toBe("COMPLETE");
     });
 
-    it("returns all sessions when no status filter provided", async () => {
+    it("returns only active sessions when no status filter provided", async () => {
       const t = createTestContext();
 
       const adminId = await createAdmin(t);
       await t.run(async (ctx) => {
         await ctx.db.insert("sessions", sessionFactory(adminId, { status: "DRAFT" }));
+        await ctx.db.insert("sessions", sessionFactory(adminId, { status: "WAITING" }));
         await ctx.db.insert("sessions", sessionFactory(adminId, { status: "COMPLETE" }));
         await ctx.db.insert("sessions", sessionFactory(adminId, { status: "EXPIRED" }));
       });
@@ -801,7 +802,10 @@ describe("sessions.listSessionsForDashboard", () => {
         paginationOpts: { numItems: 10, cursor: null },
       });
 
-      expect(result.page).toHaveLength(3);
+      expect(result.page).toHaveLength(2);
+      const statuses = result.page.map((s) => s.status);
+      expect(statuses).toContain("DRAFT");
+      expect(statuses).toContain("WAITING");
     });
   });
 

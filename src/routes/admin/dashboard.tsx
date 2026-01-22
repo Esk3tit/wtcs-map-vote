@@ -9,22 +9,12 @@ import {
   AccordionTrigger,
 } from "@/components/ui/accordion";
 import { Plus, Loader2 } from "lucide-react";
-import {
-  SessionCard,
-  type SessionCardData,
-} from "@/components/session/session-card";
+import { SessionCard } from "@/components/session/session-card";
 import { CompletedSessionRow } from "@/components/session/completed-session-row";
 
 export const Route = createFileRoute("/admin/dashboard")({
   component: DashboardPage,
 });
-
-const ACTIVE_STATUSES = new Set([
-  "DRAFT",
-  "WAITING",
-  "IN_PROGRESS",
-  "PAUSED",
-]);
 
 const INITIAL_ACTIVE_ITEMS = 12;
 const LOAD_MORE_ACTIVE_ITEMS = 12;
@@ -32,11 +22,11 @@ const INITIAL_INACTIVE_ITEMS = 10;
 const LOAD_MORE_INACTIVE_ITEMS = 10;
 
 function DashboardPage() {
-  // All sessions (we filter active ones on the frontend)
+  // Active sessions (server filters out COMPLETE and EXPIRED)
   const {
-    results: allSessions,
-    status: allStatus,
-    loadMore: loadMoreAll,
+    results: activeSessions,
+    status: activeStatus,
+    loadMore: loadMoreActive,
   } = usePaginatedQuery(
     api.sessions.listSessionsForDashboard,
     {},
@@ -65,10 +55,7 @@ function DashboardPage() {
     { initialNumItems: INITIAL_INACTIVE_ITEMS }
   );
 
-  const isLoading = allStatus === "LoadingFirstPage";
-  const activeSessions = allSessions.filter((s) =>
-    ACTIVE_STATUSES.has(s.status)
-  );
+  const isLoading = activeStatus === "LoadingFirstPage";
   const inactiveSessions = [...completedSessions, ...expiredSessions];
   const inactiveCount = inactiveSessions.length;
 
@@ -116,23 +103,23 @@ function DashboardPage() {
                 {activeSessions.map((session) => (
                   <SessionCard
                     key={session._id}
-                    session={session as SessionCardData}
+                    session={session}
                   />
                 ))}
               </div>
 
-              {allStatus === "CanLoadMore" && (
+              {activeStatus === "CanLoadMore" && (
                 <div className="flex justify-center pt-2">
                   <Button
                     variant="outline"
-                    onClick={() => loadMoreAll(LOAD_MORE_ACTIVE_ITEMS)}
+                    onClick={() => loadMoreActive(LOAD_MORE_ACTIVE_ITEMS)}
                   >
                     Load More
                   </Button>
                 </div>
               )}
 
-              {allStatus === "LoadingMore" && (
+              {activeStatus === "LoadingMore" && (
                 <div className="flex justify-center pt-2">
                   <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
                 </div>
@@ -176,7 +163,7 @@ function DashboardPage() {
                     {inactiveSessions.map((session) => (
                       <CompletedSessionRow
                         key={session._id}
-                        session={session as SessionCardData}
+                        session={session}
                       />
                     ))}
 
