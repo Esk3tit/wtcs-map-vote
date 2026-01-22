@@ -56,7 +56,9 @@ function DashboardPage() {
   );
 
   const isLoading = activeStatus === "LoadingFirstPage";
-  const inactiveSessions = [...completedSessions, ...expiredSessions];
+  const inactiveSessions = [...completedSessions, ...expiredSessions].sort(
+    (a, b) => b._creationTime - a._creationTime
+  );
   const inactiveCount = inactiveSessions.length;
 
   if (isLoading) {
@@ -175,10 +177,10 @@ function DashboardPage() {
                           size="sm"
                           onClick={() => {
                             if (completedStatus === "CanLoadMore") {
-                              loadMoreCompleted(LOAD_MORE_INACTIVE_ITEMS);
+                              void loadMoreCompleted(LOAD_MORE_INACTIVE_ITEMS);
                             }
                             if (expiredStatus === "CanLoadMore") {
-                              loadMoreExpired(LOAD_MORE_INACTIVE_ITEMS);
+                              void loadMoreExpired(LOAD_MORE_INACTIVE_ITEMS);
                             }
                           }}
                         >
