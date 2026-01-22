@@ -55,6 +55,9 @@ export default defineSchema({
     timerPausedAt: v.optional(v.number()),
     winnerMapId: v.optional(v.id("sessionMaps")),
 
+    // Computed field for efficient filtering
+    isActive: v.boolean(), // true for DRAFT, WAITING, IN_PROGRESS, PAUSED
+
     // Metadata
     createdBy: v.id("admins"),
     updatedAt: v.number(),
@@ -63,6 +66,7 @@ export default defineSchema({
     expiresAt: v.number(),
   })
     .index("by_status", ["status"])
+    .index("by_isActive", ["isActive"])
     .index("by_createdBy", ["createdBy"])
     .index("by_expiresAt", ["expiresAt"]),
 

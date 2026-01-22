@@ -102,13 +102,16 @@ export const sessionFactory = (
     currentRound: number;
     updatedAt: number;
     expiresAt: number;
+    isActive: boolean;
   }> = {}
 ) => {
   const now = Date.now();
+  const status = overrides.status ?? "DRAFT";
+  const ACTIVE_STATUSES = new Set(["DRAFT", "WAITING", "IN_PROGRESS", "PAUSED"]);
   return {
     matchName: overrides.matchName ?? "Test Match",
     format: overrides.format ?? "ABBA",
-    status: overrides.status ?? "DRAFT",
+    status,
     turnTimerSeconds: overrides.turnTimerSeconds ?? 30,
     mapPoolSize: overrides.mapPoolSize ?? 7,
     playerCount: overrides.playerCount ?? 2,
@@ -117,6 +120,7 @@ export const sessionFactory = (
     createdBy,
     updatedAt: overrides.updatedAt ?? now,
     expiresAt: overrides.expiresAt ?? now + ONE_DAY_MS,
+    isActive: overrides.isActive ?? ACTIVE_STATUSES.has(status),
   };
 };
 

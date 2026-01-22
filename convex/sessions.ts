@@ -98,6 +98,34 @@ const sessionWithRelationsValidator = v.object({
   maps: v.array(sessionMapObjectValidator),
 });
 
+/**
+ * Validator for session with player summary (for dashboard cards).
+ * Includes aggregated player info instead of full player objects.
+ */
+const sessionWithPlayersSummaryValidator = v.object({
+  _id: v.id("sessions"),
+  _creationTime: v.number(),
+  matchName: v.string(),
+  format: sessionFormatValidator,
+  status: sessionStatusValidator,
+  turnTimerSeconds: v.number(),
+  mapPoolSize: v.number(),
+  playerCount: v.number(),
+  currentTurn: v.number(),
+  currentRound: v.number(),
+  timerStartedAt: v.optional(v.number()),
+  timerPausedAt: v.optional(v.number()),
+  winnerMapId: v.optional(v.id("sessionMaps")),
+  isActive: v.boolean(),
+  createdBy: v.id("admins"),
+  updatedAt: v.number(),
+  startedAt: v.optional(v.number()),
+  completedAt: v.optional(v.number()),
+  expiresAt: v.number(),
+  assignedPlayerCount: v.number(),
+  teams: v.array(v.string()),
+});
+
 // ============================================================================
 // Queries
 // ============================================================================
@@ -137,6 +165,82 @@ export const listSessions = query({
       .query("sessions")
       .order("desc")
       .paginate(args.paginationOpts);
+  },
+});
+
+/**
+ * List all active session IDs, sorted by creation time (newest first).
+ * Lightweight query for pagination - returns only IDs.
+ */
+export const listActiveSessionIds = query({
+  args: {},
+  returns: v.array(v.id("sessions")),
+  handler: async (ctx) => {
+    const sessions = await ctx.db
+      .query("sessions")
+      .withIndex("by_isActive", (q) => q.eq("isActive", true))
+      .order("desc")
+      .collect();
+
+    return sessions.map((s) => s._id);
+  },
+});
+
+/**
+ * List all inactive session IDs, sorted by creation time (newest first).
+ * Lightweight query for pagination - returns only IDs.
+ */
+export const listInactiveSessionIds = query({
+  args: {},
+  returns: v.array(v.id("sessions")),
+  handler: async (ctx) => {
+    const sessions = await ctx.db
+      .query("sessions")
+      .withIndex("by_isActive", (q) => q.eq("isActive", false))
+      .order("desc")
+      .collect();
+
+    return sessions.map((s) => s._id);
+  },
+});
+
+/**
+ * Fetch full session data with player summary for a batch of session IDs.
+ * Used by dashboard to fetch current page of sessions.
+ *
+ * @param ids - Array of session IDs to fetch (max 50)
+ */
+export const getSessionsByIds = query({
+  args: {
+    ids: v.array(v.id("sessions")),
+  },
+  returns: v.array(sessionWithPlayersSummaryValidator),
+  handler: async (ctx, args) => {
+    if (args.ids.length > 50) {
+      throw new ConvexError("Cannot fetch more than 50 sessions at once");
+    }
+
+    const sessionsWithPlayers = await Promise.all(
+      args.ids.map(async (id) => {
+        const session = await ctx.db.get(id);
+        if (!session) return null;
+
+        const players = await ctx.db
+          .query("sessionPlayers")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", id))
+          .collect();
+
+        return {
+          ...session,
+          assignedPlayerCount: players.length,
+          teams: [...new Set(players.map((p) => p.teamName))],
+        };
+      })
+    );
+
+    return sessionsWithPlayers.filter(
+      (s): s is NonNullable<typeof s> => s !== null
+    );
   },
 });
 
@@ -258,6 +362,7 @@ export const createSession = mutation({
       playerCount: args.playerCount,
       currentTurn: 0,
       currentRound: 1,
+      isActive: true,
       createdBy: args.createdBy,
       updatedAt: now,
       expiresAt: now + SESSION_EXPIRY_MS,
