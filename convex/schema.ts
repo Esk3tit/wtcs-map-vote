@@ -55,8 +55,8 @@ export default defineSchema({
     timerPausedAt: v.optional(v.number()),
     winnerMapId: v.optional(v.id("sessionMaps")),
 
-    // Computed field for efficient filtering
-    isActive: v.boolean(), // true for DRAFT, WAITING, IN_PROGRESS, PAUSED
+    // Computed field for efficient filtering (optional during migration)
+    isActive: v.optional(v.boolean()), // true for DRAFT, WAITING, IN_PROGRESS, PAUSED
 
     // Metadata
     createdBy: v.id("admins"),

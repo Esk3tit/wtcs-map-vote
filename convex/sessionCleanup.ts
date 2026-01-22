@@ -99,6 +99,7 @@ export const expireStaleSessions = internalMutation({
       // Update session status to EXPIRED
       await ctx.db.patch(session._id, {
         status: "EXPIRED" as const,
+        isActive: false,
         updatedAt: now,
       });
 

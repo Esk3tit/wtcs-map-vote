@@ -2364,17 +2364,23 @@ describe("sessions.setSessionMaps", () => {
 });
 
 // ============================================================================
-// Dashboard Queries (listActiveSessionIds, listInactiveSessionIds, getSessionsByIds)
+// Dashboard Queries (listSessionIds, getSessionsByIds)
 // ============================================================================
 
-describe("sessions.listActiveSessionIds", () => {
-  it("returns empty array when no sessions exist", async () => {
+describe("sessions.listSessionIds", () => {
+  it("returns empty array when no sessions exist (active)", async () => {
     const t = createTestContext();
-    const ids = await t.query(api.sessions.listActiveSessionIds, {});
+    const ids = await t.query(api.sessions.listSessionIds, { isActive: true });
     expect(ids).toEqual([]);
   });
 
-  it("returns only active session IDs", async () => {
+  it("returns empty array when no sessions exist (inactive)", async () => {
+    const t = createTestContext();
+    const ids = await t.query(api.sessions.listSessionIds, { isActive: false });
+    expect(ids).toEqual([]);
+  });
+
+  it("returns only active session IDs when isActive=true", async () => {
     const t = createTestContext();
     const { activeIds, inactiveIds } = await t.run(async (ctx) => {
       const adminId = await ctx.db.insert("admins", adminFactory());
@@ -2415,7 +2421,7 @@ describe("sessions.listActiveSessionIds", () => {
       return { activeIds, inactiveIds };
     });
 
-    const result = await t.query(api.sessions.listActiveSessionIds, {});
+    const result = await t.query(api.sessions.listSessionIds, { isActive: true });
 
     expect(result).toHaveLength(4);
     for (const id of activeIds) {
@@ -2444,22 +2450,14 @@ describe("sessions.listActiveSessionIds", () => {
       );
     });
 
-    const result = await t.query(api.sessions.listActiveSessionIds, {});
+    const result = await t.query(api.sessions.listSessionIds, { isActive: true });
 
     expect(result).toHaveLength(3);
     // Newest first - IDs are monotonically increasing, so desc order means last inserted first
     // We just verify the count and all are present
   });
-});
 
-describe("sessions.listInactiveSessionIds", () => {
-  it("returns empty array when no sessions exist", async () => {
-    const t = createTestContext();
-    const ids = await t.query(api.sessions.listInactiveSessionIds, {});
-    expect(ids).toEqual([]);
-  });
-
-  it("returns empty array when only active sessions exist", async () => {
+  it("returns empty array when only active sessions exist (inactive query)", async () => {
     const t = createTestContext();
     await t.run(async (ctx) => {
       const adminId = await ctx.db.insert("admins", adminFactory());
@@ -2473,11 +2471,11 @@ describe("sessions.listInactiveSessionIds", () => {
       );
     });
 
-    const result = await t.query(api.sessions.listInactiveSessionIds, {});
+    const result = await t.query(api.sessions.listSessionIds, { isActive: false });
     expect(result).toEqual([]);
   });
 
-  it("returns only inactive session IDs (COMPLETE and EXPIRED)", async () => {
+  it("returns only inactive session IDs when isActive=false", async () => {
     const t = createTestContext();
     const { activeIds, inactiveIds } = await t.run(async (ctx) => {
       const adminId = await ctx.db.insert("admins", adminFactory());
@@ -2510,7 +2508,7 @@ describe("sessions.listInactiveSessionIds", () => {
       return { activeIds, inactiveIds };
     });
 
-    const result = await t.query(api.sessions.listInactiveSessionIds, {});
+    const result = await t.query(api.sessions.listSessionIds, { isActive: false });
 
     expect(result).toHaveLength(2);
     for (const id of inactiveIds) {

@@ -15,6 +15,7 @@ export const MIN_TURN_TIMER_SECONDS = 10;
 export const MAX_TURN_TIMER_SECONDS = 300;
 export const MIN_MAP_POOL_SIZE = 3;
 export const MAX_MAP_POOL_SIZE = 15;
+export const MAX_SESSION_IDS = 500;
 
 // Type-safe active session statuses (validated against schema)
 export type SessionStatus = Doc<"sessions">["status"];

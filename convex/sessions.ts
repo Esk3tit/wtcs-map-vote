@@ -22,6 +22,7 @@ import {
   MAX_TURN_TIMER_SECONDS,
   MIN_MAP_POOL_SIZE,
   MAX_MAP_POOL_SIZE,
+  MAX_SESSION_IDS,
 } from "./lib/constants";
 import { validateName, validateRange } from "./lib/validation";
 import {
@@ -116,7 +117,7 @@ const sessionWithPlayersSummaryValidator = v.object({
   timerStartedAt: v.optional(v.number()),
   timerPausedAt: v.optional(v.number()),
   winnerMapId: v.optional(v.id("sessionMaps")),
-  isActive: v.boolean(),
+  isActive: v.optional(v.boolean()),
   createdBy: v.id("admins"),
   updatedAt: v.number(),
   startedAt: v.optional(v.number()),
@@ -169,36 +170,21 @@ export const listSessions = query({
 });
 
 /**
- * List all active session IDs, sorted by creation time (newest first).
+ * List session IDs filtered by active/inactive status.
+ * Sorted by creation time (newest first), capped at MAX_SESSION_IDS.
  * Lightweight query for pagination - returns only IDs.
+ *
+ * @param isActive - true for active sessions, false for inactive
  */
-export const listActiveSessionIds = query({
-  args: {},
+export const listSessionIds = query({
+  args: { isActive: v.boolean() },
   returns: v.array(v.id("sessions")),
-  handler: async (ctx) => {
+  handler: async (ctx, args) => {
     const sessions = await ctx.db
       .query("sessions")
-      .withIndex("by_isActive", (q) => q.eq("isActive", true))
+      .withIndex("by_isActive", (q) => q.eq("isActive", args.isActive))
       .order("desc")
-      .collect();
-
-    return sessions.map((s) => s._id);
-  },
-});
-
-/**
- * List all inactive session IDs, sorted by creation time (newest first).
- * Lightweight query for pagination - returns only IDs.
- */
-export const listInactiveSessionIds = query({
-  args: {},
-  returns: v.array(v.id("sessions")),
-  handler: async (ctx) => {
-    const sessions = await ctx.db
-      .query("sessions")
-      .withIndex("by_isActive", (q) => q.eq("isActive", false))
-      .order("desc")
-      .collect();
+      .take(MAX_SESSION_IDS);
 
     return sessions.map((s) => s._id);
   },

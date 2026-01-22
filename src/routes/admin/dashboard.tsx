@@ -17,7 +17,7 @@ import {
 import { Plus, Loader2, ChevronLeft, ChevronRight } from "lucide-react";
 import { SessionCard, type SessionCardData } from "@/components/session/session-card";
 import { CompletedSessionRow } from "@/components/session/completed-session-row";
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 
 export const Route = createFileRoute("/admin/dashboard")({
   component: DashboardPage,
@@ -30,9 +30,9 @@ function DashboardPage() {
   const [activePage, setActivePage] = useState(1);
   const [inactivePage, setInactivePage] = useState(1);
 
-  // Query 1: Get all session IDs (lightweight)
-  const activeIds = useQuery(api.sessions.listActiveSessionIds);
-  const inactiveIds = useQuery(api.sessions.listInactiveSessionIds);
+  // Query 1: Get session IDs (lightweight, capped at MAX_SESSION_IDS)
+  const activeIds = useQuery(api.sessions.listSessionIds, { isActive: true });
+  const inactiveIds = useQuery(api.sessions.listSessionIds, { isActive: false });
 
   // Calculate pagination from IDs
   const activeTotalCount = activeIds?.length ?? 0;
@@ -67,12 +67,17 @@ function DashboardPage() {
   const hasNoActiveSessions = activeTotalCount === 0;
 
   // Reset to page 1 if current page becomes invalid
-  if (activePage > activeTotalPages && activeTotalPages > 0) {
-    setActivePage(1);
-  }
-  if (inactivePage > inactiveTotalPages && inactiveTotalPages > 0) {
-    setInactivePage(1);
-  }
+  useEffect(() => {
+    if (activePage > activeTotalPages && activeTotalPages > 0) {
+      setActivePage(1);
+    }
+  }, [activePage, activeTotalPages]);
+
+  useEffect(() => {
+    if (inactivePage > inactiveTotalPages && inactiveTotalPages > 0) {
+      setInactivePage(1);
+    }
+  }, [inactivePage, inactiveTotalPages]);
 
   if (isLoading) {
     return (
