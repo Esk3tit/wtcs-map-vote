@@ -9,6 +9,7 @@ const crons = cronJobs();
 crons.interval(
   "cleanup orphaned storage",
   { hours: 1 },
+  // @ts-expect-error - type depth exceeded with component installed
   internal.storage.cleanupOrphanedFiles,
   {}
 );

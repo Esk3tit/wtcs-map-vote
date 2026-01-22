@@ -289,6 +289,7 @@ describe("audit.getSessionAuditLog", () => {
       const t = createTestContext();
       const { sessionId } = await createSessionWithAdmin(t);
 
+      // @ts-expect-error - type depth exceeded with migrations component installed
       const result = await t.query(api.audit.getSessionAuditLog, {
         sessionId,
         paginationOpts: { numItems: 10, cursor: null },

@@ -38,6 +38,7 @@ export const Route = createFileRoute("/admin/teams")({
 
 function TeamsPage() {
   const { results: teams, status, loadMore } = usePaginatedQuery(
+    // @ts-expect-error - type depth exceeded with migrations component installed
     api.teams.listTeams,
     {},
     { initialNumItems: 50 }
