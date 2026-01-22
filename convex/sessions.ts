@@ -175,6 +175,70 @@ export const getSession = query({
   },
 });
 
+/**
+ * List sessions for dashboard display with player summary.
+ * Returns paginated sessions enriched with assignedPlayerCount and teams.
+ *
+ * Uses Convex cursor-based pagination with optional single-status filtering.
+ * Each session is enriched with player data for display in session cards.
+ *
+ * @param paginationOpts - Standard Convex pagination options
+ * @param status - Optional single status filter (uses by_status index)
+ */
+export const listSessionsForDashboard = query({
+  args: {
+    paginationOpts: paginationOptsValidator,
+    status: v.optional(sessionStatusValidator),
+  },
+  handler: async (ctx, args) => {
+    const { status } = args;
+    const sessionsQuery = status
+      ? ctx.db
+          .query("sessions")
+          .withIndex("by_status", (q) => q.eq("status", status))
+          .order("desc")
+      : ctx.db
+          .query("sessions")
+          .order("desc")
+          .filter((q) =>
+            q.and(
+              q.neq(q.field("status"), "COMPLETE"),
+              q.neq(q.field("status"), "EXPIRED")
+            )
+          );
+
+    const paginatedResult = await sessionsQuery.paginate(args.paginationOpts);
+
+    // Enrich each session with player summary
+    const enrichedPage = await Promise.all(
+      paginatedResult.page.map(async (session) => {
+        const players = await ctx.db
+          .query("sessionPlayers")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+          .collect();
+
+        const teams = [...new Set(players.map((p) => p.teamName))];
+
+        return {
+          _id: session._id,
+          _creationTime: session._creationTime,
+          matchName: session.matchName,
+          format: session.format,
+          status: session.status,
+          playerCount: session.playerCount,
+          assignedPlayerCount: players.length,
+          teams,
+        };
+      })
+    );
+
+    return {
+      ...paginatedResult,
+      page: enrichedPage,
+    };
+  },
+});
+
 // ============================================================================
 // Mutations
 // ============================================================================

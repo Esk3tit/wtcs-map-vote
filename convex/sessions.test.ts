@@ -668,6 +668,245 @@ describe("sessions.listSessions", () => {
 });
 
 // ============================================================================
+// listSessionsForDashboard Tests
+// ============================================================================
+
+describe("sessions.listSessionsForDashboard", () => {
+  describe("empty state", () => {
+    it("returns empty page when no sessions exist", async () => {
+      const t = createTestContext();
+
+      const result = await t.query(api.sessions.listSessionsForDashboard, {
+        paginationOpts: { numItems: 10, cursor: null },
+      });
+
+      expect(result.page).toHaveLength(0);
+      expect(result.isDone).toBe(true);
+    });
+  });
+
+  describe("enrichment", () => {
+    it("includes assignedPlayerCount and teams for each session", async () => {
+      const t = createTestContext();
+
+      const { sessionId } = await createSessionInStatus(t, "WAITING");
+
+      // Add players to the session
+      await t.run(async (ctx) => {
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            teamName: "Team Alpha",
+            role: "captain",
+          })
+        );
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            teamName: "Team Beta",
+            role: "captain",
+          })
+        );
+      });
+
+      const result = await t.query(api.sessions.listSessionsForDashboard, {
+        paginationOpts: { numItems: 10, cursor: null },
+      });
+
+      expect(result.page).toHaveLength(1);
+      const session = result.page[0];
+      expect(session.assignedPlayerCount).toBe(2);
+      expect(session.teams).toHaveLength(2);
+      expect(session.teams).toContain("Team Alpha");
+      expect(session.teams).toContain("Team Beta");
+    });
+
+    it("returns unique team names (no duplicates)", async () => {
+      const t = createTestContext();
+
+      const { sessionId } = await createSessionInStatus(t, "WAITING");
+
+      // Add two players on the same team
+      await t.run(async (ctx) => {
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            teamName: "Same Team",
+            role: "captain",
+          })
+        );
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            teamName: "Same Team",
+            role: "player",
+          })
+        );
+      });
+
+      const result = await t.query(api.sessions.listSessionsForDashboard, {
+        paginationOpts: { numItems: 10, cursor: null },
+      });
+
+      expect(result.page[0].teams).toHaveLength(1);
+      expect(result.page[0].teams[0]).toBe("Same Team");
+      expect(result.page[0].assignedPlayerCount).toBe(2);
+    });
+
+    it("returns empty teams and zero count when no players assigned", async () => {
+      const t = createTestContext();
+
+      await createSessionInStatus(t, "DRAFT");
+
+      const result = await t.query(api.sessions.listSessionsForDashboard, {
+        paginationOpts: { numItems: 10, cursor: null },
+      });
+
+      expect(result.page[0].assignedPlayerCount).toBe(0);
+      expect(result.page[0].teams).toHaveLength(0);
+    });
+  });
+
+  describe("status filtering", () => {
+    it("filters by single status using index", async () => {
+      const t = createTestContext();
+
+      const adminId = await createAdmin(t);
+      await t.run(async (ctx) => {
+        await ctx.db.insert("sessions", sessionFactory(adminId, { status: "DRAFT" }));
+        await ctx.db.insert("sessions", sessionFactory(adminId, { status: "WAITING" }));
+        await ctx.db.insert("sessions", sessionFactory(adminId, { status: "COMPLETE" }));
+      });
+
+      const result = await t.query(api.sessions.listSessionsForDashboard, {
+        paginationOpts: { numItems: 10, cursor: null },
+        status: "COMPLETE",
+      });
+
+      expect(result.page).toHaveLength(1);
+      expect(result.page[0].status).toBe("COMPLETE");
+    });
+
+    it("returns only active sessions when no status filter provided", async () => {
+      const t = createTestContext();
+
+      const adminId = await createAdmin(t);
+      await t.run(async (ctx) => {
+        await ctx.db.insert("sessions", sessionFactory(adminId, { status: "DRAFT" }));
+        await ctx.db.insert("sessions", sessionFactory(adminId, { status: "WAITING" }));
+        await ctx.db.insert("sessions", sessionFactory(adminId, { status: "COMPLETE" }));
+        await ctx.db.insert("sessions", sessionFactory(adminId, { status: "EXPIRED" }));
+      });
+
+      const result = await t.query(api.sessions.listSessionsForDashboard, {
+        paginationOpts: { numItems: 10, cursor: null },
+      });
+
+      expect(result.page).toHaveLength(2);
+      const statuses = result.page.map((s) => s.status);
+      expect(statuses).toContain("DRAFT");
+      expect(statuses).toContain("WAITING");
+    });
+  });
+
+  describe("pagination", () => {
+    it("respects numItems limit", async () => {
+      const t = createTestContext();
+
+      const adminId = await createAdmin(t);
+      await t.run(async (ctx) => {
+        for (let i = 0; i < 5; i++) {
+          await ctx.db.insert(
+            "sessions",
+            sessionFactory(adminId, { matchName: `Match ${i}` })
+          );
+        }
+      });
+
+      const result = await t.query(api.sessions.listSessionsForDashboard, {
+        paginationOpts: { numItems: 2, cursor: null },
+      });
+
+      expect(result.page).toHaveLength(2);
+      expect(result.isDone).toBe(false);
+    });
+
+    it("returns next page with continueCursor", async () => {
+      const t = createTestContext();
+
+      const adminId = await createAdmin(t);
+      await t.run(async (ctx) => {
+        for (let i = 0; i < 4; i++) {
+          await ctx.db.insert(
+            "sessions",
+            sessionFactory(adminId, { matchName: `Match ${i}` })
+          );
+        }
+      });
+
+      const firstPage = await t.query(api.sessions.listSessionsForDashboard, {
+        paginationOpts: { numItems: 2, cursor: null },
+      });
+
+      expect(firstPage.page).toHaveLength(2);
+      expect(firstPage.isDone).toBe(false);
+
+      const secondPage = await t.query(api.sessions.listSessionsForDashboard, {
+        paginationOpts: { numItems: 2, cursor: firstPage.continueCursor },
+      });
+
+      expect(secondPage.page).toHaveLength(2);
+      // Verify second page has different sessions than first page
+      const firstPageIds = new Set(firstPage.page.map((s) => s._id));
+      const secondPageIds = secondPage.page.map((s) => s._id);
+      for (const id of secondPageIds) {
+        expect(firstPageIds.has(id)).toBe(false);
+      }
+    });
+
+    it("enriches all pages with player data", async () => {
+      const t = createTestContext();
+
+      const adminId = await createAdmin(t);
+      const sessionIds = await t.run(async (ctx) => {
+        const ids: Id<"sessions">[] = [];
+        for (let i = 0; i < 3; i++) {
+          const id = await ctx.db.insert(
+            "sessions",
+            sessionFactory(adminId, { matchName: `Match ${i}` })
+          );
+          ids.push(id);
+        }
+        // Add a player to the last session
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(ids[2], { teamName: "Test Team" })
+        );
+        return ids;
+      });
+
+      // Fetch all in one page
+      const result = await t.query(api.sessions.listSessionsForDashboard, {
+        paginationOpts: { numItems: 10, cursor: null },
+      });
+
+      // All sessions should have enrichment fields
+      for (const session of result.page) {
+        expect(session).toHaveProperty("assignedPlayerCount");
+        expect(session).toHaveProperty("teams");
+      }
+
+      // The session with a player should reflect it
+      const sessionWithPlayer = result.page.find(
+        (s) => s._id === sessionIds[2]
+      );
+      expect(sessionWithPlayer?.assignedPlayerCount).toBe(1);
+      expect(sessionWithPlayer?.teams).toContain("Test Team");
+    });
+  });
+});
+
+// ============================================================================
 // getSession Tests
 // ============================================================================
 
