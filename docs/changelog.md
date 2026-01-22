@@ -8,7 +8,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-*No changes yet.*
+### Added
+- **Dashboard Wired to Convex** (WAR-8):
+  - `listSessionsForDashboard` paginated query with player enrichment (assignedPlayerCount, teams)
+  - Server-side filtering excludes COMPLETE/EXPIRED sessions from active view
+  - Explicit field selection (no spread) prevents data over-exposure
+  - `SessionCard` rewritten with schema-derived types (`Pick<Doc<"sessions">, ...>`)
+  - `CompletedSessionRow` component for inactive sessions
+  - shadcn/ui Accordion for collapsible completed/expired section
+  - Shared `formatTeamDisplay` utility (`src/components/session/utils.ts`)
+  - 9 unit tests for the dashboard query (enrichment, filtering, pagination)
+- **Solution Documentation** (`docs/solutions/test-failures/`):
+  - Documented that Convex tests must use `bun run test` (vitest), not `bun test`
+
+### Changed
+- CLAUDE.md: Emphasized correct test runner (`bun run test` not `bun test`)
 
 ---
 

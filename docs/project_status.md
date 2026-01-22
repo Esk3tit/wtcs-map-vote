@@ -117,7 +117,8 @@ Implement the Convex functions to power the application:
    - [ ] Timer synchronization
 
 4. **Connect Frontend**
-   - [ ] Replace mock data with Convex queries
+   - [x] Admin dashboard wired to Convex (WAR-8) - paginated queries, session cards, accordion
+   - [ ] Replace remaining mock data with Convex queries (teams page already done)
    - [ ] Wire up mutations to forms/actions
    - [ ] Add loading and error states
 

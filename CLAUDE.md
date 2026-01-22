@@ -186,11 +186,14 @@ Follow these conventions for all Convex function files (`convex/*.ts`, excluding
 
 The project uses `convex-test` for backend unit testing. Test files are in `convex/*.test.ts`.
 
-**Run tests:**
+**Run tests (IMPORTANT: use `bun run test`, NOT `bun test`):**
 ```bash
-bun test                    # Run all tests
-bun test convex/maps.test.ts  # Run specific test file
+bun run test                          # Run all tests (uses vitest)
+bunx vitest run convex/maps.test.ts   # Run specific test file
+bunx vitest                           # Watch mode
 ```
+
+> **Warning:** `bun test` uses Bun's built-in test runner which is incompatible with `convex-test`. Always use `bun run test` (invokes vitest via package.json) or `bunx vitest run`.
 
 **Test structure:**
 - `convex/smoke.test.ts` - Infrastructure smoke tests
