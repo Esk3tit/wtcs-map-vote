@@ -27,12 +27,18 @@ import {
   Bot,
   Shield,
 } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import {
   getStatusColor,
   formatStatus,
   formatRelativeTime,
 } from "@/components/session/utils";
+
+// ============================================================================
+// Constants
+// ============================================================================
+
+const AUDIT_LOG_PAGE_SIZE = 50;
 
 export const Route = createFileRoute("/admin/session/$sessionId")({
   component: SessionDetailPage,
@@ -119,8 +125,15 @@ const formatPlayerRole = (role: string, format: string): string => {
 // Main Component
 // ============================================================================
 
+// Simple validation for Convex session IDs (they start with specific prefixes)
+const isValidSessionId = (id: string): boolean => {
+  // Convex IDs are non-empty strings - basic sanity check
+  return typeof id === "string" && id.length > 0;
+};
+
 function SessionDetailPage() {
   const { sessionId } = Route.useParams();
+  const isValidId = isValidSessionId(sessionId);
   const typedSessionId = sessionId as Id<"sessions">;
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -142,14 +155,43 @@ function SessionDetailPage() {
     }
   };
 
-  const session = useQuery(api.sessions.getSession, {
-    sessionId: typedSessionId,
-  });
+  const session = useQuery(
+    api.sessions.getSession,
+    isValidId ? { sessionId: typedSessionId } : "skip"
+  );
 
-  const auditLogs = useQuery(api.audit.getRecentLogs, {
-    sessionId: typedSessionId,
-    limit: 50,
-  });
+  const auditLogs = useQuery(
+    api.audit.getRecentLogs,
+    isValidId ? { sessionId: typedSessionId, limit: AUDIT_LOG_PAGE_SIZE } : "skip"
+  );
+
+  // Build a lookup map from player ID to team name for audit log details
+  // Memoized to prevent unnecessary recalculations on re-renders
+  const playerTeamMap = useMemo(
+    () => new Map(session?.players.map((p) => [p._id, p.teamName]) ?? []),
+    [session?.players]
+  );
+
+  // Invalid session ID state
+  if (!isValidId) {
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center gap-4">
+        <FileQuestion className="w-16 h-16 text-muted-foreground/50" />
+        <div className="text-center">
+          <p className="text-lg font-medium text-muted-foreground">
+            Invalid session ID
+          </p>
+          <p className="text-sm text-muted-foreground/70 mt-1">
+            The session ID provided is not valid.
+          </p>
+        </div>
+        <Button variant="outline" render={<Link to="/admin/dashboard" />}>
+          <ArrowLeft className="w-4 h-4 mr-2" />
+          Back to Dashboard
+        </Button>
+      </div>
+    );
+  }
 
   // Loading state
   if (session === undefined) {
@@ -184,11 +226,6 @@ function SessionDetailPage() {
   const isLive = session.status === "IN_PROGRESS";
   const canStart =
     session.status === "WAITING" || session.status === "DRAFT";
-
-  // Build a lookup map from player ID to team name for audit log details
-  const playerTeamMap = new Map(
-    session.players.map((p) => [p._id, p.teamName])
-  );
 
   return (
     <div className="flex-1 flex flex-col">
@@ -374,8 +411,8 @@ function SessionDetailPage() {
                           Current Turn
                         </p>
                         <p className="font-semibold text-foreground">
-                          Turn {session.currentTurn}, Round{" "}
-                          {session.currentRound}
+                          Turn {(session.currentTurn ?? 0) + 1}, Round{" "}
+                          {(session.currentRound ?? 0) + 1}
                         </p>
                       </div>
                     </div>
@@ -415,7 +452,7 @@ function SessionDetailPage() {
                       {getMapStateOverlay(
                         map.state,
                         map.bannedByPlayerId
-                          ? playerTeamMap.get(map.bannedByPlayerId)
+                          ? (playerTeamMap.get(map.bannedByPlayerId) ?? "Unknown")
                           : undefined
                       )}
                     </div>

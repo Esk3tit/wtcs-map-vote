@@ -82,4 +82,4 @@ Solution A — after TODO 001 extracts these to shared utils.
 
 ## Resources
 
-- PR: https://github.com/Esk3tit/wtcs-map-vote/pull/37
+- PR: <https://github.com/Esk3tit/wtcs-map-vote/pull/37>
