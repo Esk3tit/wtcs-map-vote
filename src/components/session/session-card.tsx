@@ -10,7 +10,12 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Eye } from "lucide-react";
 import type { Doc } from "../../../convex/_generated/dataModel";
-import { formatTeamDisplay } from "./utils";
+import {
+  formatTeamDisplay,
+  getStatusColor,
+  formatStatus,
+  formatRelativeTime,
+} from "./utils";
 
 export interface SessionCardData
   extends Pick<
@@ -20,41 +25,6 @@ export interface SessionCardData
   assignedPlayerCount: number;
   teams: string[];
 }
-
-const getStatusColor = (status: SessionCardData["status"]) => {
-  switch (status) {
-    case "DRAFT":
-      return "bg-muted/50 text-muted-foreground border-border";
-    case "WAITING":
-      return "bg-chart-4/20 text-chart-4 border-chart-4/30";
-    case "IN_PROGRESS":
-      return "bg-primary/20 text-primary border-primary/30";
-    case "PAUSED":
-      return "bg-chart-2/20 text-chart-2 border-chart-2/30";
-    case "COMPLETE":
-      return "bg-green-500/20 text-green-600 border-green-500/30";
-    case "EXPIRED":
-      return "bg-red-500/20 text-red-600 border-red-500/30";
-    default:
-      return "bg-muted text-muted-foreground border-border";
-  }
-};
-
-const formatTimestamp = (timestamp: number) => {
-  const now = Date.now();
-  const diff = now - timestamp;
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(minutes / 60);
-
-  if (minutes < 1) return "Just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  return new Date(timestamp).toLocaleDateString();
-};
-
-const formatStatus = (status: SessionCardData["status"]) => {
-  return status.replace(/_/g, " ");
-};
 
 interface SessionCardProps {
   session: SessionCardData;
@@ -97,7 +67,7 @@ export function SessionCard({ session }: SessionCardProps) {
           <div className="flex items-center justify-between text-sm">
             <span className="text-muted-foreground">Created</span>
             <span className="font-medium text-foreground">
-              {formatTimestamp(session._creationTime)}
+              {formatRelativeTime(session._creationTime)}
             </span>
           </div>
         </div>

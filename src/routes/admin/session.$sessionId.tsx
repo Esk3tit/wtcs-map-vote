@@ -2,6 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
+import type { ActorType } from "../../../convex/lib/types";
 import {
   Card,
   CardContent,
@@ -26,46 +27,16 @@ import {
   Bot,
   Shield,
 } from "lucide-react";
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
+import {
+  getStatusColor,
+  formatStatus,
+  formatRelativeTime,
+} from "@/components/session/utils";
 
 export const Route = createFileRoute("/admin/session/$sessionId")({
   component: SessionDetailPage,
 });
-
-// ============================================================================
-// Status Helpers
-// ============================================================================
-
-type SessionStatus =
-  | "DRAFT"
-  | "WAITING"
-  | "IN_PROGRESS"
-  | "PAUSED"
-  | "COMPLETE"
-  | "EXPIRED";
-
-const getStatusColor = (status: SessionStatus) => {
-  switch (status) {
-    case "DRAFT":
-      return "bg-muted/50 text-muted-foreground border-border";
-    case "WAITING":
-      return "bg-chart-4/20 text-chart-4 border-chart-4/30";
-    case "IN_PROGRESS":
-      return "bg-primary/20 text-primary border-primary/30";
-    case "PAUSED":
-      return "bg-chart-2/20 text-chart-2 border-chart-2/30";
-    case "COMPLETE":
-      return "bg-green-500/20 text-green-600 border-green-500/30";
-    case "EXPIRED":
-      return "bg-red-500/20 text-red-600 border-red-500/30";
-    default:
-      return "bg-muted text-muted-foreground border-border";
-  }
-};
-
-const formatStatus = (status: SessionStatus) => {
-  return status.replace(/_/g, " ");
-};
 
 // ============================================================================
 // Audit Log Helpers
@@ -78,59 +49,33 @@ const formatActionLabel = (action: string): string => {
     .join(" ");
 };
 
-const formatRelativeTime = (timestamp: number): string => {
-  const now = Date.now();
-  const diff = now - timestamp;
-  const seconds = Math.floor(diff / 1000);
-  const minutes = Math.floor(seconds / 60);
-  const hours = Math.floor(minutes / 60);
-
-  if (seconds < 60) return "Just now";
-  if (minutes < 60) return `${minutes}m ago`;
-  if (hours < 24) return `${hours}h ago`;
-  return new Date(timestamp).toLocaleDateString();
+const ACTOR_ICONS: Record<ActorType, typeof Shield> = {
+  ADMIN: Shield,
+  PLAYER: User,
+  SYSTEM: Bot,
 };
 
-const formatAbsoluteTime = (timestamp: number): string => {
-  return new Date(timestamp).toLocaleString();
+const getActorIcon = (actorType: ActorType) => {
+  const Icon = ACTOR_ICONS[actorType];
+  return <Icon className="w-3 h-3" />;
 };
 
-const getActorIcon = (actorType: string) => {
-  switch (actorType) {
-    case "ADMIN":
-      return <Shield className="w-3 h-3" />;
-    case "PLAYER":
-      return <User className="w-3 h-3" />;
-    case "SYSTEM":
-      return <Bot className="w-3 h-3" />;
-    default:
-      return <User className="w-3 h-3" />;
-  }
+const ACTOR_BADGE_VARIANTS: Record<ActorType, "default" | "secondary" | "outline"> = {
+  ADMIN: "default",
+  PLAYER: "secondary",
+  SYSTEM: "outline",
 };
 
-const getActorBadgeVariant = (
-  actorType: string
-): "default" | "secondary" | "outline" => {
-  switch (actorType) {
-    case "ADMIN":
-      return "default";
-    case "PLAYER":
-      return "secondary";
-    case "SYSTEM":
-      return "outline";
-    default:
-      return "outline";
-  }
+const getActorBadgeVariant = (actorType: ActorType): "default" | "secondary" | "outline" => {
+  return ACTOR_BADGE_VARIANTS[actorType];
 };
 
 // ============================================================================
 // Map State Helpers
 // ============================================================================
 
-type MapState = "AVAILABLE" | "BANNED" | "WINNER";
-
 const getMapStateOverlay = (
-  state: MapState,
+  state: "AVAILABLE" | "BANNED" | "WINNER",
   bannedByTeam: string | undefined
 ) => {
   if (state === "BANNED") {
@@ -176,14 +121,33 @@ const formatPlayerRole = (role: string, format: string): string => {
 
 function SessionDetailPage() {
   const { sessionId } = Route.useParams();
+  const typedSessionId = sessionId as Id<"sessions">;
   const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+    };
+  }, []);
+
+  const handleCopyToken = async (token: string) => {
+    try {
+      await navigator.clipboard.writeText(token);
+      setCopiedToken(token);
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = setTimeout(() => setCopiedToken(null), 2000);
+    } catch (err) {
+      console.error("Failed to copy token:", err);
+    }
+  };
 
   const session = useQuery(api.sessions.getSession, {
-    sessionId: sessionId as Id<"sessions">,
+    sessionId: typedSessionId,
   });
 
   const auditLogs = useQuery(api.audit.getRecentLogs, {
-    sessionId: sessionId as Id<"sessions">,
+    sessionId: typedSessionId,
     limit: 50,
   });
 
@@ -216,16 +180,6 @@ function SessionDetailPage() {
       </div>
     );
   }
-
-  const handleCopyToken = async (token: string) => {
-    try {
-      await navigator.clipboard.writeText(token);
-      setCopiedToken(token);
-      setTimeout(() => setCopiedToken(null), 2000);
-    } catch (err) {
-      console.error("Failed to copy token:", err);
-    }
-  };
 
   const isLive = session.status === "IN_PROGRESS";
   const canStart =
@@ -459,7 +413,7 @@ function SessionDetailPage() {
                         </p>
                       </div>
                       {getMapStateOverlay(
-                        map.state as MapState,
+                        map.state,
                         map.bannedByPlayerId
                           ? playerTeamMap.get(map.bannedByPlayerId)
                           : undefined
@@ -500,7 +454,6 @@ function SessionDetailPage() {
                 role="log"
                 aria-label="Session activity log"
                 aria-live="polite"
-                aria-atomic="false"
                 className="space-y-0"
               >
                 {auditLogs.map((log, index) => (
@@ -534,7 +487,7 @@ function SessionDetailPage() {
                         </span>
                         <time
                           dateTime={new Date(log.timestamp).toISOString()}
-                          title={formatAbsoluteTime(log.timestamp)}
+                          title={new Date(log.timestamp).toLocaleString()}
                           className="text-xs text-muted-foreground ml-auto"
                         >
                           {formatRelativeTime(log.timestamp)}
