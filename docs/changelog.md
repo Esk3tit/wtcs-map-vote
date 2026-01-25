@@ -9,6 +9,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ## [Unreleased]
 
 ### Added
+- **Session Detail Page Wired to Convex** (WAR-10):
+  - `getSessionDetail` query with full session data, players, maps, and audit logs
+  - Real-time subscriptions for live session updates
+  - Proper handling of Convex IDs as opaque strings (not numeric validation)
+  - Accessibility improvements (aria-label on copy button)
+  - Loading and error states for session detail view
 - **Dashboard Wired to Convex** (WAR-8):
   - `listSessionsForDashboard` paginated query with player enrichment (assignedPlayerCount, teams)
   - Server-side filtering excludes COMPLETE/EXPIRED sessions from active view
