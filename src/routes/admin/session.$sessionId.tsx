@@ -125,10 +125,10 @@ const formatPlayerRole = (role: string, format: string): string => {
 // Main Component
 // ============================================================================
 
-// Simple validation for Convex session IDs (they start with specific prefixes)
+// Validate Convex session IDs - they are 32 character alphanumeric strings
 const isValidSessionId = (id: string): boolean => {
-  // Convex IDs are non-empty strings - basic sanity check
-  return typeof id === "string" && id.length > 0;
+  // Convex IDs are 32 characters, lowercase alphanumeric (base32-like encoding)
+  return typeof id === "string" && /^[a-z0-9]{32}$/.test(id);
 };
 
 function SessionDetailPage() {
