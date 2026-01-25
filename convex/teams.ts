@@ -45,6 +45,7 @@ function validateLogoUrl(logoUrl: string | undefined | null): string | undefined
 /**
  * List teams sorted by name (ascending) with pagination.
  * Resolves logoStorageId to URL for display - prefers storage over URL when both exist.
+ * Includes count of sessions each team is participating in.
  *
  * Uses Convex's standard pagination pattern with paginationOptsValidator for:
  * - Gapless reactive pagination (pages adjust when data changes)
@@ -64,24 +65,35 @@ export const listTeams = query({
       .order("asc")
       .paginate(args.paginationOpts);
 
-    // Resolve storage IDs to URLs in parallel for this page only
-    const teamsWithResolvedLogos = await Promise.all(
+    // Resolve storage IDs to URLs and count sessions in parallel for this page only
+    const teamsWithResolvedLogosAndCounts = await Promise.all(
       result.page.map(async (team) => {
+        // Resolve logo URL
+        let logoUrl = team.logoUrl;
         if (team.logoStorageId) {
           const resolvedUrl = await ctx.storage.getUrl(team.logoStorageId);
-          return {
-            ...team,
-            // Prefer storage URL over external URL when available
-            logoUrl: resolvedUrl ?? team.logoUrl,
-          };
+          logoUrl = resolvedUrl ?? team.logoUrl;
         }
-        return team;
+
+        // Count distinct sessions this team is in
+        const playersWithTeamName = await ctx.db
+          .query("sessionPlayers")
+          .withIndex("by_teamName", (q) => q.eq("teamName", team.name))
+          .collect();
+        const uniqueSessionIds = new Set(playersWithTeamName.map((p) => p.sessionId));
+        const sessionsCount = uniqueSessionIds.size;
+
+        return {
+          ...team,
+          logoUrl,
+          sessionsCount,
+        };
       })
     );
 
     return {
       ...result,
-      page: teamsWithResolvedLogos,
+      page: teamsWithResolvedLogosAndCounts,
     };
   },
 });
