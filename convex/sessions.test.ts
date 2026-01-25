@@ -2603,6 +2603,633 @@ describe("sessions.setSessionMaps", () => {
 });
 
 // ============================================================================
+// createSessionFull Tests
+// ============================================================================
+
+describe("sessions.createSessionFull", () => {
+  describe("success cases", () => {
+    it("creates complete session with ABBA format atomically", async () => {
+      const t = createTestContext();
+      const { adminId, teamNames, mapIds } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        await ctx.db.insert("teams", teamFactory({ name: "Team Alpha" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team Beta" }));
+        const mapIds = [
+          await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
+        ];
+        return { adminId, teamNames: ["Team Alpha", "Team Beta"], mapIds };
+      });
+
+      const result = await t.mutation(api.sessions.createSessionFull, {
+        matchName: "Grand Final",
+        format: "ABBA",
+        turnTimerSeconds: 45,
+        mapPoolSize: 3,
+        players: [
+          { role: "Player A", teamName: teamNames[0] },
+          { role: "Player B", teamName: teamNames[1] },
+        ],
+        mapIds,
+        createdBy: adminId,
+      });
+
+      expect(result.sessionId).toBeDefined();
+      expect(result.playerTokens).toHaveLength(2);
+      expect(result.playerTokens[0].role).toBe("Player A");
+      expect(result.playerTokens[1].role).toBe("Player B");
+
+      // Verify session was created with correct data
+      const session = await t.run(async (ctx) => ctx.db.get(result.sessionId));
+      expect(session).toMatchObject({
+        matchName: "Grand Final",
+        format: "ABBA",
+        status: "DRAFT",
+        turnTimerSeconds: 45,
+        mapPoolSize: 3,
+        playerCount: 2,
+      });
+
+      // Verify players were created
+      const players = await t.run(async (ctx) =>
+        ctx.db
+          .query("sessionPlayers")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", result.sessionId))
+          .collect()
+      );
+      expect(players).toHaveLength(2);
+      expect(players.map((p) => p.role).sort()).toEqual(["Player A", "Player B"]);
+
+      // Verify maps were copied to session
+      const sessionMaps = await t.run(async (ctx) =>
+        ctx.db
+          .query("sessionMaps")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", result.sessionId))
+          .collect()
+      );
+      expect(sessionMaps).toHaveLength(3);
+      expect(sessionMaps.every((m) => m.state === "AVAILABLE")).toBe(true);
+    });
+
+    it("creates complete session with MULTIPLAYER format atomically", async () => {
+      const t = createTestContext();
+      const { adminId, mapIds } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        await ctx.db.insert("teams", teamFactory({ name: "Team 1" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team 2" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team 3" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team 4" }));
+        const mapIds = [
+          await ctx.db.insert("maps", mapFactory({ name: "Map A" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map B" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map C" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map D" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map E" })),
+        ];
+        return { adminId, mapIds };
+      });
+
+      const result = await t.mutation(api.sessions.createSessionFull, {
+        matchName: "Team Battle",
+        format: "MULTIPLAYER",
+        mapPoolSize: 5,
+        players: [
+          { role: "Player 1", teamName: "Team 1" },
+          { role: "Player 2", teamName: "Team 2" },
+          { role: "Player 3", teamName: "Team 3" },
+          { role: "Player 4", teamName: "Team 4" },
+        ],
+        mapIds,
+        createdBy: adminId,
+      });
+
+      expect(result.sessionId).toBeDefined();
+      expect(result.playerTokens).toHaveLength(4);
+
+      // Verify players were created with unique tokens
+      const tokens = result.playerTokens.map((p) => p.token);
+      expect(new Set(tokens).size).toBe(4); // All tokens unique
+    });
+
+    it("returns unique tokens for each player", async () => {
+      const t = createTestContext();
+      const { adminId, mapIds } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        const mapIds = [
+          await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
+        ];
+        return { adminId, mapIds };
+      });
+
+      const result = await t.mutation(api.sessions.createSessionFull, {
+        matchName: "Test Match",
+        format: "ABBA",
+        mapPoolSize: 3,
+        players: [
+          { role: "Player A", teamName: "Team A" },
+          { role: "Player B", teamName: "Team B" },
+        ],
+        mapIds,
+        createdBy: adminId,
+      });
+
+      // Tokens should be 32 characters (UUID without dashes)
+      expect(result.playerTokens[0].token).toHaveLength(32);
+      expect(result.playerTokens[1].token).toHaveLength(32);
+      expect(result.playerTokens[0].token).not.toBe(result.playerTokens[1].token);
+    });
+
+    it("applies default turnTimerSeconds (30)", async () => {
+      const t = createTestContext();
+      const { adminId, mapIds } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        const mapIds = [
+          await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
+        ];
+        return { adminId, mapIds };
+      });
+
+      const result = await t.mutation(api.sessions.createSessionFull, {
+        matchName: "Test",
+        format: "ABBA",
+        mapPoolSize: 3,
+        players: [
+          { role: "Player A", teamName: "Team A" },
+          { role: "Player B", teamName: "Team B" },
+        ],
+        mapIds,
+        createdBy: adminId,
+      });
+
+      const session = await t.run(async (ctx) => ctx.db.get(result.sessionId));
+      expect(session?.turnTimerSeconds).toBe(30);
+    });
+
+    it("applies default mapPoolSize (5)", async () => {
+      const t = createTestContext();
+      const { adminId, mapIds } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        const mapIds = [
+          await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 4" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 5" })),
+        ];
+        return { adminId, mapIds };
+      });
+
+      const result = await t.mutation(api.sessions.createSessionFull, {
+        matchName: "Test",
+        format: "ABBA",
+        // mapPoolSize not specified - should default to 5
+        players: [
+          { role: "Player A", teamName: "Team A" },
+          { role: "Player B", teamName: "Team B" },
+        ],
+        mapIds,
+        createdBy: adminId,
+      });
+
+      const session = await t.run(async (ctx) => ctx.db.get(result.sessionId));
+      expect(session?.mapPoolSize).toBe(5);
+    });
+
+    it("creates audit log entry", async () => {
+      const t = createTestContext();
+      const { adminId, mapIds } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        const mapIds = [
+          await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
+        ];
+        return { adminId, mapIds };
+      });
+
+      const result = await t.mutation(api.sessions.createSessionFull, {
+        matchName: "Test",
+        format: "ABBA",
+        mapPoolSize: 3,
+        players: [
+          { role: "Player A", teamName: "Team A" },
+          { role: "Player B", teamName: "Team B" },
+        ],
+        mapIds,
+        createdBy: adminId,
+      });
+
+      const auditLogs = await t.run(async (ctx) =>
+        ctx.db
+          .query("auditLogs")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", result.sessionId))
+          .collect()
+      );
+
+      expect(auditLogs).toHaveLength(1);
+      expect(auditLogs[0].action).toBe("SESSION_CREATED");
+      expect(auditLogs[0].actorType).toBe("ADMIN");
+    });
+
+    it("trims whitespace from match name", async () => {
+      const t = createTestContext();
+      const { adminId, mapIds } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        const mapIds = [
+          await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
+        ];
+        return { adminId, mapIds };
+      });
+
+      const result = await t.mutation(api.sessions.createSessionFull, {
+        matchName: "  Grand Final  ",
+        format: "ABBA",
+        mapPoolSize: 3,
+        players: [
+          { role: "Player A", teamName: "Team A" },
+          { role: "Player B", teamName: "Team B" },
+        ],
+        mapIds,
+        createdBy: adminId,
+      });
+
+      const session = await t.run(async (ctx) => ctx.db.get(result.sessionId));
+      expect(session?.matchName).toBe("Grand Final");
+    });
+  });
+
+  describe("validation errors", () => {
+    it("rejects empty match name", async () => {
+      const t = createTestContext();
+      const { adminId, mapIds } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        const mapIds = [
+          await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
+        ];
+        return { adminId, mapIds };
+      });
+
+      await expect(
+        t.mutation(api.sessions.createSessionFull, {
+          matchName: "   ",
+          format: "ABBA",
+          mapPoolSize: 3,
+          players: [
+            { role: "Player A", teamName: "Team A" },
+            { role: "Player B", teamName: "Team B" },
+          ],
+          mapIds,
+          createdBy: adminId,
+        })
+      ).rejects.toThrow("Match name cannot be empty");
+    });
+
+    it("rejects ABBA format with wrong player count", async () => {
+      const t = createTestContext();
+      const { adminId, mapIds } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team C" }));
+        const mapIds = [
+          await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
+        ];
+        return { adminId, mapIds };
+      });
+
+      await expect(
+        t.mutation(api.sessions.createSessionFull, {
+          matchName: "Test",
+          format: "ABBA",
+          mapPoolSize: 3,
+          players: [
+            { role: "Player 1", teamName: "Team A" },
+            { role: "Player 2", teamName: "Team B" },
+            { role: "Player 3", teamName: "Team C" },
+          ],
+          mapIds,
+          createdBy: adminId,
+        })
+      ).rejects.toThrow("ABBA format requires exactly 2 players");
+    });
+
+    it("rejects MULTIPLAYER format with wrong player count", async () => {
+      const t = createTestContext();
+      const { adminId, mapIds } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        const mapIds = [
+          await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
+        ];
+        return { adminId, mapIds };
+      });
+
+      await expect(
+        t.mutation(api.sessions.createSessionFull, {
+          matchName: "Test",
+          format: "MULTIPLAYER",
+          mapPoolSize: 3,
+          players: [
+            { role: "Player 1", teamName: "Team A" },
+            { role: "Player 2", teamName: "Team B" },
+          ],
+          mapIds,
+          createdBy: adminId,
+        })
+      ).rejects.toThrow("MULTIPLAYER format requires exactly 4 players");
+    });
+
+    it("rejects duplicate roles in player list", async () => {
+      const t = createTestContext();
+      const { adminId, mapIds } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        const mapIds = [
+          await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
+        ];
+        return { adminId, mapIds };
+      });
+
+      await expect(
+        t.mutation(api.sessions.createSessionFull, {
+          matchName: "Test",
+          format: "ABBA",
+          mapPoolSize: 3,
+          players: [
+            { role: "Player A", teamName: "Team A" },
+            { role: "Player A", teamName: "Team B" }, // Duplicate role
+          ],
+          mapIds,
+          createdBy: adminId,
+        })
+      ).rejects.toThrow('Duplicate role "Player A"');
+    });
+
+    it("rejects non-existent team", async () => {
+      const t = createTestContext();
+      const { adminId, mapIds } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        // Team B not created
+        const mapIds = [
+          await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
+        ];
+        return { adminId, mapIds };
+      });
+
+      await expect(
+        t.mutation(api.sessions.createSessionFull, {
+          matchName: "Test",
+          format: "ABBA",
+          mapPoolSize: 3,
+          players: [
+            { role: "Player A", teamName: "Team A" },
+            { role: "Player B", teamName: "NonExistent Team" },
+          ],
+          mapIds,
+          createdBy: adminId,
+        })
+      ).rejects.toThrow('Team "NonExistent Team" not found');
+    });
+
+    it("rejects map count mismatch with mapPoolSize", async () => {
+      const t = createTestContext();
+      const { adminId, mapIds } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        const mapIds = [
+          await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
+        ];
+        return { adminId, mapIds };
+      });
+
+      await expect(
+        t.mutation(api.sessions.createSessionFull, {
+          matchName: "Test",
+          format: "ABBA",
+          mapPoolSize: 5, // Expecting 5 maps
+          players: [
+            { role: "Player A", teamName: "Team A" },
+            { role: "Player B", teamName: "Team B" },
+          ],
+          mapIds, // Only 3 maps provided
+          createdBy: adminId,
+        })
+      ).rejects.toThrow("Expected 5 maps, received 3");
+    });
+
+    it("rejects duplicate maps in mapIds", async () => {
+      const t = createTestContext();
+      const { adminId, mapId } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        const mapId = await ctx.db.insert("maps", mapFactory({ name: "Map 1" }));
+        return { adminId, mapId };
+      });
+
+      await expect(
+        t.mutation(api.sessions.createSessionFull, {
+          matchName: "Test",
+          format: "ABBA",
+          mapPoolSize: 3,
+          players: [
+            { role: "Player A", teamName: "Team A" },
+            { role: "Player B", teamName: "Team B" },
+          ],
+          mapIds: [mapId, mapId, mapId], // Duplicates
+          createdBy: adminId,
+        })
+      ).rejects.toThrow("Duplicate maps not allowed");
+    });
+
+    it("rejects non-existent map", async () => {
+      const t = createTestContext();
+      const { adminId, mapIds } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        const mapIds = [
+          await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+        ];
+        return { adminId, mapIds };
+      });
+
+      // Create and delete a map to get a valid but non-existent ID
+      const fakeMapId = await createDeletedId(t, async (ctx) =>
+        ctx.db.insert("maps", mapFactory({ name: "Deleted Map" }))
+      );
+
+      await expect(
+        t.mutation(api.sessions.createSessionFull, {
+          matchName: "Test",
+          format: "ABBA",
+          mapPoolSize: 3,
+          players: [
+            { role: "Player A", teamName: "Team A" },
+            { role: "Player B", teamName: "Team B" },
+          ],
+          mapIds: [...mapIds, fakeMapId],
+          createdBy: adminId,
+        })
+      ).rejects.toThrow("Map not found");
+    });
+
+    it("rejects inactive map", async () => {
+      const t = createTestContext();
+      const { adminId, mapIds } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        const mapIds = [
+          await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Inactive Map", isActive: false })),
+        ];
+        return { adminId, mapIds };
+      });
+
+      await expect(
+        t.mutation(api.sessions.createSessionFull, {
+          matchName: "Test",
+          format: "ABBA",
+          mapPoolSize: 3,
+          players: [
+            { role: "Player A", teamName: "Team A" },
+            { role: "Player B", teamName: "Team B" },
+          ],
+          mapIds,
+          createdBy: adminId,
+        })
+      ).rejects.toThrow('Map "Inactive Map" is not active');
+    });
+
+    it("rejects invalid admin ID", async () => {
+      const t = createTestContext();
+      const mapIds = await t.run(async (ctx) => {
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        return [
+          await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
+        ];
+      });
+
+      // Create and delete an admin to get a valid but non-existent ID
+      const fakeAdminId = await createDeletedAdminId(t);
+
+      await expect(
+        t.mutation(api.sessions.createSessionFull, {
+          matchName: "Test",
+          format: "ABBA",
+          mapPoolSize: 3,
+          players: [
+            { role: "Player A", teamName: "Team A" },
+            { role: "Player B", teamName: "Team B" },
+          ],
+          mapIds,
+          createdBy: fakeAdminId,
+        })
+      ).rejects.toThrow("Invalid admin ID");
+    });
+
+    it("rejects turn timer below minimum", async () => {
+      const t = createTestContext();
+      const { adminId, mapIds } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        const mapIds = [
+          await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
+        ];
+        return { adminId, mapIds };
+      });
+
+      await expect(
+        t.mutation(api.sessions.createSessionFull, {
+          matchName: "Test",
+          format: "ABBA",
+          turnTimerSeconds: 5, // Below minimum of 10
+          mapPoolSize: 3,
+          players: [
+            { role: "Player A", teamName: "Team A" },
+            { role: "Player B", teamName: "Team B" },
+          ],
+          mapIds,
+          createdBy: adminId,
+        })
+      ).rejects.toThrow();
+    });
+
+    it("rejects map pool size below minimum", async () => {
+      const t = createTestContext();
+      const { adminId, mapIds } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        const mapIds = [
+          await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+        ];
+        return { adminId, mapIds };
+      });
+
+      await expect(
+        t.mutation(api.sessions.createSessionFull, {
+          matchName: "Test",
+          format: "ABBA",
+          mapPoolSize: 2, // Below minimum of 3
+          players: [
+            { role: "Player A", teamName: "Team A" },
+            { role: "Player B", teamName: "Team B" },
+          ],
+          mapIds,
+          createdBy: adminId,
+        })
+      ).rejects.toThrow();
+    });
+  });
+});
+
+// ============================================================================
 // getSessionByToken Tests
 // ============================================================================
 

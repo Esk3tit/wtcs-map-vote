@@ -744,6 +744,247 @@ export const setSessionMaps = mutation({
   },
 });
 
+/**
+ * Create a complete session atomically with players and maps.
+ * Single transaction ensures no partial sessions are created.
+ *
+ * Combines createSession, assignPlayer, and setSessionMaps into one atomic operation.
+ * If any validation fails, the entire operation is rolled back.
+ *
+ * @param matchName - Display name for the match
+ * @param format - Voting format: "ABBA" (1v1) or "MULTIPLAYER"
+ * @param turnTimerSeconds - Seconds per turn (default: 30)
+ * @param mapPoolSize - Number of maps in pool (default: 5)
+ * @param players - Array of player assignments with role and teamName
+ * @param mapIds - Array of map IDs from the master maps table
+ * @param createdBy - Admin ID who created session (required until auth is integrated)
+ */
+export const createSessionFull = mutation({
+  args: {
+    matchName: v.string(),
+    format: sessionFormatValidator,
+    turnTimerSeconds: v.optional(v.number()),
+    mapPoolSize: v.optional(v.number()),
+    players: v.array(
+      v.object({
+        role: v.string(),
+        teamName: v.string(),
+      })
+    ),
+    mapIds: v.array(v.id("maps")),
+    // TODO: Remove this arg when auth is integrated - will be auto-populated from ctx.auth
+    createdBy: v.id("admins"),
+  },
+  returns: v.object({
+    sessionId: v.id("sessions"),
+    playerTokens: v.array(
+      v.object({
+        role: v.string(),
+        token: v.string(),
+      })
+    ),
+  }),
+  handler: async (ctx, args) => {
+    // ========================================================================
+    // 1. Validate all inputs upfront before any DB writes
+    // ========================================================================
+
+    // Validate match name
+    const trimmedName = validateMatchName(args.matchName);
+
+    // Validate turn timer
+    const turnTimerSeconds = args.turnTimerSeconds ?? DEFAULT_TURN_TIMER_SECONDS;
+    validateRange(
+      turnTimerSeconds,
+      MIN_TURN_TIMER_SECONDS,
+      MAX_TURN_TIMER_SECONDS,
+      "Turn timer",
+      "seconds"
+    );
+
+    // Validate map pool size
+    const mapPoolSize = args.mapPoolSize ?? DEFAULT_MAP_POOL_SIZE;
+    validateRange(
+      mapPoolSize,
+      MIN_MAP_POOL_SIZE,
+      MAX_MAP_POOL_SIZE,
+      "Map pool size"
+    );
+
+    // Validate player count matches format expectations
+    const expectedPlayerCount = args.format === "ABBA" ? 2 : 4;
+    if (args.players.length !== expectedPlayerCount) {
+      throw new ConvexError(
+        `${args.format} format requires exactly ${expectedPlayerCount} players, received ${args.players.length}`
+      );
+    }
+
+    // Validate player count range
+    validateRange(
+      args.players.length,
+      MIN_PLAYER_COUNT,
+      MAX_PLAYER_COUNT,
+      "Player count"
+    );
+
+    // Validate and collect player roles (check for duplicates)
+    const validatedPlayers: Array<{ role: string; teamName: string }> = [];
+    const seenRoles = new Set<string>();
+    for (const player of args.players) {
+      const validatedRole = validateName(player.role, "Role");
+      if (seenRoles.has(validatedRole)) {
+        throw new ConvexError(
+          `Duplicate role "${validatedRole}" in player list`
+        );
+      }
+      seenRoles.add(validatedRole);
+      validatedPlayers.push({ role: validatedRole, teamName: player.teamName });
+    }
+
+    // Validate all teams exist
+    const teamNames = [...new Set(args.players.map((p) => p.teamName))];
+    for (const teamName of teamNames) {
+      const team = await ctx.db
+        .query("teams")
+        .withIndex("by_name", (q) => q.eq("name", teamName))
+        .first();
+      if (!team) {
+        throw new ConvexError(`Team "${teamName}" not found`);
+      }
+    }
+
+    // Validate map count matches pool size
+    if (args.mapIds.length !== mapPoolSize) {
+      throw new ConvexError(
+        `Expected ${mapPoolSize} maps, received ${args.mapIds.length}`
+      );
+    }
+
+    // Check for duplicate maps
+    const uniqueMapIds = new Set(args.mapIds);
+    if (uniqueMapIds.size !== args.mapIds.length) {
+      throw new ConvexError("Duplicate maps not allowed in the same session");
+    }
+
+    // Validate all maps exist and are active
+    const maps = await Promise.all(args.mapIds.map((id) => ctx.db.get(id)));
+    for (let i = 0; i < maps.length; i++) {
+      const map = maps[i];
+      if (!map) {
+        throw new ConvexError(`Map not found: ${args.mapIds[i]}`);
+      }
+      if (!map.isActive) {
+        throw new ConvexError(`Map "${map.name}" is not active`);
+      }
+    }
+
+    // Verify the admin exists
+    const admin = await ctx.db.get(args.createdBy);
+    if (!admin) {
+      throw new ConvexError("Invalid admin ID provided for createdBy");
+    }
+
+    // ========================================================================
+    // 2. Create session
+    // ========================================================================
+
+    const now = Date.now();
+    const sessionId = await ctx.db.insert("sessions", {
+      matchName: trimmedName,
+      format: args.format,
+      status: "DRAFT",
+      turnTimerSeconds,
+      mapPoolSize,
+      playerCount: args.players.length,
+      currentTurn: 0,
+      currentRound: 1,
+      createdBy: args.createdBy,
+      updatedAt: now,
+      expiresAt: now + SESSION_EXPIRY_MS,
+    });
+
+    // ========================================================================
+    // 3. Create players with tokens
+    // ========================================================================
+
+    const playerTokens: Array<{ role: string; token: string }> = [];
+    const generatedTokens = new Set<string>();
+
+    for (const player of validatedPlayers) {
+      // Generate unique token (UUID without dashes)
+      let token = crypto.randomUUID().replace(/-/g, "");
+
+      // Ensure no collision within this batch
+      while (generatedTokens.has(token)) {
+        token = crypto.randomUUID().replace(/-/g, "");
+      }
+      generatedTokens.add(token);
+
+      // Check token uniqueness in database (extremely unlikely with UUID)
+      const existingToken = await ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_token", (q) => q.eq("token", token))
+        .first();
+      if (existingToken) {
+        throw new ConvexError("Token collision - please retry");
+      }
+
+      await ctx.db.insert("sessionPlayers", {
+        sessionId,
+        role: player.role,
+        teamName: player.teamName,
+        token,
+        tokenExpiresAt: now + TOKEN_EXPIRY_MS,
+        isConnected: false,
+        hasVotedThisRound: false,
+      });
+
+      playerTokens.push({ role: player.role, token });
+    }
+
+    // ========================================================================
+    // 4. Create session maps (snapshots from master maps)
+    // ========================================================================
+
+    await Promise.all(
+      maps.map(async (map) => {
+        // Resolve image URL (storage takes precedence over external URL)
+        let imageUrl = map!.imageUrl ?? "";
+        if (map!.imageStorageId) {
+          const storageUrl = await ctx.storage.getUrl(map!.imageStorageId);
+          if (storageUrl) {
+            imageUrl = storageUrl;
+          }
+        }
+
+        return ctx.db.insert("sessionMaps", {
+          sessionId,
+          mapId: map!._id,
+          name: map!.name,
+          imageUrl,
+          state: "AVAILABLE",
+        });
+      })
+    );
+
+    // ========================================================================
+    // 5. Create audit log
+    // ========================================================================
+
+    await logAction(ctx, {
+      sessionId,
+      action: "SESSION_CREATED",
+      actorType: "ADMIN",
+      actorId: args.createdBy,
+      details: {
+        reason: `Created with ${args.players.length} players and ${args.mapIds.length} maps`,
+      },
+    });
+
+    return { sessionId, playerTokens };
+  },
+});
+
 // ============================================================================
 // Player-Facing Queries
 // ============================================================================

@@ -115,10 +115,8 @@ function CreateSessionPage() {
   const isLoadingTeams = teamsQuery.status === 'LoadingFirstPage'
   const isLoadingMaps = maps === undefined
 
-  // Mutations
-  const createSession = useMutation(api.sessions.createSession)
-  const assignPlayer = useMutation(api.sessions.assignPlayer)
-  const setSessionMaps = useMutation(api.sessions.setSessionMaps)
+  // Mutation for atomic session creation
+  const createSessionFull = useMutation(api.sessions.createSessionFull)
 
   // Form state
   const [matchName, setMatchName] = useState('')
@@ -179,38 +177,34 @@ function CreateSessionPage() {
     setIsSubmitting(true)
 
     try {
-      // TODO: Consider atomic createSessionWithPlayers mutation to prevent partial sessions (Phase 2)
-      // 1. Create the session
-      const { sessionId } = await createSession({
+      // Build players array based on format
+      const players =
+        format === 'ABBA'
+          ? [
+              { role: 'Player A', teamName: playerA },
+              { role: 'Player B', teamName: playerB },
+            ]
+          : [
+              { role: 'Player 1', teamName: player1 },
+              { role: 'Player 2', teamName: player2 },
+              { role: 'Player 3', teamName: player3 },
+              { role: 'Player 4', teamName: player4 },
+            ]
+
+      // Atomic session creation - creates session, players, and maps in single transaction
+      const { sessionId } = await createSessionFull({
         matchName: trimmedMatchName,
         format,
-        playerCount: format === 'ABBA' ? 2 : 4,
         turnTimerSeconds: parsedTurnTimer,
         mapPoolSize,
+        players,
+        mapIds: selectedMaps,
         createdBy: adminId,
       })
 
-      // 2. Assign players in parallel (generates tokens)
-      if (format === 'ABBA') {
-        await Promise.all([
-          assignPlayer({ sessionId, role: 'Player A', teamName: playerA }),
-          assignPlayer({ sessionId, role: 'Player B', teamName: playerB }),
-        ])
-      } else {
-        await Promise.all([
-          assignPlayer({ sessionId, role: 'Player 1', teamName: player1 }),
-          assignPlayer({ sessionId, role: 'Player 2', teamName: player2 }),
-          assignPlayer({ sessionId, role: 'Player 3', teamName: player3 }),
-          assignPlayer({ sessionId, role: 'Player 4', teamName: player4 }),
-        ])
-      }
-
-      // 3. Set map pool
-      await setSessionMaps({ sessionId, mapIds: selectedMaps })
-
       toast.success('Session created successfully!')
 
-      // 4. Navigate to session detail
+      // Navigate to session detail
       navigate({ to: `/admin/session/${sessionId}` })
     } catch (error) {
       console.error('Failed to create session:', error)
