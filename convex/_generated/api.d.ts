@@ -10,7 +10,9 @@
 
 import type * as admins from "../admins.js";
 import type * as audit from "../audit.js";
+import type * as auth from "../auth.js";
 import type * as crons from "../crons.js";
+import type * as http from "../http.js";
 import type * as lib_cascadeDelete from "../lib/cascadeDelete.js";
 import type * as lib_constants from "../lib/constants.js";
 import type * as lib_imageConstants from "../lib/imageConstants.js";
@@ -34,7 +36,9 @@ import type {
 declare const fullApi: ApiFromModules<{
   admins: typeof admins;
   audit: typeof audit;
+  auth: typeof auth;
   crons: typeof crons;
+  http: typeof http;
   "lib/cascadeDelete": typeof lib_cascadeDelete;
   "lib/constants": typeof lib_constants;
   "lib/imageConstants": typeof lib_imageConstants;

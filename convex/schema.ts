@@ -1,7 +1,12 @@
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
+import { authTables } from "@convex-dev/auth/server";
+
 export default defineSchema({
+  // Convex Auth tables (7 tables)
+  ...authTables,
+
   // Admin users (Google OAuth)
   admins: defineTable({
     email: v.string(),
