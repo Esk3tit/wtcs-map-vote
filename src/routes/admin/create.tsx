@@ -17,6 +17,10 @@ import { toast } from 'sonner'
 
 type SessionFormat = 'ABBA' | 'MULTIPLAYER'
 
+// Map pool size constraints
+const MIN_MAP_POOL_SIZE = 3
+const MAX_MAP_POOL_SIZE = 9
+
 interface Team {
   id: string
   name: string
@@ -36,7 +40,6 @@ function TeamCombobox({
   isLoading?: boolean
 }) {
   const [open, setOpen] = useState(false)
-  const [customValue, setCustomValue] = useState('')
 
   const displayValue = isLoading ? 'Loading teams...' : value || 'Select team...'
 
@@ -64,27 +67,9 @@ function TeamCombobox({
         </PopoverTrigger>
         <PopoverContent className="w-[400px] p-0" align="start">
           <Command>
-            <CommandInput
-              placeholder="Search teams or type custom name..."
-              value={customValue}
-              onValueChange={setCustomValue}
-            />
+            <CommandInput placeholder="Search teams..." />
             <CommandList>
-              <CommandEmpty>
-                {customValue && (
-                  <Button
-                    variant="ghost"
-                    className="w-full justify-start text-left"
-                    onClick={() => {
-                      onChange(customValue)
-                      setOpen(false)
-                      setCustomValue('')
-                    }}
-                  >
-                    Use "{customValue}"
-                  </Button>
-                )}
-              </CommandEmpty>
+              <CommandEmpty>No teams found. Add teams in the Teams CMS.</CommandEmpty>
               <CommandGroup>
                 {teams.map((team) => (
                   <CommandItem
@@ -93,7 +78,6 @@ function TeamCombobox({
                     onSelect={(currentValue) => {
                       onChange(currentValue === value ? '' : currentValue)
                       setOpen(false)
-                      setCustomValue('')
                     }}
                   >
                     <Check className={cn('mr-2 h-4 w-4', value === team.name ? 'opacity-100' : 'opacity-0')} />
@@ -156,7 +140,7 @@ function CreateSessionPage() {
 
   const handleMapPoolSizeChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const value = parseInt(e.target.value)
-    const clampedValue = Math.max(3, Math.min(9, value || 3))
+    const clampedValue = Math.max(MIN_MAP_POOL_SIZE, Math.min(MAX_MAP_POOL_SIZE, value || MIN_MAP_POOL_SIZE))
     setMapPoolSize(clampedValue)
     // Clear selection if it exceeds new pool size
     if (selectedMaps.length > clampedValue) {
@@ -177,15 +161,28 @@ function CreateSessionPage() {
       return
     }
 
+    // Normalize and validate inputs
+    const trimmedMatchName = matchName.trim()
+    if (!trimmedMatchName) {
+      toast.error('Match name cannot be empty')
+      return
+    }
+
+    const parsedTurnTimer = parseInt(turnTimer, 10)
+    if (isNaN(parsedTurnTimer) || parsedTurnTimer < 10 || parsedTurnTimer > 120) {
+      toast.error('Turn timer must be between 10 and 120 seconds')
+      return
+    }
+
     setIsSubmitting(true)
 
     try {
       // 1. Create the session
       const { sessionId } = await createSession({
-        matchName,
+        matchName: trimmedMatchName,
         format,
         playerCount: format === 'ABBA' ? 2 : 4,
-        turnTimerSeconds: parseInt(turnTimer),
+        turnTimerSeconds: parsedTurnTimer,
         mapPoolSize,
         createdBy: adminId,
       })
