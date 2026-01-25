@@ -323,6 +323,102 @@ describe("teams.listTeams", () => {
       expect(result.page[0].logoUrl).toBe("https://example.com/logo.png");
     });
   });
+
+  describe("sessions count", () => {
+    it("returns sessionsCount of 0 for team not in any session", async () => {
+      const t = createTestContext();
+
+      await t.run(async (ctx) => {
+        await ctx.db.insert("teams", teamFactory({ name: "Lonely Team" }));
+      });
+
+      const result = await t.query(api.teams.listTeams, {
+        paginationOpts: { numItems: 10, cursor: null },
+      });
+
+      expect(result.page[0].sessionsCount).toBe(0);
+    });
+
+    it("returns correct sessionsCount for team in one session", async () => {
+      const t = createTestContext();
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        await ctx.db.insert("teams", teamFactory({ name: "Active Team" }));
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId)
+        );
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, { teamName: "Active Team" })
+        );
+      });
+
+      const result = await t.query(api.teams.listTeams, {
+        paginationOpts: { numItems: 10, cursor: null },
+      });
+
+      expect(result.page[0].sessionsCount).toBe(1);
+    });
+
+    it("returns correct sessionsCount for team in multiple sessions", async () => {
+      const t = createTestContext();
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        await ctx.db.insert("teams", teamFactory({ name: "Popular Team" }));
+
+        // Create 3 different sessions with this team
+        for (let i = 0; i < 3; i++) {
+          const sessionId = await ctx.db.insert(
+            "sessions",
+            sessionFactory(adminId, { matchName: `Match ${i}` })
+          );
+          await ctx.db.insert(
+            "sessionPlayers",
+            sessionPlayerFactory(sessionId, { teamName: "Popular Team" })
+          );
+        }
+      });
+
+      const result = await t.query(api.teams.listTeams, {
+        paginationOpts: { numItems: 10, cursor: null },
+      });
+
+      expect(result.page[0].sessionsCount).toBe(3);
+    });
+
+    it("counts unique sessions when team has multiple players in same session", async () => {
+      const t = createTestContext();
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        await ctx.db.insert("teams", teamFactory({ name: "Multi Player Team" }));
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId)
+        );
+
+        // Add multiple players from same team to same session
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, { teamName: "Multi Player Team", role: "TEAM_A" })
+        );
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, { teamName: "Multi Player Team", role: "TEAM_B" })
+        );
+      });
+
+      const result = await t.query(api.teams.listTeams, {
+        paginationOpts: { numItems: 10, cursor: null },
+      });
+
+      // Should count as 1 session, not 2 players
+      expect(result.page[0].sessionsCount).toBe(1);
+    });
+  });
 });
 
 // ============================================================================

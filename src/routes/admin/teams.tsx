@@ -13,6 +13,16 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
   Table,
   TableBody,
   TableCell,
@@ -54,6 +64,11 @@ function TeamsPage() {
   const [currentImageUrl, setCurrentImageUrl] = useState<string | undefined>();
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  const [deleteConfirmTeam, setDeleteConfirmTeam] = useState<{
+    id: Id<"teams">;
+    name: string;
+  } | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   const isLoading = status === "LoadingFirstPage";
   const hasNoTeams = teams.length === 0 && status !== "LoadingFirstPage";
@@ -83,16 +98,20 @@ function TeamsPage() {
     setIsDialogOpen(true);
   };
 
-  const handleDeleteTeam = async (teamId: Id<"teams">, teamName: string) => {
-    if (!confirm(`Are you sure you want to delete "${teamName}"?`)) return;
+  const handleDeleteTeam = async () => {
+    if (!deleteConfirmTeam) return;
 
+    setIsDeleting(true);
     try {
-      await deleteTeam({ teamId });
-      toast.success(`Team "${teamName}" deleted`);
+      await deleteTeam({ teamId: deleteConfirmTeam.id });
+      toast.success(`Team "${deleteConfirmTeam.name}" deleted`);
+      setDeleteConfirmTeam(null);
     } catch (error) {
       const message =
         error instanceof Error ? error.message : "Failed to delete team";
       toast.error(message);
+    } finally {
+      setIsDeleting(false);
     }
   };
 
@@ -244,19 +263,24 @@ function TeamsPage() {
               <Card className="border-border/50 bg-card/50 backdrop-blur-sm rounded-lg">
                 <CardContent className="p-0">
                   <div className="overflow-x-auto">
-                    <Table className="min-w-[600px] table-fixed">
+                    <Table className="min-w-[700px] table-fixed">
                       <TableHeader>
                         <TableRow className="border-border/50 hover:bg-transparent">
-                          <TableHead className={cn("w-[40%]", tableHeadClasses)}>
+                          <TableHead className={cn("w-[35%]", tableHeadClasses)}>
                             Team
                           </TableHead>
                           <TableHead
-                            className={cn("w-[35%] text-center", tableHeadClasses)}
+                            className={cn("w-[20%] text-center", tableHeadClasses)}
+                          >
+                            Sessions
+                          </TableHead>
+                          <TableHead
+                            className={cn("w-[25%] text-center", tableHeadClasses)}
                           >
                             Date Added
                           </TableHead>
                           <TableHead
-                            className={cn("w-[25%] text-right pr-4", tableHeadClasses)}
+                            className={cn("w-[20%] text-right pr-4", tableHeadClasses)}
                           >
                             Actions
                           </TableHead>
@@ -284,6 +308,9 @@ function TeamsPage() {
                               </div>
                             </TableCell>
                             <TableCell className="py-3 md:py-2 text-center text-xs md:text-sm text-muted-foreground">
+                              {team.sessionsCount}
+                            </TableCell>
+                            <TableCell className="py-3 md:py-2 text-center text-xs md:text-sm text-muted-foreground">
                               {formatDate(team._creationTime)}
                             </TableCell>
                             <TableCell className="py-3 md:py-2">
@@ -299,7 +326,7 @@ function TeamsPage() {
                                 </Button>
                                 <Button
                                   onClick={() =>
-                                    handleDeleteTeam(team._id, team.name)
+                                    setDeleteConfirmTeam({ id: team._id, name: team.name })
                                   }
                                   variant="ghost"
                                   size="icon"
@@ -405,6 +432,39 @@ function TeamsPage() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog
+        open={deleteConfirmTeam !== null}
+        onOpenChange={(open) => !open && setDeleteConfirmTeam(null)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete Team</AlertDialogTitle>
+            <AlertDialogDescription>
+              Are you sure you want to delete "{deleteConfirmTeam?.name}"? This
+              action cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isDeleting}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDeleteTeam}
+              disabled={isDeleting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isDeleting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Deleting...
+                </>
+              ) : (
+                "Delete"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </>
   );
 }
