@@ -219,6 +219,9 @@ function CreateSessionPage() {
   }
 
   // Determine if form is valid for submission
+  const turnTimerSeconds = parseInt(turnTimer, 10)
+  const isTurnTimerValid = !isNaN(turnTimerSeconds) && turnTimerSeconds >= 10 && turnTimerSeconds <= 120
+
   const isFormValid =
     !isSubmitting &&
     !isLoadingTeams &&
@@ -226,6 +229,7 @@ function CreateSessionPage() {
     adminId != null &&
     selectedMaps.length === mapPoolSize &&
     matchName.trim() !== '' &&
+    isTurnTimerValid &&
     (format === 'ABBA' ? playerA && playerB : player1 && player2 && player3 && player4)
 
   return (
