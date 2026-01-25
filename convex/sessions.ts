@@ -670,3 +670,374 @@ export const setSessionMaps = mutation({
     return { success: true };
   },
 });
+
+// ============================================================================
+// Player-Facing Queries
+// ============================================================================
+
+/**
+ * Validator for sanitized player data (no tokens exposed).
+ */
+const sanitizedPlayerValidator = v.object({
+  _id: v.id("sessionPlayers"),
+  role: v.string(),
+  teamName: v.string(),
+  isConnected: v.boolean(),
+  hasVotedThisRound: v.boolean(),
+});
+
+/**
+ * Get session data for player-facing pages by access token.
+ * Returns sanitized data (no other players' tokens exposed).
+ *
+ * @param token - Player access token from URL
+ */
+export const getSessionByToken = query({
+  args: {
+    token: v.string(),
+  },
+  returns: v.union(
+    v.object({
+      status: v.literal("valid"),
+      player: sanitizedPlayerValidator,
+      session: v.object({
+        _id: v.id("sessions"),
+        matchName: v.string(),
+        format: sessionFormatValidator,
+        status: sessionStatusValidator,
+        turnTimerSeconds: v.number(),
+        currentTurn: v.number(),
+        currentRound: v.number(),
+        timerStartedAt: v.optional(v.number()),
+        timerPausedAt: v.optional(v.number()),
+        winnerMapId: v.optional(v.id("sessionMaps")),
+      }),
+      maps: v.array(sessionMapObjectValidator),
+      otherPlayers: v.array(sanitizedPlayerValidator),
+    }),
+    v.object({
+      status: v.literal("error"),
+      error: v.union(
+        v.literal("INVALID_TOKEN"),
+        v.literal("TOKEN_EXPIRED"),
+        v.literal("SESSION_NOT_FOUND")
+      ),
+    })
+  ),
+  handler: async (ctx, args) => {
+    // Look up player by token using by_token index
+    const player = await ctx.db
+      .query("sessionPlayers")
+      .withIndex("by_token", (q) => q.eq("token", args.token))
+      .first();
+
+    if (!player) {
+      return { status: "error" as const, error: "INVALID_TOKEN" as const };
+    }
+
+    // Check token expiration
+    if (player.tokenExpiresAt < Date.now()) {
+      return { status: "error" as const, error: "TOKEN_EXPIRED" as const };
+    }
+
+    // Get session
+    const session = await ctx.db.get(player.sessionId);
+    if (!session) {
+      return { status: "error" as const, error: "SESSION_NOT_FOUND" as const };
+    }
+
+    // Get all players and maps in parallel
+    const [allPlayers, maps] = await Promise.all([
+      ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+        .collect(),
+      ctx.db
+        .query("sessionMaps")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+        .collect(),
+    ]);
+
+    // Sanitize player data (exclude tokens)
+    const sanitizePlayer = (p: typeof player) => ({
+      _id: p._id,
+      role: p.role,
+      teamName: p.teamName,
+      isConnected: p.isConnected,
+      hasVotedThisRound: p.hasVotedThisRound,
+    });
+
+    const otherPlayers = allPlayers
+      .filter((p) => p._id !== player._id)
+      .map(sanitizePlayer);
+
+    return {
+      status: "valid" as const,
+      player: sanitizePlayer(player),
+      session: {
+        _id: session._id,
+        matchName: session.matchName,
+        format: session.format,
+        status: session.status,
+        turnTimerSeconds: session.turnTimerSeconds,
+        currentTurn: session.currentTurn,
+        currentRound: session.currentRound,
+        timerStartedAt: session.timerStartedAt,
+        timerPausedAt: session.timerPausedAt,
+        winnerMapId: session.winnerMapId,
+      },
+      maps,
+      otherPlayers,
+    };
+  },
+});
+
+/**
+ * Get session results for display on results page.
+ * Requires valid token authentication.
+ *
+ * @param token - Player access token
+ */
+export const getSessionResultsByToken = query({
+  args: {
+    token: v.string(),
+  },
+  returns: v.union(
+    v.object({
+      status: v.literal("valid"),
+      session: v.object({
+        _id: v.id("sessions"),
+        matchName: v.string(),
+        format: sessionFormatValidator,
+        status: sessionStatusValidator,
+        completedAt: v.optional(v.number()),
+      }),
+      teams: v.array(v.string()),
+      winnerMap: v.optional(
+        v.object({
+          _id: v.id("sessionMaps"),
+          name: v.string(),
+          imageUrl: v.string(),
+        })
+      ),
+      maps: v.array(sessionMapObjectValidator),
+      banHistory: v.array(
+        v.object({
+          order: v.number(),
+          teamName: v.string(),
+          mapName: v.string(),
+          mapImage: v.string(),
+        })
+      ),
+    }),
+    v.object({
+      status: v.literal("error"),
+      error: v.union(
+        v.literal("INVALID_TOKEN"),
+        v.literal("TOKEN_EXPIRED"),
+        v.literal("SESSION_NOT_FOUND"),
+        v.literal("SESSION_NOT_COMPLETE")
+      ),
+    })
+  ),
+  handler: async (ctx, args) => {
+    // Validate token
+    const player = await ctx.db
+      .query("sessionPlayers")
+      .withIndex("by_token", (q) => q.eq("token", args.token))
+      .first();
+
+    if (!player) {
+      return { status: "error" as const, error: "INVALID_TOKEN" as const };
+    }
+
+    if (player.tokenExpiresAt < Date.now()) {
+      return { status: "error" as const, error: "TOKEN_EXPIRED" as const };
+    }
+
+    const session = await ctx.db.get(player.sessionId);
+    if (!session) {
+      return { status: "error" as const, error: "SESSION_NOT_FOUND" as const };
+    }
+
+    // Allow viewing results only for COMPLETE sessions
+    if (session.status !== "COMPLETE") {
+      return {
+        status: "error" as const,
+        error: "SESSION_NOT_COMPLETE" as const,
+      };
+    }
+
+    // Get players and maps
+    const [players, maps] = await Promise.all([
+      ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+        .collect(),
+      ctx.db
+        .query("sessionMaps")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+        .collect(),
+    ]);
+
+    const playerMap = new Map(players.map((p) => [p._id.toString(), p]));
+    const teams = [...new Set(players.map((p) => p.teamName))];
+
+    // Find winner map
+    const winnerMap = maps.find((m) => m.state === "WINNER");
+
+    // Build ban history sorted by turn
+    const banHistory = maps
+      .filter((m) => m.state === "BANNED" && m.bannedByPlayerId)
+      .sort((a, b) => (a.bannedAtTurn ?? 0) - (b.bannedAtTurn ?? 0))
+      .map((m, index) => {
+        const bannedBy = m.bannedByPlayerId
+          ? playerMap.get(m.bannedByPlayerId.toString())
+          : undefined;
+        return {
+          order: index + 1,
+          teamName: bannedBy?.teamName ?? "Unknown",
+          mapName: m.name,
+          mapImage: m.imageUrl,
+        };
+      });
+
+    return {
+      status: "valid" as const,
+      session: {
+        _id: session._id,
+        matchName: session.matchName,
+        format: session.format,
+        status: session.status,
+        completedAt: session.completedAt,
+      },
+      teams,
+      winnerMap: winnerMap
+        ? {
+            _id: winnerMap._id,
+            name: winnerMap.name,
+            imageUrl: winnerMap.imageUrl,
+          }
+        : undefined,
+      maps,
+      banHistory,
+    };
+  },
+});
+
+/**
+ * Get session results for public display on results page.
+ * No authentication required - results are public once session is complete.
+ *
+ * @param sessionId - The session ID to fetch results for
+ */
+export const getSessionResults = query({
+  args: {
+    sessionId: v.id("sessions"),
+  },
+  returns: v.union(
+    v.object({
+      status: v.literal("valid"),
+      session: v.object({
+        _id: v.id("sessions"),
+        matchName: v.string(),
+        format: sessionFormatValidator,
+        status: sessionStatusValidator,
+        completedAt: v.optional(v.number()),
+      }),
+      teams: v.array(v.string()),
+      winnerMap: v.optional(
+        v.object({
+          _id: v.id("sessionMaps"),
+          name: v.string(),
+          imageUrl: v.string(),
+        })
+      ),
+      maps: v.array(sessionMapObjectValidator),
+      banHistory: v.array(
+        v.object({
+          order: v.number(),
+          teamName: v.string(),
+          mapName: v.string(),
+          mapImage: v.string(),
+        })
+      ),
+    }),
+    v.object({
+      status: v.literal("error"),
+      error: v.union(
+        v.literal("SESSION_NOT_FOUND"),
+        v.literal("SESSION_NOT_COMPLETE")
+      ),
+    })
+  ),
+  handler: async (ctx, args) => {
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) {
+      return { status: "error" as const, error: "SESSION_NOT_FOUND" as const };
+    }
+
+    // Allow viewing results only for COMPLETE sessions
+    if (session.status !== "COMPLETE") {
+      return {
+        status: "error" as const,
+        error: "SESSION_NOT_COMPLETE" as const,
+      };
+    }
+
+    // Get players and maps
+    const [players, maps] = await Promise.all([
+      ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+        .collect(),
+      ctx.db
+        .query("sessionMaps")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+        .collect(),
+    ]);
+
+    const playerMap = new Map(players.map((p) => [p._id.toString(), p]));
+    const teams = [...new Set(players.map((p) => p.teamName))];
+
+    // Find winner map
+    const winnerMap = maps.find((m) => m.state === "WINNER");
+
+    // Build ban history sorted by turn
+    const banHistory = maps
+      .filter((m) => m.state === "BANNED" && m.bannedByPlayerId)
+      .sort((a, b) => (a.bannedAtTurn ?? 0) - (b.bannedAtTurn ?? 0))
+      .map((m, index) => {
+        const bannedBy = m.bannedByPlayerId
+          ? playerMap.get(m.bannedByPlayerId.toString())
+          : undefined;
+        return {
+          order: index + 1,
+          teamName: bannedBy?.teamName ?? "Unknown",
+          mapName: m.name,
+          mapImage: m.imageUrl,
+        };
+      });
+
+    return {
+      status: "valid" as const,
+      session: {
+        _id: session._id,
+        matchName: session.matchName,
+        format: session.format,
+        status: session.status,
+        completedAt: session.completedAt,
+      },
+      teams,
+      winnerMap: winnerMap
+        ? {
+            _id: winnerMap._id,
+            name: winnerMap.name,
+            imageUrl: winnerMap.imageUrl,
+          }
+        : undefined,
+      maps,
+      banHistory,
+    };
+  },
+});
