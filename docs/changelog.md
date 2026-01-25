@@ -8,6 +8,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+### Fixed
+- **Admin Loading Spinner Centering**: Loading spinners in admin pages (dashboard, teams, maps, session detail) are now properly centered vertically and horizontally instead of appearing stuck at the top of the content area.
+
 ### Added
 - **Session Detail Page Wired to Convex** (WAR-10):
   - `getSessionDetail` query with full session data, players, maps, and audit logs
