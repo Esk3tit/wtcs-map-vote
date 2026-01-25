@@ -8,7 +8,15 @@ import App from './App'
 
 import './index.css'
 
-const convex = new ConvexReactClient(import.meta.env.VITE_CONVEX_URL as string);
+const convexUrl = import.meta.env.VITE_CONVEX_URL;
+if (!convexUrl) {
+  throw new Error(
+    "Missing VITE_CONVEX_URL environment variable. " +
+    "Please set it in your .env.local file or environment."
+  );
+}
+
+const convex = new ConvexReactClient(convexUrl);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>

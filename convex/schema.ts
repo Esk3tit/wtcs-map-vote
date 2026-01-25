@@ -1,3 +1,8 @@
+/**
+ * Schema
+ *
+ * Application data model defining all tables, fields, and indexes.
+ */
 import { defineSchema, defineTable } from "convex/server";
 import { v } from "convex/values";
 
