@@ -3,6 +3,12 @@ import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { usePaginatedQuery, useQuery, useMutation } from 'convex/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
+import {
+  MIN_MAP_POOL_SIZE,
+  MAX_MAP_POOL_SIZE,
+  MIN_TURN_TIMER_SECONDS,
+  MAX_TURN_TIMER_SECONDS,
+} from '../../../convex/lib/constants'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -16,10 +22,6 @@ import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
 type SessionFormat = 'ABBA' | 'MULTIPLAYER'
-
-// Map pool size constraints
-const MIN_MAP_POOL_SIZE = 3
-const MAX_MAP_POOL_SIZE = 9
 
 interface Team {
   id: string
@@ -169,8 +171,8 @@ function CreateSessionPage() {
     }
 
     const parsedTurnTimer = parseInt(turnTimer, 10)
-    if (isNaN(parsedTurnTimer) || parsedTurnTimer < 10 || parsedTurnTimer > 120) {
-      toast.error('Turn timer must be between 10 and 120 seconds')
+    if (isNaN(parsedTurnTimer) || parsedTurnTimer < MIN_TURN_TIMER_SECONDS || parsedTurnTimer > MAX_TURN_TIMER_SECONDS) {
+      toast.error(`Turn timer must be between ${MIN_TURN_TIMER_SECONDS} and ${MAX_TURN_TIMER_SECONDS} seconds`)
       return
     }
 
@@ -220,7 +222,7 @@ function CreateSessionPage() {
 
   // Determine if form is valid for submission
   const turnTimerSeconds = parseInt(turnTimer, 10)
-  const isTurnTimerValid = !isNaN(turnTimerSeconds) && turnTimerSeconds >= 10 && turnTimerSeconds <= 120
+  const isTurnTimerValid = !isNaN(turnTimerSeconds) && turnTimerSeconds >= MIN_TURN_TIMER_SECONDS && turnTimerSeconds <= MAX_TURN_TIMER_SECONDS
 
   const isFormValid =
     !isSubmitting &&
@@ -379,8 +381,8 @@ function CreateSessionPage() {
               <Input
                 id="turnTimer"
                 type="number"
-                min="10"
-                max="120"
+                min={MIN_TURN_TIMER_SECONDS}
+                max={MAX_TURN_TIMER_SECONDS}
                 value={turnTimer}
                 onChange={(e) => setTurnTimer(e.target.value)}
                 className="w-32 bg-background/50"
@@ -399,15 +401,15 @@ function CreateSessionPage() {
               <Input
                 id="mapPoolSize"
                 type="number"
-                min="3"
-                max="9"
+                min={MIN_MAP_POOL_SIZE}
+                max={MAX_MAP_POOL_SIZE}
                 value={mapPoolSize}
                 onChange={handleMapPoolSizeChange}
                 className="w-32 bg-background/50"
               />
               <span className="text-sm text-muted-foreground">maps in pool</span>
             </div>
-            <p className="text-xs text-muted-foreground">Choose between 3 and 9 maps for the voting pool</p>
+            <p className="text-xs text-muted-foreground">Choose between {MIN_MAP_POOL_SIZE} and {MAX_MAP_POOL_SIZE} maps for the voting pool</p>
           </div>
 
           {/* Map Pool */}
