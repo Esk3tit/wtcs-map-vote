@@ -6,7 +6,14 @@
  */
 
 // React hooks
-export { useQuery, useMutation, usePaginatedQuery, useConvex } from "convex/react";
+export {
+  useQuery,
+  useMutation,
+  usePaginatedQuery,
+  useConvex,
+  useConvexAuth,
+  useQueries,
+} from "convex/react";
 
 // Generated API
 export { api } from "../../convex/_generated/api";
