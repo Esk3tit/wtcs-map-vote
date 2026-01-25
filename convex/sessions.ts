@@ -6,6 +6,7 @@
  */
 
 import { query, mutation } from "./_generated/server";
+import type { QueryCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 
 import { paginationOptsValidator } from "convex/server";
@@ -97,6 +98,78 @@ const sessionWithRelationsValidator = v.object({
   players: v.array(sessionPlayerObjectValidator),
   maps: v.array(sessionMapObjectValidator),
 });
+
+// ============================================================================
+// Private Helpers
+// ============================================================================
+
+/**
+ * Compute whether it's the given player's turn to act.
+ * Server-authoritative turn detection to prevent client-server drift.
+ *
+ * @param session - Session with format, currentTurn, and status
+ * @param hasVotedThisRound - Whether the player has voted this round
+ * @param playerIndex - Player's index in creation-time sorted order
+ */
+function computeIsYourTurn(
+  session: { format: string; currentTurn: number; status: string },
+  hasVotedThisRound: boolean,
+  playerIndex: number
+): boolean {
+  // Only allow turns during active session
+  if (session.status !== "IN_PROGRESS") return false;
+
+  if (session.format === "MULTIPLAYER") {
+    return !hasVotedThisRound;
+  }
+  if (session.format === "ABBA") {
+    const abbaPattern = [0, 1, 1, 0];
+    const activeIndex = abbaPattern[session.currentTurn % abbaPattern.length];
+    return playerIndex === activeIndex;
+  }
+  return false;
+}
+
+/**
+ * Private helper to build session results data.
+ * Used by both getSessionResultsByToken and getSessionResults queries.
+ *
+ * @param ctx - Query context
+ * @param session - The session document
+ */
+async function buildSessionResults(ctx: QueryCtx, session: Doc<"sessions">) {
+  const [players, maps] = await Promise.all([
+    ctx.db
+      .query("sessionPlayers")
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+      .collect(),
+    ctx.db
+      .query("sessionMaps")
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+      .collect(),
+  ]);
+
+  const playerMap = new Map(players.map((p) => [p._id.toString(), p]));
+  const teams = [...new Set(players.map((p) => p.teamName))];
+  const winnerMap = maps.find((m) => m.state === "WINNER");
+
+  const banHistory = maps
+    .filter((m) => m.state === "BANNED" && m.bannedByPlayerId)
+    .sort((a, b) => (a.bannedAtTurn ?? 0) - (b.bannedAtTurn ?? 0))
+    .map((m, index) => {
+      const bannedBy = m.bannedByPlayerId
+        ? playerMap.get(m.bannedByPlayerId.toString())
+        : undefined;
+      return {
+        order: index + 1,
+        teamName: bannedBy?.teamName ?? "Unknown",
+        mapName: m.name,
+        mapImage: m.imageUrl,
+      };
+    });
+
+  return { players, maps, teams, winnerMap, banHistory };
+}
 
 // ============================================================================
 // Queries
@@ -714,6 +787,7 @@ export const getSessionByToken = query({
       }),
       maps: v.array(sessionMapObjectValidator),
       otherPlayers: v.array(sanitizedPlayerValidator),
+      isYourTurn: v.boolean(),
     }),
     v.object({
       status: v.literal("error"),
@@ -771,6 +845,17 @@ export const getSessionByToken = query({
       .filter((p) => p._id !== player._id)
       .map(sanitizePlayer);
 
+    // Sort players by creation time to get consistent ordering for turn calculation
+    const sortedPlayers = [...allPlayers].sort(
+      (a, b) => a._creationTime - b._creationTime
+    );
+    const playerIndex = sortedPlayers.findIndex((p) => p._id === player._id);
+    const isYourTurn = computeIsYourTurn(
+      session,
+      player.hasVotedThisRound,
+      playerIndex
+    );
+
     return {
       status: "valid" as const,
       player: sanitizePlayer(player),
@@ -788,6 +873,7 @@ export const getSessionByToken = query({
       },
       maps,
       otherPlayers,
+      isYourTurn,
     };
   },
 });
@@ -868,39 +954,10 @@ export const getSessionResultsByToken = query({
       };
     }
 
-    // Get players and maps
-    const [players, maps] = await Promise.all([
-      ctx.db
-        .query("sessionPlayers")
-        .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
-        .collect(),
-      ctx.db
-        .query("sessionMaps")
-        .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
-        .collect(),
-    ]);
-
-    const playerMap = new Map(players.map((p) => [p._id.toString(), p]));
-    const teams = [...new Set(players.map((p) => p.teamName))];
-
-    // Find winner map
-    const winnerMap = maps.find((m) => m.state === "WINNER");
-
-    // Build ban history sorted by turn
-    const banHistory = maps
-      .filter((m) => m.state === "BANNED" && m.bannedByPlayerId)
-      .sort((a, b) => (a.bannedAtTurn ?? 0) - (b.bannedAtTurn ?? 0))
-      .map((m, index) => {
-        const bannedBy = m.bannedByPlayerId
-          ? playerMap.get(m.bannedByPlayerId.toString())
-          : undefined;
-        return {
-          order: index + 1,
-          teamName: bannedBy?.teamName ?? "Unknown",
-          mapName: m.name,
-          mapImage: m.imageUrl,
-        };
-      });
+    const { maps, teams, winnerMap, banHistory } = await buildSessionResults(
+      ctx,
+      session
+    );
 
     return {
       status: "valid" as const,
@@ -927,9 +984,18 @@ export const getSessionResultsByToken = query({
 
 /**
  * Get session results for public display on results page.
- * No authentication required - results are public once session is complete.
  *
- * @param sessionId - The session ID to fetch results for
+ * DESIGN DECISION: This query is intentionally unauthenticated.
+ * Results are considered public information once a session completes,
+ * allowing players to share result URLs with others.
+ *
+ * Security considerations:
+ * - Session IDs are opaque Convex IDs (not enumerable/sequential)
+ * - Only COMPLETE sessions return data (in-progress sessions are protected)
+ * - No PII exposed (team names are public by nature of esports)
+ *
+ * @param sessionId - The session to get results for
+ * @returns Session results with winner, ban history, and map summary, or error
  */
 export const getSessionResults = query({
   args: {
@@ -985,39 +1051,10 @@ export const getSessionResults = query({
       };
     }
 
-    // Get players and maps
-    const [players, maps] = await Promise.all([
-      ctx.db
-        .query("sessionPlayers")
-        .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
-        .collect(),
-      ctx.db
-        .query("sessionMaps")
-        .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
-        .collect(),
-    ]);
-
-    const playerMap = new Map(players.map((p) => [p._id.toString(), p]));
-    const teams = [...new Set(players.map((p) => p.teamName))];
-
-    // Find winner map
-    const winnerMap = maps.find((m) => m.state === "WINNER");
-
-    // Build ban history sorted by turn
-    const banHistory = maps
-      .filter((m) => m.state === "BANNED" && m.bannedByPlayerId)
-      .sort((a, b) => (a.bannedAtTurn ?? 0) - (b.bannedAtTurn ?? 0))
-      .map((m, index) => {
-        const bannedBy = m.bannedByPlayerId
-          ? playerMap.get(m.bannedByPlayerId.toString())
-          : undefined;
-        return {
-          order: index + 1,
-          teamName: bannedBy?.teamName ?? "Unknown",
-          mapName: m.name,
-          mapImage: m.imageUrl,
-        };
-      });
+    const { maps, teams, winnerMap, banHistory } = await buildSessionResults(
+      ctx,
+      session
+    );
 
     return {
       status: "valid" as const,

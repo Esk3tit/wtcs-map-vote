@@ -14,38 +14,59 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
-import { Check, Lock, Volume2, X, Loader2, AlertTriangle } from "lucide-react";
+import { TokenErrorPage } from "@/components/session/TokenErrorPage";
+import { Check, Lock, Volume2, X, Loader2 } from "lucide-react";
 import type { Id } from "../../convex/_generated/dataModel";
 
 export const Route = createFileRoute("/vote/$token")({
   component: PlayerVotingPage,
 });
 
-// Separate Timer component that resets when key changes
+// Helper function to calculate remaining time from server timestamp
+function calculateRemainingTime(
+  turnTimerSeconds: number,
+  timerStartedAt: number | undefined
+): number {
+  if (!timerStartedAt) return turnTimerSeconds;
+  const elapsed = Math.floor((Date.now() - timerStartedAt) / 1000);
+  return Math.max(0, turnTimerSeconds - elapsed);
+}
+
+// Separate Timer component that calculates remaining time from server timestamp
 function CountdownTimer({
-  initialSeconds,
+  turnTimerSeconds,
+  timerStartedAt,
   isActive,
 }: {
-  initialSeconds: number;
+  turnTimerSeconds: number;
+  timerStartedAt: number | undefined;
   isActive: boolean;
 }) {
-  const [timeLeft, setTimeLeft] = useState(initialSeconds);
+  const [remaining, setRemaining] = useState(() =>
+    calculateRemainingTime(turnTimerSeconds, timerStartedAt)
+  );
 
   useEffect(() => {
-    if (!isActive) return;
+    // Recalculate when timerStartedAt changes (e.g., new turn starts)
+    setRemaining(calculateRemainingTime(turnTimerSeconds, timerStartedAt));
+  }, [turnTimerSeconds, timerStartedAt]);
+
+  useEffect(() => {
+    if (!isActive || !timerStartedAt) return;
 
     const timer = setInterval(() => {
-      setTimeLeft((prev) => (prev > 0 ? prev - 1 : 0));
+      setRemaining(calculateRemainingTime(turnTimerSeconds, timerStartedAt));
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isActive]);
+  }, [isActive, timerStartedAt, turnTimerSeconds]);
 
-  return (
-    <span>
-      0:{timeLeft.toString().padStart(2, "0")}
-    </span>
-  );
+  // Show placeholder when timer hasn't started
+  if (!timerStartedAt) {
+    return <span>--:--</span>;
+  }
+
+  return <span>0:{remaining.toString().padStart(2, "0")}</span>;
 }
 
 function PlayerVotingPage() {
@@ -88,34 +109,23 @@ function PlayerVotingPage() {
     return <TokenErrorPage error={data.error} />;
   }
 
-  const { player, session, maps, otherPlayers } = data;
+  const { player, session, maps, otherPlayers, isYourTurn } = data;
 
-  // Calculate turn order for ABBA format
-  // ABBA pattern: [0, 1, 1, 0] -> Player A, Player B, Player B, Player A
+  // Combine players for display purposes
   const allPlayers = [player, ...otherPlayers];
-  const playerIndex = 0; // Current player is always first in our array
-
-  // Determine whose turn it is (simplified for 2-player ABBA)
-  const abbaPattern = [0, 1, 1, 0]; // Indexes into allPlayers
-  const currentTurnPlayerIndex =
-    session.format === "ABBA"
-      ? abbaPattern[session.currentTurn % abbaPattern.length]
-      : null;
-  const isYourTurn =
-    session.format === "ABBA"
-      ? currentTurnPlayerIndex === playerIndex
-      : !player.hasVotedThisRound;
 
   // Get opponent team name
   const opponentTeam =
     otherPlayers.length > 0 ? otherPlayers[0].teamName : "Opponent";
 
   // Build ban steps for progress tracker (ABBA format)
+  // Note: This is for display only. Turn detection is server-authoritative via isYourTurn.
+  // Pattern shows alternating teams: Team A, Team B, Team B, Team A
   const banSteps =
     session.format === "ABBA"
-      ? abbaPattern.map((pIndex, stepIndex) => ({
+      ? [0, 1, 1, 0].map((pIndex, stepIndex) => ({
           step: stepIndex + 1,
-          team: pIndex === playerIndex ? player.teamName : opponentTeam,
+          team: pIndex === 0 ? player.teamName : opponentTeam,
           completed: stepIndex < session.currentTurn,
         }))
       : [];
@@ -202,7 +212,8 @@ function PlayerVotingPage() {
             {/* Key resets the timer when turn changes */}
             <CountdownTimer
               key={`${session.currentTurn}-${session.currentRound}`}
-              initialSeconds={session.turnTimerSeconds}
+              turnTimerSeconds={session.turnTimerSeconds}
+              timerStartedAt={session.timerStartedAt}
               isActive={session.status === "IN_PROGRESS"}
             />
           </div>
@@ -415,41 +426,6 @@ function PlayerVotingPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
-  );
-}
-
-function TokenErrorPage({ error }: { error: string }) {
-  const errorMessages: Record<string, { title: string; message: string }> = {
-    INVALID_TOKEN: {
-      title: "Invalid Access Code",
-      message:
-        "This access code is invalid or has been revoked. Please contact your tournament administrator for a new link.",
-    },
-    TOKEN_EXPIRED: {
-      title: "Access Code Expired",
-      message:
-        "This access code has expired. Please request a new link from your tournament administrator.",
-    },
-    SESSION_NOT_FOUND: {
-      title: "Session Not Found",
-      message:
-        "The voting session could not be found. It may have been deleted.",
-    },
-  };
-
-  const { title, message } = errorMessages[error] ?? {
-    title: "Error",
-    message: "An unexpected error occurred.",
-  };
-
-  return (
-    <div className="min-h-screen flex items-center justify-center p-6">
-      <Card className="max-w-md p-8 text-center space-y-4">
-        <AlertTriangle className="h-12 w-12 text-destructive mx-auto" />
-        <h1 className="text-2xl font-bold">{title}</h1>
-        <p className="text-muted-foreground">{message}</p>
-      </Card>
     </div>
   );
 }
