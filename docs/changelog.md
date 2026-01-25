@@ -8,39 +8,72 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-### Fixed
-- **Admin Loading Spinner Centering**: Loading spinners in admin pages (dashboard, teams, maps, session detail) are now properly centered vertically and horizontally instead of appearing stuck at the top of the content area.
+*No unreleased changes.*
+
+---
+
+## [0.7.0] - 2026-01-25 - Phase 2: Wire UI to Convex
+
+Phase 2 complete! All admin and player pages are now wired to Convex with real-time data.
 
 ### Added
-- **Create Session Form Wired to Convex** (WAR-9):
-  - Atomic `createSession` mutation with player and map assignment in single transaction
-  - Form validation with backend constants imported from `convex/lib/constants.ts`
-  - Real-time team and map data from Convex queries
-  - Submit button disabled when turn timer is invalid
-  - Loading states and error handling
-- **Player Pages Wired to Convex** (PR #38):
-  - Player lobby page (`/lobby/$token`) with real-time session subscription
-  - Player voting page (`/vote/$token`) with map ban/pick UI
-  - Results page (`/results/$sessionId`) with final session outcomes
-  - `TokenErrorPage` component for invalid/expired token handling
-  - Real-time player connection status
-- **Session Detail Page Wired to Convex** (WAR-10):
-  - `getSessionDetail` query with full session data, players, maps, and audit logs
-  - Real-time subscriptions for live session updates
-  - Proper handling of Convex IDs as opaque strings (not numeric validation)
-  - Accessibility improvements (aria-label on copy button)
-  - Loading and error states for session detail view
-- **Dashboard Wired to Convex** (WAR-8):
-  - `listSessionsForDashboard` paginated query with player enrichment (assignedPlayerCount, teams)
-  - Server-side filtering excludes COMPLETE/EXPIRED sessions from active view
-  - Explicit field selection (no spread) prevents data over-exposure
-  - `SessionCard` rewritten with schema-derived types (`Pick<Doc<"sessions">, ...>`)
-  - `CompletedSessionRow` component for inactive sessions
-  - shadcn/ui Accordion for collapsible completed/expired section
-  - Shared `formatTeamDisplay` utility (`src/components/session/utils.ts`)
-  - 9 unit tests for the dashboard query (enrichment, filtering, pagination)
-- **Solution Documentation** (`docs/solutions/test-failures/`):
-  - Documented that Convex tests must use `bun run test` (vitest), not `bun test`
+
+#### Convex React Integration (WAR-5)
+- **Convex React helper** (`src/lib/convex.ts`): Re-exports hooks and API for cleaner imports
+- **ConvexProvider** properly configured in `main.tsx`
+- **Consistent loading patterns** across all pages using `Loader2` spinner
+- **TypeScript type flow** from Convex to React with `Id<>` and `Doc<>` types
+
+#### Admin Dashboard (WAR-8)
+- `listSessionsForDashboard` paginated query with player enrichment (assignedPlayerCount, teams)
+- Server-side filtering excludes COMPLETE/EXPIRED sessions from active view
+- Explicit field selection (no spread) prevents data over-exposure
+- `SessionCard` rewritten with schema-derived types (`Pick<Doc<"sessions">, ...>`)
+- `CompletedSessionRow` component for inactive sessions
+- shadcn/ui Accordion for collapsible completed/expired section
+- Shared `formatTeamDisplay` utility (`src/components/session/utils.ts`)
+- 9 unit tests for the dashboard query (enrichment, filtering, pagination)
+
+#### Teams Page (WAR-6)
+- **Sessions count column** showing how many sessions each team is in
+- **AlertDialog** for delete confirmation (replaces native `confirm()`)
+- Full CRUD wired to Convex mutations
+- 42 unit tests covering all team operations
+
+#### Maps Page (WAR-7)
+- Card grid layout with 16:9 aspect ratio images
+- Add/edit dialogs with `ImageSourcePicker` for upload/URL images
+- Active/inactive toggle with visual distinction
+- Deactivate confirmation with reactivate option
+- 46 unit tests covering all map operations
+
+#### Create Session Form (WAR-9)
+- Atomic `createSession` mutation with player and map assignment in single transaction
+- Form validation with backend constants imported from `convex/lib/constants.ts`
+- Real-time team and map data from Convex queries
+- Submit button disabled when turn timer is invalid
+- Loading states and error handling
+
+#### Session Detail Page (WAR-10)
+- `getSessionDetail` query with full session data, players, maps, and audit logs
+- Real-time subscriptions for live session updates
+- Proper handling of Convex IDs as opaque strings (not numeric validation)
+- Accessibility improvements (aria-label on copy button)
+- Loading and error states for session detail view
+
+#### Player Pages (WAR-11)
+- Player lobby page (`/lobby/$token`) with real-time session subscription
+- Player voting page (`/vote/$token`) with map ban/pick UI
+- Results page (`/results/$sessionId`) with final session outcomes
+- `TokenErrorPage` component for invalid/expired token handling
+- Real-time player connection status
+
+#### Documentation
+- Solution documentation for test failures (`docs/solutions/test-failures/`)
+- Documented that Convex tests must use `bun run test` (vitest), not `bun test`
+
+### Fixed
+- **Admin Loading Spinner Centering**: Loading spinners in admin pages (dashboard, teams, maps, session detail) are now properly centered vertically and horizontally
 
 ### Changed
 - CLAUDE.md: Emphasized correct test runner (`bun run test` not `bun test`)

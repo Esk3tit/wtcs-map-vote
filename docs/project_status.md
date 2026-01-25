@@ -87,22 +87,24 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] Session maps edge case tests (WAR-19) - snapshots, boundaries, unicode, rapid reassignments
 - [x] Test infrastructure and smoke tests (`convex/smoke.test.ts`)
 
-### Frontend Wiring (Convex Integration)
+### Phase 2: Wire UI to Convex (COMPLETE)
+- [x] Convex React hooks and patterns (WAR-5)
 - [x] Admin dashboard wired to Convex (WAR-8)
-- [x] Session detail page wired to Convex (WAR-10)
-- [x] Player lobby page wired to Convex (`/lobby/$token`)
-- [x] Player voting page wired to Convex (`/vote/$token`)
-- [x] Results page wired to Convex (`/results/$sessionId`)
+- [x] Teams page wired to Convex (WAR-6)
+- [x] Maps page wired to Convex (WAR-7)
 - [x] Create session form wired to Convex (WAR-9)
+- [x] Session detail page wired to Convex (WAR-10)
+- [x] Player lobby page wired to Convex (WAR-11)
+- [x] Player voting page wired to Convex (WAR-11)
+- [x] Results page wired to Convex (WAR-11)
 - [x] `TokenErrorPage` component for invalid/expired tokens
+- [x] Convex React helper (`src/lib/convex.ts`)
 
 ---
 
 ## Next Steps
 
-### Convex Functions (Priority: High)
-
-Implement the Convex functions to power the application:
+### Phase 3: Authentication & Session Lifecycle (Priority: High)
 
 1. **Authentication**
    - [ ] Set up Convex Auth with Google OAuth provider
@@ -110,38 +112,24 @@ Implement the Convex functions to power the application:
    - [ ] Create player token authentication flow
    - [ ] Add uniqueness validation (email, token)
 
-2. **Core Functions**
-   - [x] Teams CRUD operations (create, update, delete, list)
-   - [x] Maps CRUD operations (create, update, deactivate, reactivate, list, get, upload URL)
-   - [x] Sessions CRUD operations (create, update, delete, list, get, setMaps, duplicate)
+2. **Session Lifecycle**
    - [ ] Session lifecycle mutations (finalize, start, pause, resume, end)
    - [ ] Player token validation and IP locking
    - [ ] Voting mutations (submitBan, submitVote)
-   - [x] Cascade delete helpers for data integrity
+   - [ ] Timer expiration handling (scheduled functions)
 
-3. **Real-Time Subscriptions**
+3. **Real-Time Features**
    - [ ] Session state subscription
-   - [ ] Map state updates
+   - [ ] Map state updates during voting
    - [ ] Player connection status
    - [ ] Timer synchronization
 
-4. **Connect Frontend**
-   - [x] Admin dashboard wired to Convex (WAR-8) - paginated queries, session cards, accordion
-   - [x] Session detail page wired to Convex (WAR-10)
-   - [x] Player pages wired to Convex (lobby, vote, results)
-   - [x] Create session form wired to Convex (WAR-9)
-   - [ ] Wire teams page to Convex mutations (already has queries)
-   - [ ] Wire maps page to Convex mutations
-
 ### Future Work
 
-- [ ] Timer expiration handling (scheduled functions)
-- [x] Session cleanup cron job (complete)
-- [x] Audit logging (complete - `convex/audit.ts`)
-- [x] File upload for team logos (complete)
-- [x] File upload for map images (complete)
 - [ ] Rate limiting
 - [ ] Production deployment to Netlify + Convex Cloud
+- [ ] Performance optimizations
+- [ ] Analytics and monitoring
 
 ---
 
