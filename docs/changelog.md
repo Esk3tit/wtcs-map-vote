@@ -8,7 +8,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-*No unreleased changes.*
+### Added
+
+#### Phase 3: Authentication - Convex Auth Setup (WAR-23)
+- **Convex Auth infrastructure** installed and configured (`@convex-dev/auth`, `@auth/core@0.37.0`)
+- **7 auth tables** added via `authTables` spread in schema:
+  - `users` - User profiles from OAuth
+  - `authAccounts` - Links users to auth providers
+  - `authSessions` - Active session tracking
+  - `authRefreshTokens` - Token refresh management
+  - `authVerificationCodes` - OTP/magic link codes
+  - `authVerifiers` - PKCE verifiers for OAuth
+  - `authRateLimits` - Rate limiting for auth
+- **Auth module files** created:
+  - `convex/auth.ts` - Auth exports (signIn, signOut, etc.)
+  - `convex/auth.config.ts` - Provider configuration with env var validation
+  - `convex/http.ts` - HTTP router with auth callback routes
+- **ConvexAuthProvider** replaces ConvexProvider in React entry point
+- **Environment variable validation** added for `CONVEX_SITE_URL` and `VITE_CONVEX_URL` (fail-fast)
+- **Dependency pinned**: `@convex-dev/auth` pinned to exact version `0.0.90` (pre-1.0 stability)
+
+### Changed
+- Updated all dependencies to latest versions (Convex 1.31.6, TanStack Router 1.157.12, etc.)
 
 ---
 

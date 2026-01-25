@@ -107,9 +107,10 @@ Current progress and next steps for the WTCS Map Vote project.
 ### Phase 3: Authentication & Session Lifecycle (Priority: High)
 
 1. **Authentication**
-   - [ ] Set up Convex Auth with Google OAuth provider
-   - [ ] Implement admin whitelist check
-   - [ ] Create player token authentication flow
+   - [x] Set up Convex Auth infrastructure (WAR-23) - auth tables, providers, HTTP routes
+   - [ ] Add Google OAuth provider (WAR-24)
+   - [ ] Implement admin whitelist check (WAR-25)
+   - [ ] Create player token authentication flow (WAR-26)
    - [ ] Add uniqueness validation (email, token)
 
 2. **Session Lifecycle**
