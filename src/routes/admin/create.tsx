@@ -11,7 +11,7 @@ import { Badge } from '@/components/ui/badge'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { ArrowLeft, Users, UserCircle2, Check, ChevronsUpDown, Loader2 } from 'lucide-react'
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
 
@@ -121,8 +121,11 @@ function CreateSessionPage() {
   const maps = useQuery(api.maps.listMaps, { includeInactive: false })
   const adminId = useQuery(api.admins.getFirstAdmin)
 
-  // Derive teams array from paginated query
-  const teams: Team[] = teamsQuery.results?.map((t) => ({ id: t._id, name: t.name })) ?? []
+  // Derive teams array from paginated query (memoized to prevent unnecessary re-renders)
+  const teams: Team[] = useMemo(
+    () => teamsQuery.results?.map((t) => ({ id: t._id, name: t.name })) ?? [],
+    [teamsQuery.results],
+  )
   const isLoadingTeams = teamsQuery.status === 'LoadingFirstPage'
   const isLoadingMaps = maps === undefined
 
@@ -187,19 +190,19 @@ function CreateSessionPage() {
         createdBy: adminId,
       })
 
-      // 2. Assign players (generates tokens)
+      // 2. Assign players in parallel (generates tokens)
       if (format === 'ABBA') {
-        await assignPlayer({ sessionId, role: 'Player A', teamName: playerA })
-        await assignPlayer({ sessionId, role: 'Player B', teamName: playerB })
+        await Promise.all([
+          assignPlayer({ sessionId, role: 'Player A', teamName: playerA }),
+          assignPlayer({ sessionId, role: 'Player B', teamName: playerB }),
+        ])
       } else {
-        const players = [player1, player2, player3, player4]
-        for (let i = 0; i < 4; i++) {
-          await assignPlayer({
-            sessionId,
-            role: `Player ${i + 1}`,
-            teamName: players[i],
-          })
-        }
+        await Promise.all([
+          assignPlayer({ sessionId, role: 'Player 1', teamName: player1 }),
+          assignPlayer({ sessionId, role: 'Player 2', teamName: player2 }),
+          assignPlayer({ sessionId, role: 'Player 3', teamName: player3 }),
+          assignPlayer({ sessionId, role: 'Player 4', teamName: player4 }),
+        ])
       }
 
       // 3. Set map pool
@@ -222,8 +225,7 @@ function CreateSessionPage() {
     !isSubmitting &&
     !isLoadingTeams &&
     !isLoadingMaps &&
-    adminId !== undefined &&
-    adminId !== null &&
+    adminId != null &&
     selectedMaps.length === mapPoolSize &&
     matchName.trim() !== '' &&
     (format === 'ABBA' ? playerA && playerB : player1 && player2 && player3 && player4)
