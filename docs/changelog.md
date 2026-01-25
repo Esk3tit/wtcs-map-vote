@@ -12,6 +12,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Admin Loading Spinner Centering**: Loading spinners in admin pages (dashboard, teams, maps, session detail) are now properly centered vertically and horizontally instead of appearing stuck at the top of the content area.
 
 ### Added
+- **Create Session Form Wired to Convex** (WAR-9):
+  - Atomic `createSession` mutation with player and map assignment in single transaction
+  - Form validation with backend constants imported from `convex/lib/constants.ts`
+  - Real-time team and map data from Convex queries
+  - Submit button disabled when turn timer is invalid
+  - Loading states and error handling
+- **Player Pages Wired to Convex** (PR #38):
+  - Player lobby page (`/lobby/$token`) with real-time session subscription
+  - Player voting page (`/vote/$token`) with map ban/pick UI
+  - Results page (`/results/$sessionId`) with final session outcomes
+  - `TokenErrorPage` component for invalid/expired token handling
+  - Real-time player connection status
 - **Session Detail Page Wired to Convex** (WAR-10):
   - `getSessionDetail` query with full session data, players, maps, and audit logs
   - Real-time subscriptions for live session updates

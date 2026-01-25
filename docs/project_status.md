@@ -2,7 +2,7 @@
 
 Current progress and next steps for the WTCS Map Vote project.
 
-**Last Updated:** January 22, 2026
+**Last Updated:** January 25, 2026
 
 ---
 
@@ -87,6 +87,15 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] Session maps edge case tests (WAR-19) - snapshots, boundaries, unicode, rapid reassignments
 - [x] Test infrastructure and smoke tests (`convex/smoke.test.ts`)
 
+### Frontend Wiring (Convex Integration)
+- [x] Admin dashboard wired to Convex (WAR-8)
+- [x] Session detail page wired to Convex (WAR-10)
+- [x] Player lobby page wired to Convex (`/lobby/$token`)
+- [x] Player voting page wired to Convex (`/vote/$token`)
+- [x] Results page wired to Convex (`/results/$sessionId`)
+- [x] Create session form wired to Convex (WAR-9)
+- [x] `TokenErrorPage` component for invalid/expired tokens
+
 ---
 
 ## Next Steps
@@ -118,9 +127,11 @@ Implement the Convex functions to power the application:
 
 4. **Connect Frontend**
    - [x] Admin dashboard wired to Convex (WAR-8) - paginated queries, session cards, accordion
-   - [ ] Replace remaining mock data with Convex queries (teams page already done)
-   - [ ] Wire up mutations to forms/actions
-   - [ ] Add loading and error states
+   - [x] Session detail page wired to Convex (WAR-10)
+   - [x] Player pages wired to Convex (lobby, vote, results)
+   - [x] Create session form wired to Convex (WAR-9)
+   - [ ] Wire teams page to Convex mutations (already has queries)
+   - [ ] Wire maps page to Convex mutations
 
 ### Future Work
 
