@@ -125,10 +125,10 @@ const formatPlayerRole = (role: string, format: string): string => {
 // Main Component
 // ============================================================================
 
-// Validate Convex session IDs - they are 32 character alphanumeric strings
+// Lightweight check for session ID - Convex IDs are opaque strings
+// We only check that it's a non-empty string; Convex's runtime handles actual validation
 const isValidSessionId = (id: string): boolean => {
-  // Convex IDs are 32 characters, lowercase alphanumeric (base32-like encoding)
-  return typeof id === "string" && /^[a-z0-9]{32}$/.test(id);
+  return typeof id === "string" && id.length > 0;
 };
 
 function SessionDetailPage() {
@@ -340,6 +340,8 @@ function SessionDetailPage() {
                         size="icon"
                         onClick={() => handleCopyToken(player.token)}
                         className="shrink-0"
+                        aria-label="Copy access code"
+                        title="Copy access code"
                       >
                         {copiedToken === player.token ? (
                           <CheckCircle2 className="w-4 h-4 text-chart-4" />
