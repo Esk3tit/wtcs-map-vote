@@ -56,8 +56,13 @@ function PlayerLobbyPage() {
         return "Session is paused. Waiting for admin to resume...";
       case "EXPIRED":
         return "This session has expired.";
-      default:
-        return "Waiting...";
+      case "IN_PROGRESS":
+      case "COMPLETE":
+        return "Redirecting...";
+      default: {
+        const _exhaustiveCheck: never = session.status;
+        return _exhaustiveCheck;
+      }
     }
   };
 

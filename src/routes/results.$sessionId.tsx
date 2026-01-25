@@ -195,9 +195,11 @@ function VotingResultsPage() {
   );
 }
 
-function ResultsErrorPage({ error }: { error: string }) {
+type ResultsErrorCode = "SESSION_NOT_FOUND" | "SESSION_NOT_COMPLETE";
+
+function ResultsErrorPage({ error }: { error: ResultsErrorCode }) {
   const errorMessages: Record<
-    string,
+    ResultsErrorCode,
     { title: string; message: string; icon: React.ReactNode }
   > = {
     SESSION_NOT_FOUND: {
@@ -214,15 +216,7 @@ function ResultsErrorPage({ error }: { error: string }) {
     },
   };
 
-  const {
-    title,
-    message,
-    icon,
-  } = errorMessages[error] ?? {
-    title: "Error",
-    message: "An unexpected error occurred.",
-    icon: <AlertTriangle className="h-12 w-12 text-destructive mx-auto" />,
-  };
+  const { title, message, icon } = errorMessages[error];
 
   return (
     <div className="min-h-screen flex items-center justify-center p-6">
