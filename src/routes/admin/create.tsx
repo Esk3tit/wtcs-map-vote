@@ -177,6 +177,7 @@ function CreateSessionPage() {
     setIsSubmitting(true)
 
     try {
+      // TODO: Consider atomic createSessionWithPlayers mutation to prevent partial sessions (Phase 2)
       // 1. Create the session
       const { sessionId } = await createSession({
         matchName: trimmedMatchName,
