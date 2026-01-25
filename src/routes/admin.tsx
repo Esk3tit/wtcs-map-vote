@@ -42,7 +42,7 @@ function AdminLayout() {
       </div>
 
       {/* Main content */}
-      <main className="flex-1 md:ml-0">
+      <main className="flex-1 flex flex-col md:ml-0">
         <Outlet />
       </main>
     </div>
