@@ -2601,3 +2601,978 @@ describe("sessions.setSessionMaps", () => {
     });
   });
 });
+
+// ============================================================================
+// getSessionByToken Tests
+// ============================================================================
+
+describe("sessions.getSessionByToken", () => {
+  describe("error cases", () => {
+    it("returns INVALID_TOKEN for non-existent token", async () => {
+      const t = createTestContext();
+
+      const result = await t.query(api.sessions.getSessionByToken, {
+        token: "nonexistent-token",
+      });
+
+      expect(result.status).toBe("error");
+      if (result.status === "error") {
+        expect(result.error).toBe("INVALID_TOKEN");
+      }
+    });
+
+    it("returns TOKEN_EXPIRED for expired token", async () => {
+      const t = createTestContext();
+      const expiredToken = "expired-token-123";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { status: "WAITING" })
+        );
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: expiredToken,
+            tokenExpiresAt: Date.now() - 1000, // Expired 1 second ago
+            teamName: "Team A",
+          })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, {
+        token: expiredToken,
+      });
+
+      expect(result.status).toBe("error");
+      if (result.status === "error") {
+        expect(result.error).toBe("TOKEN_EXPIRED");
+      }
+    });
+
+    it("returns SESSION_NOT_FOUND when session is deleted", async () => {
+      const t = createTestContext();
+      const orphanedToken = "orphaned-token-123";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId)
+        );
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: orphanedToken,
+            teamName: "Team A",
+          })
+        );
+        // Delete the session but keep the player (orphaned state)
+        await ctx.db.delete(sessionId);
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, {
+        token: orphanedToken,
+      });
+
+      expect(result.status).toBe("error");
+      if (result.status === "error") {
+        expect(result.error).toBe("SESSION_NOT_FOUND");
+      }
+    });
+  });
+
+  describe("success cases", () => {
+    it("returns valid session data with sanitized players", async () => {
+      const t = createTestContext();
+      const playerToken = "valid-player-token";
+
+      const { sessionId } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { status: "IN_PROGRESS", matchName: "Test Match" })
+        );
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: playerToken,
+            teamName: "Team A",
+            role: "Captain",
+          })
+        );
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: "other-player-token",
+            teamName: "Team B",
+            role: "Vice Captain",
+          })
+        );
+        return { sessionId };
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, {
+        token: playerToken,
+      });
+
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.session._id).toBe(sessionId);
+        expect(result.session.matchName).toBe("Test Match");
+        expect(result.player.teamName).toBe("Team A");
+        expect(result.player.role).toBe("Captain");
+        expect(result.otherPlayers).toHaveLength(1);
+        expect(result.otherPlayers[0].teamName).toBe("Team B");
+      }
+    });
+
+    it("excludes token from player data (sanitization)", async () => {
+      const t = createTestContext();
+      const playerToken = "secret-token-123";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { status: "IN_PROGRESS" })
+        );
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: playerToken,
+            teamName: "Team A",
+          })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, {
+        token: playerToken,
+      });
+
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        // Type-safe check: token should not be in the sanitized player object
+        expect("token" in result.player).toBe(false);
+      }
+    });
+
+    it("excludes token from otherPlayers data", async () => {
+      const t = createTestContext();
+      const playerToken = "my-token";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { status: "IN_PROGRESS" })
+        );
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: playerToken,
+            teamName: "Team A",
+          })
+        );
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: "other-secret-token",
+            teamName: "Team B",
+          })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, {
+        token: playerToken,
+      });
+
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.otherPlayers).toHaveLength(1);
+        expect("token" in result.otherPlayers[0]).toBe(false);
+      }
+    });
+  });
+
+  describe("turn detection - ABBA format", () => {
+    it("isYourTurn true for player 0 at turn 0", async () => {
+      const t = createTestContext();
+      const player1Token = "player1-token";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            format: "ABBA",
+            status: "IN_PROGRESS",
+            currentTurn: 0,
+          })
+        );
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        // Player 1 created first = index 0
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: player1Token,
+            teamName: "Team A",
+          })
+        );
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: "player2-token",
+            teamName: "Team B",
+          })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, {
+        token: player1Token,
+      });
+
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.isYourTurn).toBe(true);
+      }
+    });
+
+    it("isYourTurn true for player 1 at turns 1 and 2 (ABBA)", async () => {
+      const t = createTestContext();
+      const player2Token = "player2-token";
+
+      // Test turn 1
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            format: "ABBA",
+            status: "IN_PROGRESS",
+            currentTurn: 1,
+          })
+        );
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: "player1-token",
+            teamName: "Team A",
+          })
+        );
+        // Player 2 created second = index 1
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: player2Token,
+            teamName: "Team B",
+          })
+        );
+      });
+
+      const resultTurn1 = await t.query(api.sessions.getSessionByToken, {
+        token: player2Token,
+      });
+
+      expect(resultTurn1.status).toBe("valid");
+      if (resultTurn1.status === "valid") {
+        expect(resultTurn1.isYourTurn).toBe(true);
+      }
+    });
+
+    it("isYourTurn true for player 0 at turn 3 (ABBA)", async () => {
+      const t = createTestContext();
+      const player1Token = "player1-token";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            format: "ABBA",
+            status: "IN_PROGRESS",
+            currentTurn: 3,
+          })
+        );
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: player1Token,
+            teamName: "Team A",
+          })
+        );
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: "player2-token",
+            teamName: "Team B",
+          })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, {
+        token: player1Token,
+      });
+
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.isYourTurn).toBe(true);
+      }
+    });
+
+    it("isYourTurn false for wrong player in ABBA pattern", async () => {
+      const t = createTestContext();
+      const player2Token = "player2-token";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            format: "ABBA",
+            status: "IN_PROGRESS",
+            currentTurn: 0, // Turn 0 = player 0's turn
+          })
+        );
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: "player1-token",
+            teamName: "Team A",
+          })
+        );
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: player2Token,
+            teamName: "Team B",
+          })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, {
+        token: player2Token,
+      });
+
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.isYourTurn).toBe(false);
+      }
+    });
+  });
+
+  describe("turn detection - MULTIPLAYER format", () => {
+    it("isYourTurn true when not voted this round", async () => {
+      const t = createTestContext();
+      const playerToken = "multiplayer-token";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            format: "MULTIPLAYER",
+            status: "IN_PROGRESS",
+          })
+        );
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: playerToken,
+            teamName: "Team A",
+            hasVotedThisRound: false,
+          })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, {
+        token: playerToken,
+      });
+
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.isYourTurn).toBe(true);
+      }
+    });
+
+    it("isYourTurn false when already voted this round", async () => {
+      const t = createTestContext();
+      const playerToken = "voted-multiplayer-token";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            format: "MULTIPLAYER",
+            status: "IN_PROGRESS",
+          })
+        );
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: playerToken,
+            teamName: "Team A",
+            hasVotedThisRound: true,
+          })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, {
+        token: playerToken,
+      });
+
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.isYourTurn).toBe(false);
+      }
+    });
+  });
+
+  describe("session status edge cases", () => {
+    it("isYourTurn false when session is DRAFT", async () => {
+      const t = createTestContext();
+      const playerToken = "draft-session-token";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            format: "ABBA",
+            status: "DRAFT",
+            currentTurn: 0,
+          })
+        );
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: playerToken,
+            teamName: "Team A",
+          })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, {
+        token: playerToken,
+      });
+
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.isYourTurn).toBe(false);
+      }
+    });
+
+    it("isYourTurn false when session is WAITING", async () => {
+      const t = createTestContext();
+      const playerToken = "waiting-session-token";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            format: "ABBA",
+            status: "WAITING",
+            currentTurn: 0,
+          })
+        );
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: playerToken,
+            teamName: "Team A",
+          })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, {
+        token: playerToken,
+      });
+
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.isYourTurn).toBe(false);
+      }
+    });
+
+    it("isYourTurn false when session is COMPLETE", async () => {
+      const t = createTestContext();
+      const playerToken = "complete-session-token";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            format: "ABBA",
+            status: "COMPLETE",
+            currentTurn: 0,
+          })
+        );
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: playerToken,
+            teamName: "Team A",
+          })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, {
+        token: playerToken,
+      });
+
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.isYourTurn).toBe(false);
+      }
+    });
+  });
+});
+
+// ============================================================================
+// getSessionResults Tests
+// ============================================================================
+
+describe("sessions.getSessionResults", () => {
+  describe("error cases", () => {
+    it("returns SESSION_NOT_FOUND for non-existent session", async () => {
+      const t = createTestContext();
+      const deletedSessionId = await createDeletedSessionId(t);
+
+      const result = await t.query(api.sessions.getSessionResults, {
+        sessionId: deletedSessionId,
+      });
+
+      expect(result.status).toBe("error");
+      if (result.status === "error") {
+        expect(result.error).toBe("SESSION_NOT_FOUND");
+      }
+    });
+
+    it("returns SESSION_NOT_COMPLETE for DRAFT session", async () => {
+      const t = createTestContext();
+      const { sessionId } = await createSessionInStatus(t, "DRAFT");
+
+      const result = await t.query(api.sessions.getSessionResults, {
+        sessionId,
+      });
+
+      expect(result.status).toBe("error");
+      if (result.status === "error") {
+        expect(result.error).toBe("SESSION_NOT_COMPLETE");
+      }
+    });
+
+    it("returns SESSION_NOT_COMPLETE for IN_PROGRESS session", async () => {
+      const t = createTestContext();
+      const { sessionId } = await createSessionInStatus(t, "IN_PROGRESS");
+
+      const result = await t.query(api.sessions.getSessionResults, {
+        sessionId,
+      });
+
+      expect(result.status).toBe("error");
+      if (result.status === "error") {
+        expect(result.error).toBe("SESSION_NOT_COMPLETE");
+      }
+    });
+
+    it("returns SESSION_NOT_COMPLETE for WAITING session", async () => {
+      const t = createTestContext();
+      const { sessionId } = await createSessionInStatus(t, "WAITING");
+
+      const result = await t.query(api.sessions.getSessionResults, {
+        sessionId,
+      });
+
+      expect(result.status).toBe("error");
+      if (result.status === "error") {
+        expect(result.error).toBe("SESSION_NOT_COMPLETE");
+      }
+    });
+  });
+
+  describe("success cases", () => {
+    it("returns valid results for COMPLETE session", async () => {
+      const t = createTestContext();
+
+      const { sessionId } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            status: "COMPLETE",
+            matchName: "Finals Match",
+          })
+        );
+        return { sessionId };
+      });
+
+      const result = await t.query(api.sessions.getSessionResults, {
+        sessionId,
+      });
+
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.session._id).toBe(sessionId);
+        expect(result.session.matchName).toBe("Finals Match");
+        expect(result.session.status).toBe("COMPLETE");
+      }
+    });
+
+    it("returns teams array from players", async () => {
+      const t = createTestContext();
+
+      const { sessionId } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { status: "COMPLETE" })
+        );
+        await ctx.db.insert("teams", teamFactory({ name: "Team Alpha" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team Beta" }));
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, { teamName: "Team Alpha" })
+        );
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, { teamName: "Team Beta" })
+        );
+        return { sessionId };
+      });
+
+      const result = await t.query(api.sessions.getSessionResults, {
+        sessionId,
+      });
+
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.teams).toHaveLength(2);
+        expect(result.teams).toContain("Team Alpha");
+        expect(result.teams).toContain("Team Beta");
+      }
+    });
+
+    it("returns ban history sorted by turn order", async () => {
+      const t = createTestContext();
+
+      const { sessionId } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { status: "COMPLETE" })
+        );
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+
+        const player1Id = await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, { teamName: "Team A" })
+        );
+        const player2Id = await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, { teamName: "Team B" })
+        );
+
+        const mapId1 = await ctx.db.insert("maps", mapFactory({ name: "Map 1" }));
+        const mapId2 = await ctx.db.insert("maps", mapFactory({ name: "Map 2" }));
+        const mapId3 = await ctx.db.insert("maps", mapFactory({ name: "Map 3" }));
+
+        // Create banned maps in non-sequential order to test sorting
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapId2, {
+            name: "Map 2",
+            state: "BANNED",
+            bannedByPlayerId: player2Id,
+            bannedAtTurn: 1,
+          })
+        );
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapId1, {
+            name: "Map 1",
+            state: "BANNED",
+            bannedByPlayerId: player1Id,
+            bannedAtTurn: 0,
+          })
+        );
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapId3, {
+            name: "Map 3",
+            state: "WINNER",
+          })
+        );
+
+        return { sessionId };
+      });
+
+      const result = await t.query(api.sessions.getSessionResults, {
+        sessionId,
+      });
+
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.banHistory).toHaveLength(2);
+        // Should be sorted by turn order
+        expect(result.banHistory[0].mapName).toBe("Map 1");
+        expect(result.banHistory[0].order).toBe(1);
+        expect(result.banHistory[1].mapName).toBe("Map 2");
+        expect(result.banHistory[1].order).toBe(2);
+      }
+    });
+
+    it("returns winner map when present", async () => {
+      const t = createTestContext();
+
+      const { sessionId } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { status: "COMPLETE" })
+        );
+
+        const mapId = await ctx.db.insert("maps", mapFactory({ name: "Winner Map" }));
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapId, {
+            name: "Winner Map",
+            imageUrl: "https://example.com/winner.png",
+            state: "WINNER",
+          })
+        );
+
+        return { sessionId };
+      });
+
+      const result = await t.query(api.sessions.getSessionResults, {
+        sessionId,
+      });
+
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.winnerMap).toBeDefined();
+        expect(result.winnerMap?.name).toBe("Winner Map");
+        expect(result.winnerMap?.imageUrl).toBe("https://example.com/winner.png");
+      }
+    });
+
+    it("returns undefined winnerMap when no WINNER state map", async () => {
+      const t = createTestContext();
+
+      const { sessionId } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { status: "COMPLETE" })
+        );
+
+        const mapId = await ctx.db.insert("maps", mapFactory({ name: "Banned Map" }));
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapId, {
+            name: "Banned Map",
+            state: "BANNED",
+          })
+        );
+
+        return { sessionId };
+      });
+
+      const result = await t.query(api.sessions.getSessionResults, {
+        sessionId,
+      });
+
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.winnerMap).toBeUndefined();
+      }
+    });
+  });
+});
+
+// ============================================================================
+// getSessionResultsByToken Tests
+// ============================================================================
+
+describe("sessions.getSessionResultsByToken", () => {
+  describe("error cases", () => {
+    it("returns INVALID_TOKEN for non-existent token", async () => {
+      const t = createTestContext();
+
+      const result = await t.query(api.sessions.getSessionResultsByToken, {
+        token: "nonexistent-results-token",
+      });
+
+      expect(result.status).toBe("error");
+      if (result.status === "error") {
+        expect(result.error).toBe("INVALID_TOKEN");
+      }
+    });
+
+    it("returns TOKEN_EXPIRED for expired token", async () => {
+      const t = createTestContext();
+      const expiredToken = "expired-results-token";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { status: "COMPLETE" })
+        );
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: expiredToken,
+            tokenExpiresAt: Date.now() - 1000,
+            teamName: "Team A",
+          })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionResultsByToken, {
+        token: expiredToken,
+      });
+
+      expect(result.status).toBe("error");
+      if (result.status === "error") {
+        expect(result.error).toBe("TOKEN_EXPIRED");
+      }
+    });
+
+    it("returns SESSION_NOT_FOUND when session deleted", async () => {
+      const t = createTestContext();
+      const orphanedToken = "orphaned-results-token";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { status: "COMPLETE" })
+        );
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: orphanedToken,
+            teamName: "Team A",
+          })
+        );
+        await ctx.db.delete(sessionId);
+      });
+
+      const result = await t.query(api.sessions.getSessionResultsByToken, {
+        token: orphanedToken,
+      });
+
+      expect(result.status).toBe("error");
+      if (result.status === "error") {
+        expect(result.error).toBe("SESSION_NOT_FOUND");
+      }
+    });
+
+    it("returns SESSION_NOT_COMPLETE for non-complete session", async () => {
+      const t = createTestContext();
+      const validToken = "valid-incomplete-token";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { status: "IN_PROGRESS" })
+        );
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: validToken,
+            teamName: "Team A",
+          })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionResultsByToken, {
+        token: validToken,
+      });
+
+      expect(result.status).toBe("error");
+      if (result.status === "error") {
+        expect(result.error).toBe("SESSION_NOT_COMPLETE");
+      }
+    });
+  });
+
+  describe("success cases", () => {
+    it("returns results for valid token and complete session", async () => {
+      const t = createTestContext();
+      const validToken = "valid-results-token";
+
+      const { sessionId } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            status: "COMPLETE",
+            matchName: "Championship Finals",
+          })
+        );
+        await ctx.db.insert("teams", teamFactory({ name: "Champions" }));
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: validToken,
+            teamName: "Champions",
+          })
+        );
+
+        const mapId = await ctx.db.insert("maps", mapFactory({ name: "Final Map" }));
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapId, {
+            name: "Final Map",
+            state: "WINNER",
+          })
+        );
+
+        return { sessionId };
+      });
+
+      const result = await t.query(api.sessions.getSessionResultsByToken, {
+        token: validToken,
+      });
+
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.session._id).toBe(sessionId);
+        expect(result.session.matchName).toBe("Championship Finals");
+        expect(result.teams).toContain("Champions");
+        expect(result.winnerMap?.name).toBe("Final Map");
+      }
+    });
+  });
+});
