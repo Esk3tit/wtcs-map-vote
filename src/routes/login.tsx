@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { createFileRoute } from '@tanstack/react-router'
 import { useAuthActions } from '@convex-dev/auth/react'
 import { Card } from '@/components/ui/card'
@@ -35,6 +35,13 @@ function GoogleIcon() {
 function LoginPage() {
   const { signIn } = useAuthActions()
   const [isLoading, setIsLoading] = useState(false)
+
+  // Reset loading state when window regains focus (handles OAuth popup cancel/error)
+  useEffect(() => {
+    const handleFocus = () => setIsLoading(false)
+    window.addEventListener('focus', handleFocus)
+    return () => window.removeEventListener('focus', handleFocus)
+  }, [])
 
   const handleGoogleSignIn = () => {
     setIsLoading(true)

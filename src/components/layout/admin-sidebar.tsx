@@ -22,8 +22,14 @@ export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
   const isMapsActive = matchRoute({ to: '/admin/maps', fuzzy: true })
 
   const handleLogout = async () => {
-    await signOut()
-    void navigate({ to: '/login' })
+    try {
+      await signOut()
+    } catch (error) {
+      console.error('Logout failed:', error)
+    } finally {
+      // Always navigate to login - user intended to leave
+      void navigate({ to: '/login' })
+    }
   }
 
   const handleNavClick = () => {
