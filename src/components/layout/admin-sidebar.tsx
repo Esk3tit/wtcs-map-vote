@@ -1,4 +1,6 @@
-import { Link, useMatchRoute } from '@tanstack/react-router'
+import { Link, useMatchRoute, useNavigate } from '@tanstack/react-router'
+import { useAuthActions } from '@convex-dev/auth/react'
+import { useQuery, api } from '@/lib/convex'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { LogOut, User, Users, Calendar, Map as MapIcon } from 'lucide-react'
@@ -9,6 +11,9 @@ interface AdminSidebarProps {
 
 export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
   const matchRoute = useMatchRoute()
+  const navigate = useNavigate()
+  const { signOut } = useAuthActions()
+  const currentUser = useQuery(api.admins.getCurrentUser)
 
   const isSessionsActive = matchRoute({ to: '/admin/dashboard', fuzzy: true }) ||
                            matchRoute({ to: '/admin/create', fuzzy: true }) ||
@@ -16,9 +21,15 @@ export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
   const isTeamsActive = matchRoute({ to: '/admin/teams', fuzzy: true })
   const isMapsActive = matchRoute({ to: '/admin/maps', fuzzy: true })
 
-  const handleLogout = () => {
-    console.log('Logout clicked')
-    // TODO: Implement logout
+  const handleLogout = async () => {
+    try {
+      await signOut()
+    } catch (error) {
+      console.error('Logout failed:', error)
+    } finally {
+      // Always navigate to login - user intended to leave
+      void navigate({ to: '/login' })
+    }
   }
 
   const handleNavClick = () => {
@@ -27,7 +38,7 @@ export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
 
   return (
     <aside className="w-64 border-r border-border/50 bg-card/30 backdrop-blur-sm flex flex-col h-full">
-      <div className="p-6 border-b border-border/50">
+      <div className="p-6 pl-14 md:pl-6 border-b border-border/50">
         <h2 className="text-xl font-bold text-foreground">WTCS Map Vote</h2>
         <p className="text-sm text-muted-foreground">Admin Portal</p>
       </div>
@@ -62,14 +73,18 @@ export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
       <div className="p-4 border-t border-border/50">
         <div className="flex items-center gap-3 mb-3">
           <Avatar className="w-10 h-10">
-            <AvatarImage src="/admin-interface.png" />
+            <AvatarImage src={currentUser?.picture} alt={currentUser?.name ?? ''} />
             <AvatarFallback className="bg-primary/20 text-primary">
               <User className="w-5 h-5" />
             </AvatarFallback>
           </Avatar>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-foreground truncate">Admin User</p>
-            <p className="text-xs text-muted-foreground truncate">admin@wtcs.gg</p>
+            <p className="text-sm font-medium text-foreground truncate">
+              {currentUser?.name ?? "Loading..."}
+            </p>
+            <p className="text-xs text-muted-foreground truncate">
+              {currentUser?.email ?? ""}
+            </p>
           </div>
         </div>
         <Button variant="outline" size="sm" className="w-full gap-2 bg-transparent" onClick={handleLogout}>
