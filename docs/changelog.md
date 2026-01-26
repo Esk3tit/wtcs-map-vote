@@ -10,6 +10,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+#### Phase 3: Authentication - Login UI & Logout (WAR-24)
+- **Google OAuth provider** added to `convex/auth.ts`
+- **`getCurrentUser` query** (`convex/admins.ts`) - Returns authenticated user info (name, email, picture) from `ctx.auth.getUserIdentity()`
+- **Real logout** in admin sidebar - Uses `signOut()` from `@convex-dev/auth/react` with error handling
+- **Real user display** in admin sidebar - Shows Google profile name, email, and picture
+- **Sticky sidebar** on desktop (`md:sticky md:top-0 md:h-screen`) - Logout button always visible
+- **Login page improvements**:
+  - Loading state with spinner during OAuth flow
+  - Window focus listener to reset loading state on popup cancel
+  - Enhanced styling with gradients, animations, and accessibility
+  - Mobile-responsive design with proper touch targets
+- **Code review todo files** created for P1 auth issues (deferred to separate Linear issue):
+  - `010-pending-p1-missing-backend-auth-on-mutations.md`
+  - `011-pending-p1-missing-route-auth-guard.md`
+
+### Changed
+- **`buttonVariants`** (`src/components/ui/variants.ts`) - Added `cursor-pointer` to base styles
+- **Mobile sidebar header** - Added `pl-14 md:pl-6` padding to prevent hamburger menu overlap
+
+### Fixed
+- **Logout error handling** - Try/catch with `finally` block ensures navigation to login even if signOut fails
+- **Login loading state** - Now resets on OAuth popup cancel via window focus event
+
 #### Phase 3: Authentication - Convex Auth Setup (WAR-23)
 - **Convex Auth infrastructure** installed and configured (`@convex-dev/auth`, `@auth/core@0.37.0`)
 - **7 auth tables** added via `authTables` spread in schema:

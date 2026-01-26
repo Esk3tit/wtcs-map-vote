@@ -2,7 +2,7 @@
 
 Current progress and next steps for the WTCS Map Vote project.
 
-**Last Updated:** January 25, 2026
+**Last Updated:** January 26, 2026
 
 ---
 
@@ -108,8 +108,9 @@ Current progress and next steps for the WTCS Map Vote project.
 
 1. **Authentication**
    - [x] Set up Convex Auth infrastructure (WAR-23) - auth tables, providers, HTTP routes
-   - [ ] Add Google OAuth provider (WAR-24)
-   - [ ] Implement admin whitelist check (WAR-25)
+   - [x] Add Google OAuth provider (WAR-24) - login UI, logout, real user display
+   - [ ] Add backend auth checks on mutations (WAR-25) - see `todos/010-pending-p1`
+   - [ ] Add route auth guards (WAR-25) - see `todos/011-pending-p1`
    - [ ] Create player token authentication flow (WAR-26)
    - [ ] Add uniqueness validation (email, token)
 
