@@ -36,16 +36,21 @@ function LoginPage() {
   const { signIn } = useAuthActions()
   const [isLoading, setIsLoading] = useState(false)
 
-  // Reset loading state when window regains focus (handles OAuth popup cancel/error)
+  // Reset loading state when window regains focus (handles OAuth popup cancel)
   useEffect(() => {
     const handleFocus = () => setIsLoading(false)
     window.addEventListener('focus', handleFocus)
     return () => window.removeEventListener('focus', handleFocus)
   }, [])
 
-  const handleGoogleSignIn = () => {
+  const handleGoogleSignIn = async () => {
     setIsLoading(true)
-    void signIn("google")
+    try {
+      await signIn("google")
+    } catch (error) {
+      console.error("Sign in failed:", error)
+      setIsLoading(false)
+    }
   }
 
   return (

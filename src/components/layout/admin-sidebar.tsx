@@ -73,7 +73,7 @@ export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
       <div className="p-4 border-t border-border/50">
         <div className="flex items-center gap-3 mb-3">
           <Avatar className="w-10 h-10">
-            <AvatarImage src={currentUser?.picture} alt={currentUser?.name} />
+            <AvatarImage src={currentUser?.picture} alt={currentUser?.name ?? ''} />
             <AvatarFallback className="bg-primary/20 text-primary">
               <User className="w-5 h-5" />
             </AvatarFallback>

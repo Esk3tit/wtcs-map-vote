@@ -21,7 +21,7 @@ export const getCurrentUser = query({
   returns: v.union(
     v.object({
       name: v.string(),
-      email: v.string(),
+      email: v.optional(v.string()),
       picture: v.optional(v.string()),
     }),
     v.null()
@@ -31,7 +31,7 @@ export const getCurrentUser = query({
     if (!identity) return null;
     return {
       name: identity.name ?? "Admin",
-      email: identity.email ?? "",
+      email: identity.email ?? undefined,
       picture: identity.pictureUrl ?? undefined,
     };
   },
