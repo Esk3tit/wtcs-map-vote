@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 priority: p3
 issue_id: "009"
 tags: [code-review, cleanup, yagni, war-11]
@@ -99,17 +99,18 @@ Note: Convex will return an error for invalid IDs which is handled by the error 
 
 ## Acceptance Criteria
 
-- [ ] `isValidSessionId` function removed from `results.$sessionId.tsx`
-- [ ] Query called unconditionally (Convex handles invalid IDs)
-- [ ] "Audio alerts enabled" UI removed from `vote.$token.tsx`
-- [ ] Volume2 import removed if no longer used
-- [ ] No visual regressions in other UI elements
+- [x] `isValidSessionId` function removed from `results.$sessionId.tsx`
+- [x] Query called unconditionally (Convex handles invalid IDs)
+- [x] "Audio alerts enabled" UI removed from `vote.$token.tsx`
+- [x] Volume2 import removed if no longer used
+- [x] No visual regressions in other UI elements
 
 ## Work Log
 
 | Date | Action | Notes |
 |------|--------|-------|
 | 2026-01-24 | Created | From PR #38 code review |
+| 2026-01-27 | Completed | Removed isValidSessionId from results page and audio alerts UI from vote page |
 
 ## Resources
 

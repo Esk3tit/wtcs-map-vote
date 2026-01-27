@@ -1,5 +1,5 @@
 ---
-status: pending
+status: done
 priority: p1
 issue_id: "011"
 tags: [code-review, security, react, authentication, routing]
@@ -101,16 +101,17 @@ export const Route = createFileRoute('/admin')({
 
 ## Acceptance Criteria
 
-- [ ] Unauthenticated users redirected to `/login` when accessing `/admin/*`
-- [ ] No flash of admin content before redirect
-- [ ] Authenticated users can access admin routes normally
-- [ ] Loading state shown while auth status is determined
+- [x] Unauthenticated users redirected to `/login` when accessing `/admin/*`
+- [x] No flash of admin content before redirect
+- [x] Authenticated users can access admin routes normally
+- [x] Loading state shown while auth status is determined
 
 ## Work Log
 
 | Date | Action | Learnings |
 |------|--------|-----------|
 | 2026-01-26 | Created during PR #43 review | useConvexAuth hook available but unused |
+| 2026-01-27 | Implemented Option 1 (useEffect redirect) | Used Loader2 from lucide-react for loading states, navigate requires search params for /login route |
 
 ## Resources
 
