@@ -11,12 +11,10 @@ import { describe, it, expect } from "vitest";
 import { createTestContext, createAuthenticatedAdmin } from "./test.setup";
 import {
   mapFactory,
-  adminFactory,
   sessionFactory,
   sessionMapFactory,
 } from "./test.factories";
 import { api } from "./_generated/api";
-import { Id } from "./_generated/dataModel";
 import { SessionStatus } from "./lib/constants";
 
 // ============================================================================

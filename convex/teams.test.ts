@@ -5,11 +5,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import {
-  createTestContext,
-  createAuthenticatedAdmin,
-  TEST_ADMIN_DATA,
-} from "./test.setup";
+import { createTestContext, createAuthenticatedAdmin } from "./test.setup";
 import {
   teamFactory,
   adminFactory,
@@ -17,7 +13,6 @@ import {
   sessionPlayerFactory,
 } from "./test.factories";
 import { api } from "./_generated/api";
-import { Id } from "./_generated/dataModel";
 
 // ============================================================================
 // Test Helpers
