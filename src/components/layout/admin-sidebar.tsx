@@ -3,7 +3,7 @@ import { useAuthActions } from '@convex-dev/auth/react'
 import { useQuery, api } from '@/lib/convex'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
-import { LogOut, User, Users, Calendar, Map as MapIcon } from 'lucide-react'
+import { LogOut, User, Users, Calendar, Map as MapIcon, Settings } from 'lucide-react'
 
 interface AdminSidebarProps {
   onNavigate?: () => void
@@ -13,13 +13,14 @@ export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
   const matchRoute = useMatchRoute()
   const navigate = useNavigate()
   const { signOut } = useAuthActions()
-  const currentUser = useQuery(api.admins.getCurrentUser)
+  const currentUser = useQuery(api.admins.getMe)
 
   const isSessionsActive = matchRoute({ to: '/admin/dashboard', fuzzy: true }) ||
                            matchRoute({ to: '/admin/create', fuzzy: true }) ||
                            matchRoute({ to: '/admin/session/$sessionId', fuzzy: true })
   const isTeamsActive = matchRoute({ to: '/admin/teams', fuzzy: true })
   const isMapsActive = matchRoute({ to: '/admin/maps', fuzzy: true })
+  const isSettingsActive = matchRoute({ to: '/admin/settings', fuzzy: true })
 
   const handleLogout = async () => {
     try {
@@ -28,7 +29,7 @@ export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
       console.error('Logout failed:', error)
     } finally {
       // Always navigate to login - user intended to leave
-      void navigate({ to: '/login' })
+      void navigate({ to: '/login', search: { error: undefined } })
     }
   }
 
@@ -68,12 +69,22 @@ export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
           <MapIcon className="w-5 h-5" />
           Map Pool
         </Button>
+        {currentUser?.isRootAdmin && (
+          <Button
+            variant={isSettingsActive ? 'secondary' : 'ghost'}
+            className="w-full justify-start gap-3"
+            render={<Link to="/admin/settings" onClick={handleNavClick} />}
+          >
+            <Settings className="w-5 h-5" />
+            Admin Settings
+          </Button>
+        )}
       </nav>
 
       <div className="p-4 border-t border-border/50">
         <div className="flex items-center gap-3 mb-3">
           <Avatar className="w-10 h-10">
-            <AvatarImage src={currentUser?.picture} alt={currentUser?.name ?? ''} />
+            <AvatarImage src={currentUser?.avatarUrl} alt={currentUser?.name ?? ''} />
             <AvatarFallback className="bg-primary/20 text-primary">
               <User className="w-5 h-5" />
             </AvatarFallback>

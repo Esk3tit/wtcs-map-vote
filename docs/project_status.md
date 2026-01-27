@@ -2,7 +2,7 @@
 
 Current progress and next steps for the WTCS Map Vote project.
 
-**Last Updated:** January 26, 2026
+**Last Updated:** January 27, 2026
 
 ---
 
@@ -100,6 +100,17 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] `TokenErrorPage` component for invalid/expired tokens
 - [x] Convex React helper (`src/lib/convex.ts`)
 
+### Phase 3: Authentication (IN PROGRESS)
+- [x] Convex Auth infrastructure (WAR-23) - auth tables, providers, HTTP routes
+- [x] Google OAuth provider (WAR-24) - login UI, logout, real user display
+- [x] Admin whitelist system (WAR-25) - email-based access control, root admin protection
+- [x] Backend auth enforcement on mutations (WAR-25)
+- [x] Route auth guards (WAR-25)
+- [x] Admin management UI (`/admin/settings`)
+- [x] Admin audit logging (`adminAuditLogs` table)
+- [x] Session invalidation for removed admins
+- [x] 409 unit tests for admin functionality
+
 ---
 
 ## Next Steps
@@ -109,8 +120,7 @@ Current progress and next steps for the WTCS Map Vote project.
 1. **Authentication**
    - [x] Set up Convex Auth infrastructure (WAR-23) - auth tables, providers, HTTP routes
    - [x] Add Google OAuth provider (WAR-24) - login UI, logout, real user display
-   - [ ] Add backend auth checks on mutations (WAR-25) - see `todos/010-pending-p1`
-   - [ ] Add route auth guards (WAR-25) - see `todos/011-pending-p1`
+   - [x] Admin whitelist system (WAR-25) - Complete with backend auth, route guards, UI
    - [ ] Create player token authentication flow (WAR-26)
    - [ ] Add uniqueness validation (email, token)
 

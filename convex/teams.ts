@@ -14,6 +14,7 @@ import { ACTIVE_SESSION_STATUSES } from "./lib/constants";
 import { isSecureUrl } from "./lib/urlValidation";
 import { validateName } from "./lib/validation";
 import { validateStorageFile } from "./lib/storageValidation";
+import { requireAdmin } from "./lib/auth";
 
 // ============================================================================
 // Private Helpers
@@ -114,7 +115,7 @@ export const createTeam = mutation({
   },
   returns: v.object({ teamId: v.id("teams") }),
   handler: async (ctx, args) => {
-    // TODO: Add authentication check when auth is integrated (Phase 2)
+    await requireAdmin(ctx);
 
     const trimmedName = validateTeamName(args.name);
 
@@ -169,7 +170,7 @@ export const updateTeam = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    // TODO: Add authentication check when auth is integrated (Phase 2)
+    await requireAdmin(ctx);
 
     const existing = await ctx.db.get(args.teamId);
     if (!existing) {
@@ -311,7 +312,7 @@ export const deleteTeam = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    // TODO: Add authentication check when auth is integrated (Phase 2)
+    await requireAdmin(ctx);
 
     const team = await ctx.db.get(args.teamId);
     if (!team) {
@@ -380,7 +381,8 @@ export const generateUploadUrl = mutation({
   args: {},
   returns: v.string(),
   handler: async (ctx) => {
-    // TODO: Add authentication check when auth is integrated (Phase 2)
+    await requireAdmin(ctx);
+
     return await ctx.storage.generateUploadUrl();
   },
 });

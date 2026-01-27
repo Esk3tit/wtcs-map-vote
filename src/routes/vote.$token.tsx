@@ -15,7 +15,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { TokenErrorPage } from "@/components/session/TokenErrorPage";
-import { Check, Lock, Volume2, X, Loader2 } from "lucide-react";
+import { Check, Lock, X, Loader2 } from "lucide-react";
 import type { Id } from "../../convex/_generated/dataModel";
 
 export const Route = createFileRoute("/vote/$token")({
@@ -387,15 +387,9 @@ function PlayerVotingPage() {
 
       {/* Footer */}
       <footer className="border-t border-border bg-card px-4 py-3 sm:px-6 sm:py-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between max-w-6xl mx-auto">
-          <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
-            <Lock className="w-4 h-4 flex-shrink-0" />
-            <span>Session locked to your device</span>
-          </div>
-          <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground">
-            <Volume2 className="w-4 h-4 flex-shrink-0" />
-            <span>Audio alerts enabled</span>
-          </div>
+        <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground max-w-6xl mx-auto">
+          <Lock className="w-4 h-4 flex-shrink-0" />
+          <span>Session locked to your device</span>
         </div>
       </footer>
 

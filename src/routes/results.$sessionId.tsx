@@ -10,35 +10,13 @@ export const Route = createFileRoute("/results/$sessionId")({
   component: VotingResultsPage,
 });
 
-// Lightweight check for session ID - Convex IDs are opaque strings
-const isValidSessionId = (id: string): boolean => {
-  return typeof id === "string" && id.length > 0;
-};
-
 function VotingResultsPage() {
   const { sessionId } = Route.useParams();
-  const isValidId = isValidSessionId(sessionId);
   const typedSessionId = sessionId as Id<"sessions">;
 
-  const data = useQuery(
-    api.sessions.getSessionResults,
-    isValidId ? { sessionId: typedSessionId } : "skip"
-  );
-
-  // Invalid session ID format
-  if (!isValidId) {
-    return (
-      <div className="min-h-screen flex items-center justify-center p-6">
-        <Card className="max-w-md p-8 text-center space-y-4">
-          <AlertTriangle className="h-12 w-12 text-destructive mx-auto" />
-          <h1 className="text-2xl font-bold">Invalid Session ID</h1>
-          <p className="text-muted-foreground">
-            The session ID in the URL is invalid.
-          </p>
-        </Card>
-      </div>
-    );
-  }
+  const data = useQuery(api.sessions.getSessionResults, {
+    sessionId: typedSessionId,
+  });
 
   // Loading state
   if (data === undefined) {

@@ -1,12 +1,15 @@
 import { useState, useEffect } from 'react'
-import { createFileRoute } from '@tanstack/react-router'
+import { createFileRoute, useSearch } from '@tanstack/react-router'
 import { useAuthActions } from '@convex-dev/auth/react'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
-import { Loader2 } from 'lucide-react'
+import { Loader2, AlertCircle } from 'lucide-react'
 
 export const Route = createFileRoute('/login')({
   component: LoginPage,
+  validateSearch: (search: Record<string, unknown>) => ({
+    error: typeof search.error === 'string' ? search.error : undefined,
+  }),
 })
 
 function GoogleIcon() {
@@ -34,6 +37,7 @@ function GoogleIcon() {
 
 function LoginPage() {
   const { signIn } = useAuthActions()
+  const { error } = useSearch({ from: '/login' })
   const [isLoading, setIsLoading] = useState(false)
 
   // Reset loading state when window regains focus (handles OAuth popup cancel)
@@ -42,6 +46,14 @@ function LoginPage() {
     window.addEventListener('focus', handleFocus)
     return () => window.removeEventListener('focus', handleFocus)
   }, [])
+
+  // Get user-friendly error message
+  const getErrorMessage = (errorCode: string) => {
+    if (errorCode.includes('not authorized') || errorCode.includes('whitelist')) {
+      return 'Your email is not authorized. Contact an administrator for access.'
+    }
+    return 'Sign in failed. Please try again.'
+  }
 
   const handleGoogleSignIn = async () => {
     setIsLoading(true)
@@ -79,6 +91,14 @@ function LoginPage() {
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">WTCS Map Vote</h1>
             <p className="text-muted-foreground text-xs sm:text-sm font-medium tracking-wide uppercase">Admin Portal</p>
           </div>
+
+          {/* Error Message */}
+          {error && (
+            <div className="flex items-center gap-2 p-3 rounded-lg bg-destructive/10 border border-destructive/20 text-destructive text-sm">
+              <AlertCircle className="size-4 shrink-0" />
+              <span>{getErrorMessage(error)}</span>
+            </div>
+          )}
 
           {/* Sign in Button */}
           <div className="space-y-4">

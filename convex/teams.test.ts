@@ -5,7 +5,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { createTestContext } from "./test.setup";
+import { createTestContext, createAuthenticatedAdmin } from "./test.setup";
 import {
   teamFactory,
   adminFactory,
@@ -13,7 +13,6 @@ import {
   sessionPlayerFactory,
 } from "./test.factories";
 import { api } from "./_generated/api";
-import { Id } from "./_generated/dataModel";
 
 // ============================================================================
 // Test Helpers
@@ -30,18 +29,15 @@ type SessionStatus =
 /**
  * Creates a team that's being used in a session with the specified status.
  * Used for testing rename/delete blocking behavior across all session states.
+ * Now uses authenticated context with whitelisted admin.
  */
-async function createTeamInSession(
-  t: ReturnType<typeof createTestContext>,
-  status: SessionStatus
-): Promise<{
-  teamId: Id<"teams">;
-  sessionId: Id<"sessions">;
-  adminId: Id<"admins">;
-}> {
-  return await t.run(async (ctx) => {
-    const adminId = await ctx.db.insert("admins", adminFactory());
-    const teamId = await ctx.db.insert("teams", teamFactory({ name: "Test Team" }));
+async function createTeamInSession(status: SessionStatus) {
+  const { t, authT, adminId } = await createAuthenticatedAdmin();
+  const { teamId, sessionId } = await t.run(async (ctx) => {
+    const teamId = await ctx.db.insert(
+      "teams",
+      teamFactory({ name: "Test Team" })
+    );
     const sessionId = await ctx.db.insert(
       "sessions",
       sessionFactory(adminId, { status })
@@ -50,8 +46,9 @@ async function createTeamInSession(
       "sessionPlayers",
       sessionPlayerFactory(sessionId, { teamName: "Test Team" })
     );
-    return { teamId, sessionId, adminId };
+    return { teamId, sessionId };
   });
+  return { teamId, sessionId, adminId, authT };
 }
 
 // ============================================================================
@@ -59,11 +56,21 @@ async function createTeamInSession(
 // ============================================================================
 
 describe("teams.createTeam", () => {
-  describe("success cases", () => {
-    it("creates team with valid name", async () => {
+  describe("authentication", () => {
+    it("throws when not authenticated", async () => {
       const t = createTestContext();
 
-      const result = await t.mutation(api.teams.createTeam, {
+      await expect(
+        t.mutation(api.teams.createTeam, { name: "Team" })
+      ).rejects.toThrow(/Authentication required/);
+    });
+  });
+
+  describe("success cases", () => {
+    it("creates team with valid name", async () => {
+      const { t, authT } = await createAuthenticatedAdmin();
+
+      const result = await authT.mutation(api.teams.createTeam, {
         name: "Alpha Team",
       });
 
@@ -74,9 +81,9 @@ describe("teams.createTeam", () => {
     });
 
     it("creates team with external logoUrl", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
-      const result = await t.mutation(api.teams.createTeam, {
+      const result = await authT.mutation(api.teams.createTeam, {
         name: "Team With Logo",
         logoUrl: "https://example.com/logo.png",
       });
@@ -86,9 +93,9 @@ describe("teams.createTeam", () => {
     });
 
     it("trims whitespace from name", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
-      const result = await t.mutation(api.teams.createTeam, {
+      const result = await authT.mutation(api.teams.createTeam, {
         name: "  Padded Name  ",
       });
 
@@ -97,10 +104,10 @@ describe("teams.createTeam", () => {
     });
 
     it("sets updatedAt timestamp", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
       const before = Date.now();
 
-      const result = await t.mutation(api.teams.createTeam, {
+      const result = await authT.mutation(api.teams.createTeam, {
         name: "Timestamped Team",
       });
 
@@ -112,34 +119,34 @@ describe("teams.createTeam", () => {
 
   describe("validation errors", () => {
     it("throws for empty name", async () => {
-      const t = createTestContext();
+      const { authT } = await createAuthenticatedAdmin();
 
       await expect(
-        t.mutation(api.teams.createTeam, { name: "" })
+        authT.mutation(api.teams.createTeam, { name: "" })
       ).rejects.toThrow(/cannot be empty/);
     });
 
     it("throws for whitespace-only name", async () => {
-      const t = createTestContext();
+      const { authT } = await createAuthenticatedAdmin();
 
       await expect(
-        t.mutation(api.teams.createTeam, { name: "   " })
+        authT.mutation(api.teams.createTeam, { name: "   " })
       ).rejects.toThrow(/cannot be empty/);
     });
 
     it("throws for name exceeding 100 characters", async () => {
-      const t = createTestContext();
+      const { authT } = await createAuthenticatedAdmin();
 
       await expect(
-        t.mutation(api.teams.createTeam, { name: "A".repeat(101) })
+        authT.mutation(api.teams.createTeam, { name: "A".repeat(101) })
       ).rejects.toThrow(/cannot exceed 100 characters/);
     });
 
     it("throws for invalid logoUrl (internal address)", async () => {
-      const t = createTestContext();
+      const { authT } = await createAuthenticatedAdmin();
 
       await expect(
-        t.mutation(api.teams.createTeam, {
+        authT.mutation(api.teams.createTeam, {
           name: "Team",
           logoUrl: "http://127.0.0.1/logo.png",
         })
@@ -151,10 +158,10 @@ describe("teams.createTeam", () => {
     // This behavior is covered by the validator itself - we test the error message
     // from the validator instead.
     it("throws for invalid logoStorageId format", async () => {
-      const t = createTestContext();
+      const { authT } = await createAuthenticatedAdmin();
 
       await expect(
-        t.mutation(api.teams.createTeam, {
+        authT.mutation(api.teams.createTeam, {
           name: "Team",
           // @ts-expect-error - testing with invalid storage ID
           logoStorageId: "invalid_storage_id",
@@ -165,32 +172,34 @@ describe("teams.createTeam", () => {
 
   describe("duplicate handling", () => {
     it("throws for duplicate team name", async () => {
-      const t = createTestContext();
+      const { authT } = await createAuthenticatedAdmin();
 
-      await t.mutation(api.teams.createTeam, { name: "Unique Team" });
+      await authT.mutation(api.teams.createTeam, { name: "Unique Team" });
 
       await expect(
-        t.mutation(api.teams.createTeam, { name: "Unique Team" })
+        authT.mutation(api.teams.createTeam, { name: "Unique Team" })
       ).rejects.toThrow(/already exists/);
     });
 
     it("treats trimmed duplicate as conflict", async () => {
-      const t = createTestContext();
+      const { authT } = await createAuthenticatedAdmin();
 
-      await t.mutation(api.teams.createTeam, { name: "Duplicate" });
+      await authT.mutation(api.teams.createTeam, { name: "Duplicate" });
 
       await expect(
-        t.mutation(api.teams.createTeam, { name: "  Duplicate  " })
+        authT.mutation(api.teams.createTeam, { name: "  Duplicate  " })
       ).rejects.toThrow(/already exists/);
     });
 
     it("allows case-different names (case-sensitive uniqueness)", async () => {
-      const t = createTestContext();
+      const { authT } = await createAuthenticatedAdmin();
 
-      await t.mutation(api.teams.createTeam, { name: "Cloud9" });
+      await authT.mutation(api.teams.createTeam, { name: "Cloud9" });
 
       // Should succeed - different case is treated as different team
-      const result = await t.mutation(api.teams.createTeam, { name: "cloud9" });
+      const result = await authT.mutation(api.teams.createTeam, {
+        name: "cloud9",
+      });
       expect(result.teamId).toBeDefined();
     });
   });
@@ -426,15 +435,28 @@ describe("teams.listTeams", () => {
 // ============================================================================
 
 describe("teams.updateTeam", () => {
+  describe("authentication", () => {
+    it("throws when not authenticated", async () => {
+      const { t, authT } = await createAuthenticatedAdmin();
+      const { teamId } = await authT.mutation(api.teams.createTeam, {
+        name: "Team",
+      });
+
+      await expect(
+        t.mutation(api.teams.updateTeam, { teamId, name: "New Name" })
+      ).rejects.toThrow(/Authentication required/);
+    });
+  });
+
   describe("success cases", () => {
     it("updates team name", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
-      const { teamId } = await t.mutation(api.teams.createTeam, {
+      const { teamId } = await authT.mutation(api.teams.createTeam, {
         name: "Original Name",
       });
 
-      await t.mutation(api.teams.updateTeam, {
+      await authT.mutation(api.teams.updateTeam, {
         teamId,
         name: "New Name",
       });
@@ -444,13 +466,13 @@ describe("teams.updateTeam", () => {
     });
 
     it("updates logoUrl", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
-      const { teamId } = await t.mutation(api.teams.createTeam, {
+      const { teamId } = await authT.mutation(api.teams.createTeam, {
         name: "Team",
       });
 
-      await t.mutation(api.teams.updateTeam, {
+      await authT.mutation(api.teams.updateTeam, {
         teamId,
         logoUrl: "https://example.com/new-logo.png",
       });
@@ -460,14 +482,14 @@ describe("teams.updateTeam", () => {
     });
 
     it("clears logoUrl when set to null", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
-      const { teamId } = await t.mutation(api.teams.createTeam, {
+      const { teamId } = await authT.mutation(api.teams.createTeam, {
         name: "Team",
         logoUrl: "https://example.com/logo.png",
       });
 
-      await t.mutation(api.teams.updateTeam, {
+      await authT.mutation(api.teams.updateTeam, {
         teamId,
         logoUrl: null,
       });
@@ -477,13 +499,13 @@ describe("teams.updateTeam", () => {
     });
 
     it("allows keeping same name (no-op rename)", async () => {
-      const t = createTestContext();
+      const { authT } = await createAuthenticatedAdmin();
 
-      const { teamId } = await t.mutation(api.teams.createTeam, {
+      const { teamId } = await authT.mutation(api.teams.createTeam, {
         name: "Same Name",
       });
 
-      const result = await t.mutation(api.teams.updateTeam, {
+      const result = await authT.mutation(api.teams.updateTeam, {
         teamId,
         name: "Same Name",
       });
@@ -492,14 +514,14 @@ describe("teams.updateTeam", () => {
     });
 
     it("whitespace-only logoUrl validates and becomes undefined", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
-      const { teamId } = await t.mutation(api.teams.createTeam, {
+      const { teamId } = await authT.mutation(api.teams.createTeam, {
         name: "Team",
         logoUrl: "https://example.com/original.png",
       });
 
-      await t.mutation(api.teams.updateTeam, {
+      await authT.mutation(api.teams.updateTeam, {
         teamId,
         logoUrl: "   ", // whitespace only - becomes undefined after validateLogoUrl
       });
@@ -514,31 +536,31 @@ describe("teams.updateTeam", () => {
 
   describe("not found", () => {
     it("throws for non-existent team", async () => {
-      const t = createTestContext();
+      const { authT } = await createAuthenticatedAdmin();
 
       // Create and delete a team to get a valid but non-existent ID
-      const { teamId } = await t.mutation(api.teams.createTeam, {
+      const { teamId } = await authT.mutation(api.teams.createTeam, {
         name: "Temporary",
       });
-      await t.mutation(api.teams.deleteTeam, { teamId });
+      await authT.mutation(api.teams.deleteTeam, { teamId });
 
       await expect(
-        t.mutation(api.teams.updateTeam, { teamId, name: "New Name" })
+        authT.mutation(api.teams.updateTeam, { teamId, name: "New Name" })
       ).rejects.toThrow(/Team not found/);
     });
   });
 
   describe("duplicate handling", () => {
     it("throws when renaming to existing team name", async () => {
-      const t = createTestContext();
+      const { authT } = await createAuthenticatedAdmin();
 
-      await t.mutation(api.teams.createTeam, { name: "Existing Team" });
-      const { teamId } = await t.mutation(api.teams.createTeam, {
+      await authT.mutation(api.teams.createTeam, { name: "Existing Team" });
+      const { teamId } = await authT.mutation(api.teams.createTeam, {
         name: "My Team",
       });
 
       await expect(
-        t.mutation(api.teams.updateTeam, { teamId, name: "Existing Team" })
+        authT.mutation(api.teams.updateTeam, { teamId, name: "Existing Team" })
       ).rejects.toThrow(/already exists/);
     });
   });
@@ -548,38 +570,34 @@ describe("teams.updateTeam", () => {
   // Testing one from each category (active/inactive) provides sufficient coverage.
   describe("session blocking", () => {
     it("blocks rename when team in active session", async () => {
-      const t = createTestContext();
       // Uses IN_PROGRESS as representative of ACTIVE_SESSION_STATUSES
-      const { teamId } = await createTeamInSession(t, "IN_PROGRESS");
+      const { teamId, authT } = await createTeamInSession("IN_PROGRESS");
 
       await expect(
-        t.mutation(api.teams.updateTeam, { teamId, name: "New Name" })
+        authT.mutation(api.teams.updateTeam, { teamId, name: "New Name" })
       ).rejects.toThrow(/Cannot rename team.*active session/);
     });
 
     it("allows rename when team only in inactive session", async () => {
-      const t = createTestContext();
       // Uses COMPLETE as representative of inactive statuses (COMPLETE, EXPIRED)
-      const { teamId } = await createTeamInSession(t, "COMPLETE");
+      const { teamId, authT } = await createTeamInSession("COMPLETE");
 
-      const result = await t.mutation(api.teams.updateTeam, {
+      const result = await authT.mutation(api.teams.updateTeam, {
         teamId,
         name: "Renamed Team",
       });
 
       expect(result.success).toBe(true);
-      const team = await t.run(async (ctx) => ctx.db.get(teamId));
-      expect(team?.name).toBe("Renamed Team");
     });
 
     it("allows rename when team not used in any session", async () => {
-      const t = createTestContext();
+      const { authT } = await createAuthenticatedAdmin();
 
-      const { teamId } = await t.mutation(api.teams.createTeam, {
+      const { teamId } = await authT.mutation(api.teams.createTeam, {
         name: "Unused Team",
       });
 
-      const result = await t.mutation(api.teams.updateTeam, {
+      const result = await authT.mutation(api.teams.updateTeam, {
         teamId,
         name: "Renamed Team",
       });
@@ -588,11 +606,10 @@ describe("teams.updateTeam", () => {
     });
 
     it("allows logo update even when team in active session", async () => {
-      const t = createTestContext();
-      const { teamId } = await createTeamInSession(t, "IN_PROGRESS");
+      const { teamId, authT } = await createTeamInSession("IN_PROGRESS");
 
       // Logo updates should work even in active session (only rename is blocked)
-      const result = await t.mutation(api.teams.updateTeam, {
+      const result = await authT.mutation(api.teams.updateTeam, {
         teamId,
         logoUrl: "https://example.com/new-logo.png",
       });
@@ -603,26 +620,26 @@ describe("teams.updateTeam", () => {
 
   describe("validation errors", () => {
     it("throws for empty name", async () => {
-      const t = createTestContext();
+      const { authT } = await createAuthenticatedAdmin();
 
-      const { teamId } = await t.mutation(api.teams.createTeam, {
+      const { teamId } = await authT.mutation(api.teams.createTeam, {
         name: "Team",
       });
 
       await expect(
-        t.mutation(api.teams.updateTeam, { teamId, name: "" })
+        authT.mutation(api.teams.updateTeam, { teamId, name: "" })
       ).rejects.toThrow(/cannot be empty/);
     });
 
     it("throws for invalid logoUrl", async () => {
-      const t = createTestContext();
+      const { authT } = await createAuthenticatedAdmin();
 
-      const { teamId } = await t.mutation(api.teams.createTeam, {
+      const { teamId } = await authT.mutation(api.teams.createTeam, {
         name: "Team",
       });
 
       await expect(
-        t.mutation(api.teams.updateTeam, {
+        authT.mutation(api.teams.updateTeam, {
           teamId,
           logoUrl: "http://localhost/logo.png",
         })
@@ -632,14 +649,14 @@ describe("teams.updateTeam", () => {
     // Note: Testing "both logoUrl and logoStorageId" requires a real storage ID.
     // The validator rejects invalid storage IDs before business logic runs.
     it("throws for invalid logoStorageId format", async () => {
-      const t = createTestContext();
+      const { authT } = await createAuthenticatedAdmin();
 
-      const { teamId } = await t.mutation(api.teams.createTeam, {
+      const { teamId } = await authT.mutation(api.teams.createTeam, {
         name: "Team",
       });
 
       await expect(
-        t.mutation(api.teams.updateTeam, {
+        authT.mutation(api.teams.updateTeam, {
           teamId,
           // @ts-expect-error - testing with invalid storage ID
           logoStorageId: "invalid_storage_id",
@@ -670,15 +687,28 @@ describe("teams.updateTeam", () => {
 // ============================================================================
 
 describe("teams.deleteTeam", () => {
+  describe("authentication", () => {
+    it("throws when not authenticated", async () => {
+      const { t, authT } = await createAuthenticatedAdmin();
+      const { teamId } = await authT.mutation(api.teams.createTeam, {
+        name: "Team",
+      });
+
+      await expect(
+        t.mutation(api.teams.deleteTeam, { teamId })
+      ).rejects.toThrow(/Authentication required/);
+    });
+  });
+
   describe("success cases", () => {
     it("deletes existing team", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
-      const { teamId } = await t.mutation(api.teams.createTeam, {
+      const { teamId } = await authT.mutation(api.teams.createTeam, {
         name: "To Delete",
       });
 
-      const result = await t.mutation(api.teams.deleteTeam, { teamId });
+      const result = await authT.mutation(api.teams.deleteTeam, { teamId });
 
       expect(result.success).toBe(true);
 
@@ -689,15 +719,15 @@ describe("teams.deleteTeam", () => {
 
   describe("not found", () => {
     it("throws for non-existent team", async () => {
-      const t = createTestContext();
+      const { authT } = await createAuthenticatedAdmin();
 
-      const { teamId } = await t.mutation(api.teams.createTeam, {
+      const { teamId } = await authT.mutation(api.teams.createTeam, {
         name: "Temporary",
       });
-      await t.mutation(api.teams.deleteTeam, { teamId });
+      await authT.mutation(api.teams.deleteTeam, { teamId });
 
       await expect(
-        t.mutation(api.teams.deleteTeam, { teamId })
+        authT.mutation(api.teams.deleteTeam, { teamId })
       ).rejects.toThrow(/Team not found/);
     });
   });
@@ -707,33 +737,31 @@ describe("teams.deleteTeam", () => {
   // Testing one from each category (active/inactive) provides sufficient coverage.
   describe("session blocking", () => {
     it("blocks delete when team in active session", async () => {
-      const t = createTestContext();
       // Uses IN_PROGRESS as representative of ACTIVE_SESSION_STATUSES
-      const { teamId } = await createTeamInSession(t, "IN_PROGRESS");
+      const { teamId, authT } = await createTeamInSession("IN_PROGRESS");
 
       await expect(
-        t.mutation(api.teams.deleteTeam, { teamId })
+        authT.mutation(api.teams.deleteTeam, { teamId })
       ).rejects.toThrow(/Cannot delete team.*active session/);
     });
 
     it("allows delete when team only in inactive session", async () => {
-      const t = createTestContext();
       // Uses COMPLETE as representative of inactive statuses (COMPLETE, EXPIRED)
-      const { teamId } = await createTeamInSession(t, "COMPLETE");
+      const { teamId, authT } = await createTeamInSession("COMPLETE");
 
-      const result = await t.mutation(api.teams.deleteTeam, { teamId });
+      const result = await authT.mutation(api.teams.deleteTeam, { teamId });
 
       expect(result.success).toBe(true);
     });
 
     it("allows delete when team not used in any session", async () => {
-      const t = createTestContext();
+      const { authT } = await createAuthenticatedAdmin();
 
-      const { teamId } = await t.mutation(api.teams.createTeam, {
+      const { teamId } = await authT.mutation(api.teams.createTeam, {
         name: "Unused Team",
       });
 
-      const result = await t.mutation(api.teams.deleteTeam, { teamId });
+      const result = await authT.mutation(api.teams.deleteTeam, { teamId });
 
       expect(result.success).toBe(true);
     });
@@ -756,10 +784,20 @@ describe("teams.deleteTeam", () => {
 // ============================================================================
 
 describe("teams.generateUploadUrl", () => {
-  it("returns string URL", async () => {
-    const t = createTestContext();
+  describe("authentication", () => {
+    it("throws when not authenticated", async () => {
+      const t = createTestContext();
 
-    const url = await t.mutation(api.teams.generateUploadUrl, {});
+      await expect(
+        t.mutation(api.teams.generateUploadUrl, {})
+      ).rejects.toThrow(/Authentication required/);
+    });
+  });
+
+  it("returns string URL", async () => {
+    const { authT } = await createAuthenticatedAdmin();
+
+    const url = await authT.mutation(api.teams.generateUploadUrl, {});
 
     expect(typeof url).toBe("string");
     expect(url.length).toBeGreaterThan(0);

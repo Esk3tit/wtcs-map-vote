@@ -15,6 +15,7 @@ import { ACTIVE_SESSION_STATUSES } from "./lib/constants";
 import { isSecureUrl } from "./lib/urlValidation";
 import { validateName } from "./lib/validation";
 import { validateStorageFile } from "./lib/storageValidation";
+import { requireAdmin } from "./lib/auth";
 
 // ============================================================================
 // Private Helpers
@@ -162,7 +163,7 @@ export const createMap = mutation({
   },
   returns: v.object({ mapId: v.id("maps") }),
   handler: async (ctx, args) => {
-    // TODO: Add authentication check when auth is integrated (Phase 2)
+    await requireAdmin(ctx);
 
     const trimmedName = validateMapName(args.name);
 
@@ -229,7 +230,7 @@ export const updateMap = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    // TODO: Add authentication check when auth is integrated (Phase 2)
+    await requireAdmin(ctx);
 
     // Verify map exists
     const existing = await ctx.db.get(args.mapId);
@@ -407,10 +408,7 @@ export const deactivateMap = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    // TODO: Add authentication check when auth is integrated (Phase 2)
-    // const identity = await ctx.auth.getUserIdentity();
-    // if (!identity) throw new ConvexError("Authentication required");
-    // Verify caller is admin via admins table lookup
+    await requireAdmin(ctx);
 
     const map = await ctx.db.get(args.mapId);
     if (!map) {
@@ -465,10 +463,7 @@ export const reactivateMap = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    // TODO: Add authentication check when auth is integrated (Phase 2)
-    // const identity = await ctx.auth.getUserIdentity();
-    // if (!identity) throw new ConvexError("Authentication required");
-    // Verify caller is admin via admins table lookup
+    await requireAdmin(ctx);
 
     const map = await ctx.db.get(args.mapId);
     if (!map) {
@@ -525,10 +520,7 @@ export const generateUploadUrl = mutation({
   args: {},
   returns: v.string(),
   handler: async (ctx) => {
-    // TODO: Add authentication check when auth is integrated (Phase 2)
-    // const identity = await ctx.auth.getUserIdentity();
-    // if (!identity) throw new ConvexError("Authentication required");
-    // Verify caller is admin via admins table lookup
+    await requireAdmin(ctx);
 
     return await ctx.storage.generateUploadUrl();
   },
