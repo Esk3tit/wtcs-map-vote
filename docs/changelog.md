@@ -10,6 +10,34 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+#### Phase 3: Authentication - Admin Whitelist System (WAR-25)
+- **Admin whitelist table** (`admins`) with email-based access control
+- **`by_isRootAdmin` index** for efficient role-based queries
+- **Root admin protection** - Cannot remove/demote the last root admin
+- **Admin management UI** (`/admin/settings`) - Add, remove, promote, demote admins
+- **Session invalidation** - Force logout removed/modified admins by deleting auth sessions
+- **Admin audit logging** (`adminAuditLogs` table) - Track all admin management actions
+- **Backend auth enforcement** on all admin mutations (maps, teams, sessions)
+- **Route auth guard** in admin layout - Redirects unauthenticated users to login
+- **Type-safe OAuth profile extraction** - Helper function for `@convex-dev/auth` callbacks
+- **`getAdmin` and `getAdminByEmail` queries** for admin lookup
+- **Comprehensive unit tests** - 409 tests covering all admin functionality
+- **Solution documentation** in `docs/solutions/`:
+  - `convex-patterns/type-safe-oauth-profile-extraction.md`
+  - `convex-patterns/boolean-index-for-role-queries.md`
+  - `test-failures/convex-test-auth-whitelist-pattern.md`
+  - `integration-issues/github-graphql-api-queries-with-gh-cli.md`
+
+### Changed
+- **convex/auth.ts** - Uses `extractProfileString()` helper for type-safe profile field access
+- **convex/auth.ts** - Uses `by_email` index for whitelist lookup (was `.filter()`)
+- **All test files** - Migrated to use `createAuthenticatedAdmin()` helper for auth context
+
+### Fixed
+- **Email normalization** in user lookup - Consistent lowercase comparison
+- **ConvexError usage** - Replaced `Error` with `ConvexError` for consistent error handling
+- **Unused imports** removed from test files (lint errors)
+
 #### Phase 3: Authentication - Login UI & Logout (WAR-24)
 - **Google OAuth provider** added to `convex/auth.ts`
 - **`getCurrentUser` query** (`convex/admins.ts`) - Returns authenticated user info (name, email, picture) from `ctx.auth.getUserIdentity()`
