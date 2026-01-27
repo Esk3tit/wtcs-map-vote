@@ -75,3 +75,16 @@ export interface AuditDetails {
   round?: number;
   reason?: string;
 }
+
+/**
+ * Admin audit log action types
+ *
+ * Used for tracking admin management actions (separate from session audit logs).
+ */
+export type AdminAuditAction =
+  | "ADMIN_ADDED"
+  | "ADMIN_REMOVED"
+  | "ADMIN_PROMOTED"
+  | "ADMIN_DEMOTED"
+  | "ADMIN_SESSIONS_INVALIDATED"
+  | "SYSTEM_BOOTSTRAP";

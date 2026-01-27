@@ -127,7 +127,7 @@ export default defineSchema({
     .index("by_playerId_and_round", ["playerId", "round"])
     .index("by_sessionId_and_playerId", ["sessionId", "playerId"]),
 
-  // Audit log
+  // Audit log (for session-related actions)
   auditLogs: defineTable({
     sessionId: v.id("sessions"),
     action: v.string(),
@@ -150,4 +150,31 @@ export default defineSchema({
     .index("by_sessionId", ["sessionId"])
     .index("by_timestamp", ["timestamp"])
     .index("by_sessionId_and_timestamp", ["sessionId", "timestamp"]),
+
+  // Admin audit log (for admin management actions)
+  adminAuditLogs: defineTable({
+    action: v.union(
+      v.literal("ADMIN_ADDED"),
+      v.literal("ADMIN_REMOVED"),
+      v.literal("ADMIN_PROMOTED"),
+      v.literal("ADMIN_DEMOTED"),
+      v.literal("ADMIN_SESSIONS_INVALIDATED"),
+      v.literal("SYSTEM_BOOTSTRAP")
+    ),
+    actorId: v.optional(v.id("admins")),
+    actorEmail: v.optional(v.string()),
+    targetId: v.optional(v.id("admins")),
+    targetEmail: v.string(),
+    details: v.optional(
+      v.object({
+        isRootAdmin: v.optional(v.boolean()),
+        targetName: v.optional(v.string()),
+        message: v.optional(v.string()),
+      })
+    ),
+    timestamp: v.number(),
+  })
+    .index("by_timestamp", ["timestamp"])
+    .index("by_actorId", ["actorId"])
+    .index("by_targetEmail", ["targetEmail"]),
 });

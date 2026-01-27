@@ -16,6 +16,7 @@ import { Route as VoteTokenRouteImport } from './routes/vote.$token'
 import { Route as ResultsSessionIdRouteImport } from './routes/results.$sessionId'
 import { Route as LobbyTokenRouteImport } from './routes/lobby.$token'
 import { Route as AdminTeamsRouteImport } from './routes/admin/teams'
+import { Route as AdminSettingsRouteImport } from './routes/admin/settings'
 import { Route as AdminMapsRouteImport } from './routes/admin/maps'
 import { Route as AdminDashboardRouteImport } from './routes/admin/dashboard'
 import { Route as AdminCreateRouteImport } from './routes/admin/create'
@@ -56,6 +57,11 @@ const AdminTeamsRoute = AdminTeamsRouteImport.update({
   path: '/teams',
   getParentRoute: () => AdminRoute,
 } as any)
+const AdminSettingsRoute = AdminSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AdminRoute,
+} as any)
 const AdminMapsRoute = AdminMapsRouteImport.update({
   id: '/maps',
   path: '/maps',
@@ -84,6 +90,7 @@ export interface FileRoutesByFullPath {
   '/admin/create': typeof AdminCreateRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/maps': typeof AdminMapsRoute
+  '/admin/settings': typeof AdminSettingsRoute
   '/admin/teams': typeof AdminTeamsRoute
   '/lobby/$token': typeof LobbyTokenRoute
   '/results/$sessionId': typeof ResultsSessionIdRoute
@@ -97,6 +104,7 @@ export interface FileRoutesByTo {
   '/admin/create': typeof AdminCreateRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/maps': typeof AdminMapsRoute
+  '/admin/settings': typeof AdminSettingsRoute
   '/admin/teams': typeof AdminTeamsRoute
   '/lobby/$token': typeof LobbyTokenRoute
   '/results/$sessionId': typeof ResultsSessionIdRoute
@@ -111,6 +119,7 @@ export interface FileRoutesById {
   '/admin/create': typeof AdminCreateRoute
   '/admin/dashboard': typeof AdminDashboardRoute
   '/admin/maps': typeof AdminMapsRoute
+  '/admin/settings': typeof AdminSettingsRoute
   '/admin/teams': typeof AdminTeamsRoute
   '/lobby/$token': typeof LobbyTokenRoute
   '/results/$sessionId': typeof ResultsSessionIdRoute
@@ -126,6 +135,7 @@ export interface FileRouteTypes {
     | '/admin/create'
     | '/admin/dashboard'
     | '/admin/maps'
+    | '/admin/settings'
     | '/admin/teams'
     | '/lobby/$token'
     | '/results/$sessionId'
@@ -139,6 +149,7 @@ export interface FileRouteTypes {
     | '/admin/create'
     | '/admin/dashboard'
     | '/admin/maps'
+    | '/admin/settings'
     | '/admin/teams'
     | '/lobby/$token'
     | '/results/$sessionId'
@@ -152,6 +163,7 @@ export interface FileRouteTypes {
     | '/admin/create'
     | '/admin/dashboard'
     | '/admin/maps'
+    | '/admin/settings'
     | '/admin/teams'
     | '/lobby/$token'
     | '/results/$sessionId'
@@ -219,6 +231,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AdminTeamsRouteImport
       parentRoute: typeof AdminRoute
     }
+    '/admin/settings': {
+      id: '/admin/settings'
+      path: '/settings'
+      fullPath: '/admin/settings'
+      preLoaderRoute: typeof AdminSettingsRouteImport
+      parentRoute: typeof AdminRoute
+    }
     '/admin/maps': {
       id: '/admin/maps'
       path: '/maps'
@@ -254,6 +273,7 @@ interface AdminRouteChildren {
   AdminCreateRoute: typeof AdminCreateRoute
   AdminDashboardRoute: typeof AdminDashboardRoute
   AdminMapsRoute: typeof AdminMapsRoute
+  AdminSettingsRoute: typeof AdminSettingsRoute
   AdminTeamsRoute: typeof AdminTeamsRoute
   AdminSessionSessionIdRoute: typeof AdminSessionSessionIdRoute
 }
@@ -262,6 +282,7 @@ const AdminRouteChildren: AdminRouteChildren = {
   AdminCreateRoute: AdminCreateRoute,
   AdminDashboardRoute: AdminDashboardRoute,
   AdminMapsRoute: AdminMapsRoute,
+  AdminSettingsRoute: AdminSettingsRoute,
   AdminTeamsRoute: AdminTeamsRoute,
   AdminSessionSessionIdRoute: AdminSessionSessionIdRoute,
 }

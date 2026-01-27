@@ -1,11 +1,77 @@
 /**
  * Auth Module
  *
- * Convex Auth runtime exports (signIn, signOut, etc).
+ * Convex Auth runtime exports (signIn, signOut, etc) with whitelist validation.
  */
 import Google from "@auth/core/providers/google";
 import { convexAuth } from "@convex-dev/auth/server";
 
+import { normalizeEmail } from "./lib/auth";
+import { logAdminAction } from "./lib/adminAudit";
+
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
   providers: [Google],
+  callbacks: {
+    /**
+     * Custom callback after user creation/update.
+     * Implements whitelist validation and first-user-is-root seeding.
+     */
+    async afterUserCreatedOrUpdated(ctx, args) {
+      const email = args.profile?.email;
+      if (!email) {
+        throw new Error("Email is required for authentication");
+      }
+
+      const normalizedEmail = normalizeEmail(email);
+
+      // Check if this email is whitelisted
+      const existingAdmin = await ctx.db
+        .query("admins")
+        .filter((q) => q.eq(q.field("email"), normalizedEmail))
+        .first();
+
+      // Check if ANY admin exists (for first-user seeding)
+      const anyAdmin = await ctx.db.query("admins").first();
+
+      if (existingAdmin) {
+        // Update profile data and lastLoginAt
+        await ctx.db.patch(existingAdmin._id, {
+          name: (args.profile.name as string) ?? existingAdmin.name,
+          avatarUrl: (args.profile.image as string) ?? existingAdmin.avatarUrl,
+          lastLoginAt: Date.now(),
+        });
+        return;
+      }
+
+      if (!anyAdmin) {
+        // First user becomes root admin
+        const adminId = await ctx.db.insert("admins", {
+          email: normalizedEmail,
+          name: (args.profile.name as string) ?? "Root Admin",
+          avatarUrl: (args.profile.image as string | undefined) ?? undefined,
+          isRootAdmin: true,
+          lastLoginAt: Date.now(),
+        });
+
+        // Audit log for system bootstrap
+        await logAdminAction(ctx, {
+          action: "SYSTEM_BOOTSTRAP",
+          targetId: adminId,
+          targetEmail: normalizedEmail,
+          details: {
+            isRootAdmin: true,
+            targetName: (args.profile.name as string) ?? "Root Admin",
+            message: "First admin created as root admin",
+          },
+        });
+
+        return;
+      }
+
+      // Not whitelisted and not first user - throw to prevent sign-in
+      throw new Error(
+        "Your email is not authorized. Contact an administrator for access."
+      );
+    },
+  },
 });
