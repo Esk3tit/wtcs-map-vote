@@ -11,6 +11,14 @@ import type { MutationCtx } from "./_generated/server";
 import { normalizeEmail } from "./lib/auth";
 import { logAdminAction } from "./lib/adminAudit";
 
+/**
+ * Safely extracts a string value from an unknown profile field.
+ * Returns the value if it's a non-empty string, otherwise returns undefined.
+ */
+function extractProfileString(value: unknown): string | undefined {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
 export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
   providers: [Google],
   callbacks: {
@@ -41,8 +49,9 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
       if (existingAdmin) {
         // Update profile data and lastLoginAt
         await db.patch(existingAdmin._id, {
-          name: (args.profile.name as string) ?? existingAdmin.name,
-          avatarUrl: (args.profile.image as string) ?? existingAdmin.avatarUrl,
+          name: extractProfileString(args.profile.name) ?? existingAdmin.name,
+          avatarUrl:
+            extractProfileString(args.profile.image) ?? existingAdmin.avatarUrl,
           lastLoginAt: Date.now(),
         });
         return;
@@ -50,10 +59,11 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
 
       if (!anyAdmin) {
         // First user becomes root admin
+        const profileName = extractProfileString(args.profile.name);
         const adminId = await db.insert("admins", {
           email: normalizedEmail,
-          name: (args.profile.name as string) ?? "Root Admin",
-          avatarUrl: (args.profile.image as string | undefined) ?? undefined,
+          name: profileName ?? "Root Admin",
+          avatarUrl: extractProfileString(args.profile.image),
           isRootAdmin: true,
           lastLoginAt: Date.now(),
         });
@@ -65,7 +75,7 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
           targetEmail: normalizedEmail,
           details: {
             isRootAdmin: true,
-            targetName: (args.profile.name as string) ?? "Root Admin",
+            targetName: profileName ?? "Root Admin",
             message: "First admin created as root admin",
           },
         });

@@ -54,7 +54,8 @@ export const Route = createFileRoute('/admin/settings')({
 
 function AdminSettings() {
   const me = useQuery(api.admins.getMe)
-  const admins = useQuery(api.admins.listAdmins)
+  const isRoot = me?.isRootAdmin === true
+  const admins = useQuery(api.admins.listAdmins, isRoot ? {} : 'skip')
   const addAdminMutation = useMutation(api.admins.addAdmin)
   const removeAdminMutation = useMutation(api.admins.removeAdmin)
   const updateRoleMutation = useMutation(api.admins.updateAdminRole)
@@ -65,8 +66,8 @@ function AdminSettings() {
   const [makeRoot, setMakeRoot] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
 
-  // Loading state
-  if (me === undefined || admins === undefined) {
+  // Loading state - wait for me query first
+  if (me === undefined) {
     return (
       <div className="flex items-center justify-center h-64">
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
@@ -74,7 +75,7 @@ function AdminSettings() {
     )
   }
 
-  // Access denied for non-root admins
+  // Access denied for non-root admins (checked before admins query loads)
   if (!me?.isRootAdmin) {
     return (
       <div className="p-6">
@@ -85,6 +86,15 @@ function AdminSettings() {
             Only root admins can access admin management.
           </p>
         </Card>
+      </div>
+    )
+  }
+
+  // Loading admins list (only for root users)
+  if (admins === undefined) {
+    return (
+      <div className="flex items-center justify-center h-64">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
       </div>
     )
   }
@@ -251,7 +261,7 @@ function AdminSettings() {
                 <TableCell className="text-right">
                   <DropdownMenu>
                     <DropdownMenuTrigger
-                      render={<Button variant="ghost" size="sm" />}
+                      render={<Button variant="ghost" size="sm" aria-label="Admin actions" />}
                     >
                       <MoreHorizontal className="h-4 w-4" />
                     </DropdownMenuTrigger>
