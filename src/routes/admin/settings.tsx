@@ -306,7 +306,7 @@ function AdminSettings() {
 
 interface RemoveAdminDialogProps {
   admin: {
-    _id: string
+    _id: Id<'admins'>
     name: string
     email: string
   }

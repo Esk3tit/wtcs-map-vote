@@ -5,7 +5,9 @@
  */
 import Google from "@auth/core/providers/google";
 import { convexAuth } from "@convex-dev/auth/server";
+import { ConvexError } from "convex/values";
 
+import type { MutationCtx } from "./_generated/server";
 import { normalizeEmail } from "./lib/auth";
 import { logAdminAction } from "./lib/adminAudit";
 
@@ -19,23 +21,26 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
     async afterUserCreatedOrUpdated(ctx, args) {
       const email = args.profile?.email;
       if (!email) {
-        throw new Error("Email is required for authentication");
+        throw new ConvexError("Email is required for authentication");
       }
 
       const normalizedEmail = normalizeEmail(email);
 
+      // Cast ctx to typed MutationCtx for schema-aware index access
+      const db = (ctx as unknown as MutationCtx).db;
+
       // Check if this email is whitelisted
-      const existingAdmin = await ctx.db
+      const existingAdmin = await db
         .query("admins")
-        .filter((q) => q.eq(q.field("email"), normalizedEmail))
+        .withIndex("by_email", (q) => q.eq("email", normalizedEmail))
         .first();
 
       // Check if ANY admin exists (for first-user seeding)
-      const anyAdmin = await ctx.db.query("admins").first();
+      const anyAdmin = await db.query("admins").first();
 
       if (existingAdmin) {
         // Update profile data and lastLoginAt
-        await ctx.db.patch(existingAdmin._id, {
+        await db.patch(existingAdmin._id, {
           name: (args.profile.name as string) ?? existingAdmin.name,
           avatarUrl: (args.profile.image as string) ?? existingAdmin.avatarUrl,
           lastLoginAt: Date.now(),
@@ -45,7 +50,7 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
 
       if (!anyAdmin) {
         // First user becomes root admin
-        const adminId = await ctx.db.insert("admins", {
+        const adminId = await db.insert("admins", {
           email: normalizedEmail,
           name: (args.profile.name as string) ?? "Root Admin",
           avatarUrl: (args.profile.image as string | undefined) ?? undefined,
@@ -69,7 +74,7 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
       }
 
       // Not whitelisted and not first user - throw to prevent sign-in
-      throw new Error(
+      throw new ConvexError(
         "Your email is not authorized. Contact an administrator for access."
       );
     },

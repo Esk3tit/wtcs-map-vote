@@ -1,8 +1,9 @@
-import { useState } from 'react'
-import { createFileRoute, Outlet } from '@tanstack/react-router'
+import { useState, useEffect } from 'react'
+import { createFileRoute, Outlet, useNavigate } from '@tanstack/react-router'
+import { useConvexAuth } from '@/lib/convex'
 import { AdminSidebar } from '@/components/layout/admin-sidebar'
 import { Button } from '@/components/ui/button'
-import { Menu, X } from 'lucide-react'
+import { Menu, X, Loader2 } from 'lucide-react'
 
 export const Route = createFileRoute('/admin')({
   component: AdminLayout,
@@ -10,6 +11,39 @@ export const Route = createFileRoute('/admin')({
 
 function AdminLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { isAuthenticated, isLoading } = useConvexAuth()
+  const navigate = useNavigate()
+
+  // Redirect unauthenticated users to login page
+  useEffect(() => {
+    if (!isLoading && !isAuthenticated) {
+      void navigate({ to: '/login', search: { error: undefined } })
+    }
+  }, [isAuthenticated, isLoading, navigate])
+
+  // Show loading state while auth status is being determined
+  if (isLoading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">Loading...</p>
+        </div>
+      </div>
+    )
+  }
+
+  // Prevent rendering admin content for unauthenticated users
+  if (!isAuthenticated) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-background">
+        <div className="flex flex-col items-center gap-3">
+          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+          <p className="text-sm text-muted-foreground">Redirecting to login...</p>
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="flex min-h-screen bg-background">

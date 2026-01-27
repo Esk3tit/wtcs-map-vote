@@ -19,7 +19,9 @@ export default defineSchema({
     avatarUrl: v.optional(v.string()),
     isRootAdmin: v.boolean(),
     lastLoginAt: v.number(),
-  }).index("by_email", ["email"]),
+  })
+    .index("by_email", ["email"])
+    .index("by_isRootAdmin", ["isRootAdmin"]),
 
   // Registered teams (reusable across sessions)
   teams: defineTable({

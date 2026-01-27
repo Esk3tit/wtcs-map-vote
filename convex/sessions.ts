@@ -32,6 +32,7 @@ import {
 } from "./lib/validators";
 
 import { logAction } from "./audit";
+import { requireAdmin } from "./lib/auth";
 
 const validateMatchName = (name: string) => validateName(name, "Match");
 
@@ -341,6 +342,8 @@ export const createSession = mutation({
   },
   returns: v.object({ sessionId: v.id("sessions") }),
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
     // Validate match name
     const trimmedName = validateMatchName(args.matchName);
 
@@ -428,6 +431,8 @@ export const updateSession = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
     const session = await ctx.db.get(args.sessionId);
     if (!session) {
       throw new ConvexError("Session not found");
@@ -492,6 +497,8 @@ export const deleteSession = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
     const session = await ctx.db.get(args.sessionId);
     if (!session) {
       throw new ConvexError("Session not found");
@@ -564,6 +571,8 @@ export const assignPlayer = mutation({
     token: v.string(),
   }),
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
     const session = await ctx.db.get(args.sessionId);
     if (!session) {
       throw new ConvexError("Session not found");
@@ -661,6 +670,8 @@ export const setSessionMaps = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
     const session = await ctx.db.get(args.sessionId);
     if (!session) {
       throw new ConvexError("Session not found");
@@ -785,6 +796,8 @@ export const createSessionFull = mutation({
     ),
   }),
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
     // ========================================================================
     // 1. Validate all inputs upfront before any DB writes
     // ========================================================================

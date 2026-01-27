@@ -9,7 +9,7 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { createTestContext } from "./test.setup";
+import { createTestContext, createAuthenticatedAdmin } from "./test.setup";
 import {
   adminFactory,
   sessionFactory,
@@ -38,6 +38,7 @@ import {
 
 /**
  * Creates an admin and returns the ID for session creation.
+ * @deprecated Use createAuthenticatedAdmin() instead for mutations that require auth.
  */
 async function createAdmin(
   t: ReturnType<typeof createTestContext>
@@ -48,6 +49,7 @@ async function createAdmin(
 /**
  * Creates a session in the specified status with an admin.
  * Used for testing state-dependent behavior.
+ * NOTE: Uses direct DB insert, bypassing mutations. Use for state setup only.
  */
 async function createSessionInStatus(
   t: ReturnType<typeof createTestContext>,
@@ -65,7 +67,27 @@ async function createSessionInStatus(
 }
 
 /**
+ * Creates a session in the specified status with an authenticated admin context.
+ * Use this for tests that need to call mutations on the session.
+ */
+async function createAuthenticatedSessionInStatus(
+  status: SessionStatus,
+  overrides: Parameters<typeof sessionFactory>[1] = {}
+) {
+  const { t, authT, adminId } = await createAuthenticatedAdmin();
+  const sessionId = await t.run(async (ctx) => {
+    const sessionId = await ctx.db.insert(
+      "sessions",
+      sessionFactory(adminId, { status, ...overrides })
+    );
+    return sessionId;
+  });
+  return { sessionId, adminId, authT, t };
+}
+
+/**
  * Creates a full session with players, maps, and votes for cascade delete testing.
+ * @deprecated Use createAuthenticatedFullSession() for mutations that require auth.
  */
 async function createFullSession(
   t: ReturnType<typeof createTestContext>,
@@ -130,17 +152,91 @@ async function createFullSession(
   });
 }
 
+/**
+ * Creates a full session with authenticated context for cascade delete testing.
+ * Use this for tests that need to call mutations on the session.
+ */
+async function createAuthenticatedFullSession(status: SessionStatus = "DRAFT") {
+  const { t, authT, adminId } = await createAuthenticatedAdmin();
+  const { sessionId, playerIds, mapIds, voteIds } = await t.run(async (ctx) => {
+    const sessionId = await ctx.db.insert(
+      "sessions",
+      sessionFactory(adminId, { status, playerCount: 2, mapPoolSize: 3 })
+    );
+
+    // Create teams for players
+    await ctx.db.insert("teams", teamFactory({ name: "Team Alpha" }));
+    await ctx.db.insert("teams", teamFactory({ name: "Team Beta" }));
+
+    // Create master maps
+    const masterMapIds = await Promise.all([
+      ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+      ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+      ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
+    ]);
+
+    // Create session players
+    const playerIds = await Promise.all([
+      ctx.db.insert(
+        "sessionPlayers",
+        sessionPlayerFactory(sessionId, { role: "Captain", teamName: "Team Alpha" })
+      ),
+      ctx.db.insert(
+        "sessionPlayers",
+        sessionPlayerFactory(sessionId, {
+          role: "Vice Captain",
+          teamName: "Team Beta",
+        })
+      ),
+    ]);
+
+    // Create session maps
+    const mapIds = await Promise.all(
+      masterMapIds.map((mapId, i) =>
+        ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapId, { name: `Map ${i + 1}` })
+        )
+      )
+    );
+
+    // Create votes
+    const voteIds = await Promise.all([
+      ctx.db.insert("votes", voteFactory(sessionId, playerIds[0], mapIds[0])),
+      ctx.db.insert("votes", voteFactory(sessionId, playerIds[1], mapIds[1])),
+    ]);
+
+    return { sessionId, playerIds, mapIds, voteIds };
+  });
+  return { t, authT, adminId, sessionId, playerIds, mapIds, voteIds };
+}
+
 // ============================================================================
 // createSession Tests
 // ============================================================================
 
 describe("sessions.createSession", () => {
-  describe("success cases", () => {
-    it("creates session with required fields", async () => {
+  describe("authentication", () => {
+    it("throws when not authenticated", async () => {
       const t = createTestContext();
       const adminId = await createAdmin(t);
 
-      const result = await t.mutation(api.sessions.createSession, {
+      await expect(
+        t.mutation(api.sessions.createSession, {
+          matchName: "Test",
+          format: "ABBA",
+          playerCount: 2,
+          createdBy: adminId,
+        })
+      ).rejects.toThrow(/Authentication required/);
+    });
+  });
+
+  describe("success cases", () => {
+    it("creates session with required fields", async () => {
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
+
+      const result = await authT.mutation(api.sessions.createSession, {
         matchName: "Finals Match",
         format: "ABBA",
         playerCount: 2,
@@ -161,10 +257,9 @@ describe("sessions.createSession", () => {
     });
 
     it("creates session with MULTIPLAYER format", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
 
-      const result = await t.mutation(api.sessions.createSession, {
+      const result = await authT.mutation(api.sessions.createSession, {
         matchName: "Team Battle",
         format: "MULTIPLAYER",
         playerCount: 4,
@@ -176,10 +271,9 @@ describe("sessions.createSession", () => {
     });
 
     it("applies default turn timer (30 seconds)", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
 
-      const { sessionId } = await t.mutation(api.sessions.createSession, {
+      const { sessionId } = await authT.mutation(api.sessions.createSession, {
         matchName: "Test",
         format: "ABBA",
         playerCount: 2,
@@ -191,10 +285,9 @@ describe("sessions.createSession", () => {
     });
 
     it("applies default map pool size (5)", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
 
-      const { sessionId } = await t.mutation(api.sessions.createSession, {
+      const { sessionId } = await authT.mutation(api.sessions.createSession, {
         matchName: "Test",
         format: "ABBA",
         playerCount: 2,
@@ -206,10 +299,9 @@ describe("sessions.createSession", () => {
     });
 
     it("accepts custom turn timer", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
 
-      const { sessionId } = await t.mutation(api.sessions.createSession, {
+      const { sessionId } = await authT.mutation(api.sessions.createSession, {
         matchName: "Test",
         format: "ABBA",
         playerCount: 2,
@@ -222,10 +314,9 @@ describe("sessions.createSession", () => {
     });
 
     it("accepts custom map pool size", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
 
-      const { sessionId } = await t.mutation(api.sessions.createSession, {
+      const { sessionId } = await authT.mutation(api.sessions.createSession, {
         matchName: "Test",
         format: "ABBA",
         playerCount: 2,
@@ -238,10 +329,9 @@ describe("sessions.createSession", () => {
     });
 
     it("trims whitespace from match name", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
 
-      const { sessionId } = await t.mutation(api.sessions.createSession, {
+      const { sessionId } = await authT.mutation(api.sessions.createSession, {
         matchName: "  Padded Name  ",
         format: "ABBA",
         playerCount: 2,
@@ -253,11 +343,10 @@ describe("sessions.createSession", () => {
     });
 
     it("sets updatedAt timestamp", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
       const beforeCreate = Date.now();
 
-      const { sessionId } = await t.mutation(api.sessions.createSession, {
+      const { sessionId } = await authT.mutation(api.sessions.createSession, {
         matchName: "Test",
         format: "ABBA",
         playerCount: 2,
@@ -269,12 +358,11 @@ describe("sessions.createSession", () => {
     });
 
     it("sets expiresAt timestamp (14 days in future)", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
       const beforeCreate = Date.now();
       const expectedMinExpiry = beforeCreate + 14 * 24 * 60 * 60 * 1000 - 1000;
 
-      const { sessionId } = await t.mutation(api.sessions.createSession, {
+      const { sessionId } = await authT.mutation(api.sessions.createSession, {
         matchName: "Test",
         format: "ABBA",
         playerCount: 2,
@@ -288,11 +376,10 @@ describe("sessions.createSession", () => {
 
   describe("validation errors", () => {
     it("throws for empty match name", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
+      const { authT, adminId } = await createAuthenticatedAdmin();
 
       await expect(
-        t.mutation(api.sessions.createSession, {
+        authT.mutation(api.sessions.createSession, {
           matchName: "",
           format: "ABBA",
           playerCount: 2,
@@ -302,11 +389,10 @@ describe("sessions.createSession", () => {
     });
 
     it("throws for whitespace-only match name", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
+      const { authT, adminId } = await createAuthenticatedAdmin();
 
       await expect(
-        t.mutation(api.sessions.createSession, {
+        authT.mutation(api.sessions.createSession, {
           matchName: "   ",
           format: "ABBA",
           playerCount: 2,
@@ -316,12 +402,11 @@ describe("sessions.createSession", () => {
     });
 
     it("throws for match name exceeding 100 characters", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
+      const { authT, adminId } = await createAuthenticatedAdmin();
       const longName = "a".repeat(101);
 
       await expect(
-        t.mutation(api.sessions.createSession, {
+        authT.mutation(api.sessions.createSession, {
           matchName: longName,
           format: "ABBA",
           playerCount: 2,
@@ -331,11 +416,10 @@ describe("sessions.createSession", () => {
     });
 
     it("throws for player count below minimum (2)", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
+      const { authT, adminId } = await createAuthenticatedAdmin();
 
       await expect(
-        t.mutation(api.sessions.createSession, {
+        authT.mutation(api.sessions.createSession, {
           matchName: "Test",
           format: "ABBA",
           playerCount: 1,
@@ -345,11 +429,10 @@ describe("sessions.createSession", () => {
     });
 
     it("throws for player count above maximum (8)", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
+      const { authT, adminId } = await createAuthenticatedAdmin();
 
       await expect(
-        t.mutation(api.sessions.createSession, {
+        authT.mutation(api.sessions.createSession, {
           matchName: "Test",
           format: "ABBA",
           playerCount: 9,
@@ -359,11 +442,10 @@ describe("sessions.createSession", () => {
     });
 
     it("throws for turn timer below minimum (10 seconds)", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
+      const { authT, adminId } = await createAuthenticatedAdmin();
 
       await expect(
-        t.mutation(api.sessions.createSession, {
+        authT.mutation(api.sessions.createSession, {
           matchName: "Test",
           format: "ABBA",
           playerCount: 2,
@@ -374,11 +456,10 @@ describe("sessions.createSession", () => {
     });
 
     it("throws for turn timer above maximum (300 seconds)", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
+      const { authT, adminId } = await createAuthenticatedAdmin();
 
       await expect(
-        t.mutation(api.sessions.createSession, {
+        authT.mutation(api.sessions.createSession, {
           matchName: "Test",
           format: "ABBA",
           playerCount: 2,
@@ -389,11 +470,10 @@ describe("sessions.createSession", () => {
     });
 
     it("throws for map pool size below minimum (3)", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
+      const { authT, adminId } = await createAuthenticatedAdmin();
 
       await expect(
-        t.mutation(api.sessions.createSession, {
+        authT.mutation(api.sessions.createSession, {
           matchName: "Test",
           format: "ABBA",
           playerCount: 2,
@@ -404,11 +484,10 @@ describe("sessions.createSession", () => {
     });
 
     it("throws for map pool size above maximum (15)", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
+      const { authT, adminId } = await createAuthenticatedAdmin();
 
       await expect(
-        t.mutation(api.sessions.createSession, {
+        authT.mutation(api.sessions.createSession, {
           matchName: "Test",
           format: "ABBA",
           playerCount: 2,
@@ -419,10 +498,10 @@ describe("sessions.createSession", () => {
     });
 
     it("throws when createdBy is missing", async () => {
-      const t = createTestContext();
+      const { authT } = await createAuthenticatedAdmin();
 
       await expect(
-        t.mutation(api.sessions.createSession, {
+        authT.mutation(api.sessions.createSession, {
           matchName: "Test",
           format: "ABBA",
           playerCount: 2,
@@ -431,11 +510,11 @@ describe("sessions.createSession", () => {
     });
 
     it("throws for non-existent admin ID", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
       const deletedAdminId = await createDeletedAdminId(t);
 
       await expect(
-        t.mutation(api.sessions.createSession, {
+        authT.mutation(api.sessions.createSession, {
           matchName: "Test",
           format: "ABBA",
           playerCount: 2,
@@ -447,10 +526,9 @@ describe("sessions.createSession", () => {
 
   describe("audit logging", () => {
     it("creates SESSION_CREATED audit log", async () => {
-      const t = createTestContext();
-      const adminId = await createAdmin(t);
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
 
-      const { sessionId } = await t.mutation(api.sessions.createSession, {
+      const { sessionId } = await authT.mutation(api.sessions.createSession, {
         matchName: "Test Match",
         format: "ABBA",
         playerCount: 2,
@@ -982,12 +1060,25 @@ describe("sessions.getSession", () => {
 // ============================================================================
 
 describe("sessions.updateSession", () => {
-  describe("success cases", () => {
-    it("updates match name", async () => {
+  describe("authentication", () => {
+    it("throws when not authenticated", async () => {
       const t = createTestContext();
       const { sessionId } = await createSessionInStatus(t, "DRAFT");
 
-      const result = await t.mutation(api.sessions.updateSession, {
+      await expect(
+        t.mutation(api.sessions.updateSession, {
+          sessionId,
+          matchName: "Updated Match Name",
+        })
+      ).rejects.toThrow(/Authentication required/);
+    });
+  });
+
+  describe("success cases", () => {
+    it("updates match name", async () => {
+      const { t, authT, sessionId } = await createAuthenticatedSessionInStatus("DRAFT");
+
+      const result = await authT.mutation(api.sessions.updateSession, {
         sessionId,
         matchName: "Updated Match Name",
       });
@@ -999,10 +1090,9 @@ describe("sessions.updateSession", () => {
     });
 
     it("updates turn timer", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "DRAFT");
+      const { t, authT, sessionId } = await createAuthenticatedSessionInStatus("DRAFT");
 
-      await t.mutation(api.sessions.updateSession, {
+      await authT.mutation(api.sessions.updateSession, {
         sessionId,
         turnTimerSeconds: 120,
       });
@@ -1012,10 +1102,9 @@ describe("sessions.updateSession", () => {
     });
 
     it("updates both match name and turn timer", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "DRAFT");
+      const { t, authT, sessionId } = await createAuthenticatedSessionInStatus("DRAFT");
 
-      await t.mutation(api.sessions.updateSession, {
+      await authT.mutation(api.sessions.updateSession, {
         sessionId,
         matchName: "New Name",
         turnTimerSeconds: 45,
@@ -1027,10 +1116,9 @@ describe("sessions.updateSession", () => {
     });
 
     it("allows update in WAITING state", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "WAITING");
+      const { authT, sessionId } = await createAuthenticatedSessionInStatus("WAITING");
 
-      const result = await t.mutation(api.sessions.updateSession, {
+      const result = await authT.mutation(api.sessions.updateSession, {
         sessionId,
         matchName: "Updated in Waiting",
       });
@@ -1039,10 +1127,9 @@ describe("sessions.updateSession", () => {
     });
 
     it("trims whitespace from match name", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "DRAFT");
+      const { t, authT, sessionId } = await createAuthenticatedSessionInStatus("DRAFT");
 
-      await t.mutation(api.sessions.updateSession, {
+      await authT.mutation(api.sessions.updateSession, {
         sessionId,
         matchName: "  Padded  ",
       });
@@ -1052,11 +1139,10 @@ describe("sessions.updateSession", () => {
     });
 
     it("updates updatedAt timestamp", async () => {
-      const t = createTestContext();
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
 
       // Capture creation time, then update and verify updatedAt >= _creationTime
       const { sessionId, creationTime } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
         const sessionId = await ctx.db.insert(
           "sessions",
           sessionFactory(adminId, { status: "DRAFT" })
@@ -1066,7 +1152,7 @@ describe("sessions.updateSession", () => {
         return { sessionId, creationTime: Math.floor(session!._creationTime) };
       });
 
-      await t.mutation(api.sessions.updateSession, {
+      await authT.mutation(api.sessions.updateSession, {
         sessionId,
         matchName: "Updated",
       });
@@ -1079,11 +1165,10 @@ describe("sessions.updateSession", () => {
 
   describe("validation errors", () => {
     it("throws for empty match name", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "DRAFT");
+      const { authT, sessionId } = await createAuthenticatedSessionInStatus("DRAFT");
 
       await expect(
-        t.mutation(api.sessions.updateSession, {
+        authT.mutation(api.sessions.updateSession, {
           sessionId,
           matchName: "",
         })
@@ -1091,11 +1176,10 @@ describe("sessions.updateSession", () => {
     });
 
     it("throws for turn timer below minimum", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "DRAFT");
+      const { authT, sessionId } = await createAuthenticatedSessionInStatus("DRAFT");
 
       await expect(
-        t.mutation(api.sessions.updateSession, {
+        authT.mutation(api.sessions.updateSession, {
           sessionId,
           turnTimerSeconds: 5,
         })
@@ -1103,11 +1187,10 @@ describe("sessions.updateSession", () => {
     });
 
     it("throws for turn timer above maximum", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "DRAFT");
+      const { authT, sessionId } = await createAuthenticatedSessionInStatus("DRAFT");
 
       await expect(
-        t.mutation(api.sessions.updateSession, {
+        authT.mutation(api.sessions.updateSession, {
           sessionId,
           turnTimerSeconds: 500,
         })
@@ -1117,12 +1200,11 @@ describe("sessions.updateSession", () => {
 
   describe("state restrictions", () => {
     it("throws when updating session in restricted states", async () => {
-      const t = createTestContext();
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
       const restrictedStatuses = ["IN_PROGRESS", "PAUSED", "COMPLETE", "EXPIRED"] as const;
 
       // Create sessions for all restricted states in a single context
       const sessionIds = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
         const ids: Record<string, Id<"sessions">> = {};
         for (const status of restrictedStatuses) {
           ids[status] = await ctx.db.insert(
@@ -1136,7 +1218,7 @@ describe("sessions.updateSession", () => {
       // Test each status throws the expected error
       for (const status of restrictedStatuses) {
         await expect(
-          t.mutation(api.sessions.updateSession, {
+          authT.mutation(api.sessions.updateSession, {
             sessionId: sessionIds[status],
             matchName: "Updated",
           })
@@ -1147,11 +1229,11 @@ describe("sessions.updateSession", () => {
 
   describe("not found", () => {
     it("throws for non-existent session", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
       const deletedSessionId = await createDeletedSessionId(t);
 
       await expect(
-        t.mutation(api.sessions.updateSession, {
+        authT.mutation(api.sessions.updateSession, {
           sessionId: deletedSessionId,
           matchName: "Updated",
         })
@@ -1161,10 +1243,9 @@ describe("sessions.updateSession", () => {
 
   describe("audit logging", () => {
     it("creates SESSION_UPDATED audit log with changed fields", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "DRAFT");
+      const { t, authT, sessionId } = await createAuthenticatedSessionInStatus("DRAFT");
 
-      await t.mutation(api.sessions.updateSession, {
+      await authT.mutation(api.sessions.updateSession, {
         sessionId,
         matchName: "Updated Match",
         turnTimerSeconds: 60,
@@ -1193,12 +1274,22 @@ describe("sessions.updateSession", () => {
 // ============================================================================
 
 describe("sessions.deleteSession", () => {
-  describe("success cases", () => {
-    it("deletes session", async () => {
+  describe("authentication", () => {
+    it("throws when not authenticated", async () => {
       const t = createTestContext();
       const { sessionId } = await createSessionInStatus(t, "DRAFT");
 
-      const result = await t.mutation(api.sessions.deleteSession, { sessionId });
+      await expect(
+        t.mutation(api.sessions.deleteSession, { sessionId })
+      ).rejects.toThrow(/Authentication required/);
+    });
+  });
+
+  describe("success cases", () => {
+    it("deletes session", async () => {
+      const { t, authT, sessionId } = await createAuthenticatedSessionInStatus("DRAFT");
+
+      const result = await authT.mutation(api.sessions.deleteSession, { sessionId });
 
       expect(result.success).toBe(true);
 
@@ -1207,10 +1298,9 @@ describe("sessions.deleteSession", () => {
     });
 
     it("cascade deletes session players", async () => {
-      const t = createTestContext();
-      const { sessionId, playerIds } = await createFullSession(t, "DRAFT");
+      const { t, authT, sessionId, playerIds } = await createAuthenticatedFullSession("DRAFT");
 
-      await t.mutation(api.sessions.deleteSession, { sessionId });
+      await authT.mutation(api.sessions.deleteSession, { sessionId });
 
       const remainingPlayers = await t.run(async (ctx) =>
         Promise.all(playerIds.map((id) => ctx.db.get(id)))
@@ -1220,10 +1310,9 @@ describe("sessions.deleteSession", () => {
     });
 
     it("cascade deletes session maps", async () => {
-      const t = createTestContext();
-      const { sessionId, mapIds } = await createFullSession(t, "DRAFT");
+      const { t, authT, sessionId, mapIds } = await createAuthenticatedFullSession("DRAFT");
 
-      await t.mutation(api.sessions.deleteSession, { sessionId });
+      await authT.mutation(api.sessions.deleteSession, { sessionId });
 
       const remainingMaps = await t.run(async (ctx) =>
         Promise.all(mapIds.map((id) => ctx.db.get(id)))
@@ -1233,10 +1322,9 @@ describe("sessions.deleteSession", () => {
     });
 
     it("cascade deletes votes", async () => {
-      const t = createTestContext();
-      const { sessionId, voteIds } = await createFullSession(t, "DRAFT");
+      const { t, authT, sessionId, voteIds } = await createAuthenticatedFullSession("DRAFT");
 
-      await t.mutation(api.sessions.deleteSession, { sessionId });
+      await authT.mutation(api.sessions.deleteSession, { sessionId });
 
       const remainingVotes = await t.run(async (ctx) =>
         Promise.all(voteIds.map((id) => ctx.db.get(id)))
@@ -1246,15 +1334,14 @@ describe("sessions.deleteSession", () => {
     });
 
     it("preserves audit logs (orphaned reference)", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "DRAFT");
+      const { t, authT, sessionId } = await createAuthenticatedSessionInStatus("DRAFT");
 
       // Create initial audit log
       await t.run(async (ctx) => {
         await ctx.db.insert("auditLogs", auditLogFactory(sessionId));
       });
 
-      await t.mutation(api.sessions.deleteSession, { sessionId });
+      await authT.mutation(api.sessions.deleteSession, { sessionId });
 
       const logs = await t.run(async (ctx) =>
         ctx.db
@@ -1270,12 +1357,11 @@ describe("sessions.deleteSession", () => {
 
   describe("state restrictions", () => {
     it("throws when deleting session in restricted states", async () => {
-      const t = createTestContext();
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
       const restrictedStatuses = ["WAITING", "IN_PROGRESS", "PAUSED", "COMPLETE", "EXPIRED"] as const;
 
       // Create sessions for all restricted states in a single context
       const sessionIds = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
         const ids: Record<string, Id<"sessions">> = {};
         for (const status of restrictedStatuses) {
           ids[status] = await ctx.db.insert(
@@ -1289,7 +1375,7 @@ describe("sessions.deleteSession", () => {
       // Test each status throws the expected error
       for (const status of restrictedStatuses) {
         await expect(
-          t.mutation(api.sessions.deleteSession, { sessionId: sessionIds[status] })
+          authT.mutation(api.sessions.deleteSession, { sessionId: sessionIds[status] })
         ).rejects.toThrow(/Cannot delete session/i);
       }
     });
@@ -1297,21 +1383,20 @@ describe("sessions.deleteSession", () => {
 
   describe("not found", () => {
     it("throws for non-existent session", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
       const deletedSessionId = await createDeletedSessionId(t);
 
       await expect(
-        t.mutation(api.sessions.deleteSession, { sessionId: deletedSessionId })
+        authT.mutation(api.sessions.deleteSession, { sessionId: deletedSessionId })
       ).rejects.toThrow(/not found/i);
     });
   });
 
   describe("audit logging", () => {
     it("creates SESSION_DELETED audit log", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "DRAFT");
+      const { t, authT, sessionId } = await createAuthenticatedSessionInStatus("DRAFT");
 
-      await t.mutation(api.sessions.deleteSession, { sessionId });
+      await authT.mutation(api.sessions.deleteSession, { sessionId });
 
       const logs = await t.run(async (ctx) =>
         ctx.db
@@ -1332,10 +1417,30 @@ describe("sessions.deleteSession", () => {
 // ============================================================================
 
 describe("sessions.assignPlayer", () => {
-  describe("success cases", () => {
-    it("assigns player with token", async () => {
+  describe("authentication", () => {
+    it("throws when not authenticated", async () => {
       const t = createTestContext();
       const { sessionId } = await createSessionInStatus(t, "DRAFT", {
+        playerCount: 2,
+      });
+
+      await t.run(async (ctx) => {
+        await ctx.db.insert("teams", teamFactory({ name: "Alpha Team" }));
+      });
+
+      await expect(
+        t.mutation(api.sessions.assignPlayer, {
+          sessionId,
+          role: "Captain",
+          teamName: "Alpha Team",
+        })
+      ).rejects.toThrow(/Authentication required/);
+    });
+  });
+
+  describe("success cases", () => {
+    it("assigns player with token", async () => {
+      const { t, authT, sessionId } = await createAuthenticatedSessionInStatus("DRAFT", {
         playerCount: 2,
       });
 
@@ -1344,7 +1449,7 @@ describe("sessions.assignPlayer", () => {
         await ctx.db.insert("teams", teamFactory({ name: "Alpha Team" }));
       });
 
-      const result = await t.mutation(api.sessions.assignPlayer, {
+      const result = await authT.mutation(api.sessions.assignPlayer, {
         sessionId,
         role: "Captain",
         teamName: "Alpha Team",
@@ -1356,8 +1461,7 @@ describe("sessions.assignPlayer", () => {
     });
 
     it("allows assigning in WAITING state", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "WAITING", {
+      const { t, authT, sessionId } = await createAuthenticatedSessionInStatus("WAITING", {
         playerCount: 2,
       });
 
@@ -1365,7 +1469,7 @@ describe("sessions.assignPlayer", () => {
         await ctx.db.insert("teams", teamFactory({ name: "Beta Team" }));
       });
 
-      const result = await t.mutation(api.sessions.assignPlayer, {
+      const result = await authT.mutation(api.sessions.assignPlayer, {
         sessionId,
         role: "Vice Captain",
         teamName: "Beta Team",
@@ -1375,8 +1479,7 @@ describe("sessions.assignPlayer", () => {
     });
 
     it("creates player record with correct fields", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "DRAFT", {
+      const { t, authT, sessionId } = await createAuthenticatedSessionInStatus("DRAFT", {
         playerCount: 2,
       });
 
@@ -1384,7 +1487,7 @@ describe("sessions.assignPlayer", () => {
         await ctx.db.insert("teams", teamFactory({ name: "Test Team" }));
       });
 
-      const { playerId } = await t.mutation(api.sessions.assignPlayer, {
+      const { playerId } = await authT.mutation(api.sessions.assignPlayer, {
         sessionId,
         role: "Captain",
         teamName: "Test Team",
@@ -1401,8 +1504,7 @@ describe("sessions.assignPlayer", () => {
     });
 
     it("trims whitespace from role", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "DRAFT", {
+      const { t, authT, sessionId } = await createAuthenticatedSessionInStatus("DRAFT", {
         playerCount: 2,
       });
 
@@ -1410,7 +1512,7 @@ describe("sessions.assignPlayer", () => {
         await ctx.db.insert("teams", teamFactory({ name: "Test Team" }));
       });
 
-      const { playerId } = await t.mutation(api.sessions.assignPlayer, {
+      const { playerId } = await authT.mutation(api.sessions.assignPlayer, {
         sessionId,
         role: "  Captain  ",
         teamName: "Test Team",
@@ -1423,11 +1525,10 @@ describe("sessions.assignPlayer", () => {
 
   describe("validation errors", () => {
     it("throws when team does not exist", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "DRAFT");
+      const { authT, sessionId } = await createAuthenticatedSessionInStatus("DRAFT");
 
       await expect(
-        t.mutation(api.sessions.assignPlayer, {
+        authT.mutation(api.sessions.assignPlayer, {
           sessionId,
           role: "Captain",
           teamName: "Nonexistent Team",
@@ -1436,8 +1537,7 @@ describe("sessions.assignPlayer", () => {
     });
 
     it("throws for duplicate role in session", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "DRAFT", {
+      const { t, authT, sessionId } = await createAuthenticatedSessionInStatus("DRAFT", {
         playerCount: 2,
       });
 
@@ -1446,7 +1546,7 @@ describe("sessions.assignPlayer", () => {
       });
 
       // First assignment
-      await t.mutation(api.sessions.assignPlayer, {
+      await authT.mutation(api.sessions.assignPlayer, {
         sessionId,
         role: "Captain",
         teamName: "Test Team",
@@ -1454,7 +1554,7 @@ describe("sessions.assignPlayer", () => {
 
       // Second assignment with same role
       await expect(
-        t.mutation(api.sessions.assignPlayer, {
+        authT.mutation(api.sessions.assignPlayer, {
           sessionId,
           role: "Captain",
           teamName: "Test Team",
@@ -1463,8 +1563,7 @@ describe("sessions.assignPlayer", () => {
     });
 
     it("detects duplicate role after trimming", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "DRAFT", {
+      const { t, authT, sessionId } = await createAuthenticatedSessionInStatus("DRAFT", {
         playerCount: 2,
       });
 
@@ -1472,14 +1571,14 @@ describe("sessions.assignPlayer", () => {
         await ctx.db.insert("teams", teamFactory({ name: "Test Team" }));
       });
 
-      await t.mutation(api.sessions.assignPlayer, {
+      await authT.mutation(api.sessions.assignPlayer, {
         sessionId,
         role: "Captain",
         teamName: "Test Team",
       });
 
       await expect(
-        t.mutation(api.sessions.assignPlayer, {
+        authT.mutation(api.sessions.assignPlayer, {
           sessionId,
           role: "  Captain  ",
           teamName: "Test Team",
@@ -1490,8 +1589,7 @@ describe("sessions.assignPlayer", () => {
 
   describe("capacity checks", () => {
     it("throws when session is at capacity", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "DRAFT", {
+      const { t, authT, sessionId } = await createAuthenticatedSessionInStatus("DRAFT", {
         playerCount: 2,
       });
 
@@ -1502,12 +1600,12 @@ describe("sessions.assignPlayer", () => {
       });
 
       // Fill to capacity
-      await t.mutation(api.sessions.assignPlayer, {
+      await authT.mutation(api.sessions.assignPlayer, {
         sessionId,
         role: "Captain",
         teamName: "Team A",
       });
-      await t.mutation(api.sessions.assignPlayer, {
+      await authT.mutation(api.sessions.assignPlayer, {
         sessionId,
         role: "Vice Captain",
         teamName: "Team B",
@@ -1515,7 +1613,7 @@ describe("sessions.assignPlayer", () => {
 
       // Third player should fail
       await expect(
-        t.mutation(api.sessions.assignPlayer, {
+        authT.mutation(api.sessions.assignPlayer, {
           sessionId,
           role: "Reserve",
           teamName: "Team C",
@@ -1526,12 +1624,11 @@ describe("sessions.assignPlayer", () => {
 
   describe("state restrictions", () => {
     it("throws when assigning in restricted states", async () => {
-      const t = createTestContext();
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
       const restrictedStatuses = ["IN_PROGRESS", "PAUSED", "COMPLETE", "EXPIRED"] as const;
 
       // Create sessions for all restricted states and a team in a single context
       const sessionIds = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
         await ctx.db.insert("teams", teamFactory({ name: "Test Team" }));
         const ids: Record<string, Id<"sessions">> = {};
         for (const status of restrictedStatuses) {
@@ -1546,7 +1643,7 @@ describe("sessions.assignPlayer", () => {
       // Test each status throws the expected error
       for (const status of restrictedStatuses) {
         await expect(
-          t.mutation(api.sessions.assignPlayer, {
+          authT.mutation(api.sessions.assignPlayer, {
             sessionId: sessionIds[status],
             role: "Captain",
             teamName: "Test Team",
@@ -1558,9 +1655,8 @@ describe("sessions.assignPlayer", () => {
 
   describe("not found", () => {
     it("throws for non-existent session", async () => {
-      const t = createTestContext();
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
       const deletedSessionId = await createDeletedId(t, async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
         const sessionId = await ctx.db.insert(
           "sessions",
           sessionFactory(adminId)
@@ -1570,7 +1666,7 @@ describe("sessions.assignPlayer", () => {
       });
 
       await expect(
-        t.mutation(api.sessions.assignPlayer, {
+        authT.mutation(api.sessions.assignPlayer, {
           sessionId: deletedSessionId,
           role: "Captain",
           teamName: "Test Team",
@@ -1581,8 +1677,7 @@ describe("sessions.assignPlayer", () => {
 
   describe("audit logging", () => {
     it("creates PLAYER_ASSIGNED audit log", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "DRAFT", {
+      const { t, authT, sessionId } = await createAuthenticatedSessionInStatus("DRAFT", {
         playerCount: 2,
       });
 
@@ -1590,7 +1685,7 @@ describe("sessions.assignPlayer", () => {
         await ctx.db.insert("teams", teamFactory({ name: "Test Team" }));
       });
 
-      await t.mutation(api.sessions.assignPlayer, {
+      await authT.mutation(api.sessions.assignPlayer, {
         sessionId,
         role: "Captain",
         teamName: "Test Team",
@@ -1614,8 +1709,7 @@ describe("sessions.assignPlayer", () => {
 
   describe("token generation", () => {
     it("sets tokenExpiresAt following TOKEN_EXPIRY_MS constant (24 hours)", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "DRAFT", {
+      const { t, authT, sessionId } = await createAuthenticatedSessionInStatus("DRAFT", {
         playerCount: 2,
       });
 
@@ -1624,7 +1718,7 @@ describe("sessions.assignPlayer", () => {
       });
 
       const beforeAssign = Date.now();
-      const { playerId } = await t.mutation(api.sessions.assignPlayer, {
+      const { playerId } = await authT.mutation(api.sessions.assignPlayer, {
         sessionId,
         role: "Captain",
         teamName: "Test Team",
@@ -1638,8 +1732,7 @@ describe("sessions.assignPlayer", () => {
     });
 
     it("generates unique tokens for each player in same session", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "DRAFT", {
+      const { t, authT, sessionId } = await createAuthenticatedSessionInStatus("DRAFT", {
         playerCount: 3,
       });
 
@@ -1649,17 +1742,17 @@ describe("sessions.assignPlayer", () => {
         await ctx.db.insert("teams", teamFactory({ name: "Team C" }));
       });
 
-      const result1 = await t.mutation(api.sessions.assignPlayer, {
+      const result1 = await authT.mutation(api.sessions.assignPlayer, {
         sessionId,
         role: "Captain",
         teamName: "Team A",
       });
-      const result2 = await t.mutation(api.sessions.assignPlayer, {
+      const result2 = await authT.mutation(api.sessions.assignPlayer, {
         sessionId,
         role: "Vice Captain",
         teamName: "Team B",
       });
-      const result3 = await t.mutation(api.sessions.assignPlayer, {
+      const result3 = await authT.mutation(api.sessions.assignPlayer, {
         sessionId,
         role: "Reserve",
         teamName: "Team C",
@@ -1671,8 +1764,7 @@ describe("sessions.assignPlayer", () => {
     });
 
     it("generates 32-character hex token from UUID", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "DRAFT", {
+      const { t, authT, sessionId } = await createAuthenticatedSessionInStatus("DRAFT", {
         playerCount: 2,
       });
 
@@ -1680,7 +1772,7 @@ describe("sessions.assignPlayer", () => {
         await ctx.db.insert("teams", teamFactory({ name: "Test Team" }));
       });
 
-      const { token } = await t.mutation(api.sessions.assignPlayer, {
+      const { token } = await authT.mutation(api.sessions.assignPlayer, {
         sessionId,
         role: "Captain",
         teamName: "Test Team",
@@ -1693,8 +1785,7 @@ describe("sessions.assignPlayer", () => {
 
   describe("team name handling", () => {
     it("allows same team with different roles in same session", async () => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "DRAFT", {
+      const { t, authT, sessionId } = await createAuthenticatedSessionInStatus("DRAFT", {
         playerCount: 3,
       });
 
@@ -1703,14 +1794,14 @@ describe("sessions.assignPlayer", () => {
       });
 
       // First assignment
-      const result1 = await t.mutation(api.sessions.assignPlayer, {
+      const result1 = await authT.mutation(api.sessions.assignPlayer, {
         sessionId,
         role: "Captain",
         teamName: "Alpha Team",
       });
 
       // Second assignment with same team but different role - should succeed
-      const result2 = await t.mutation(api.sessions.assignPlayer, {
+      const result2 = await authT.mutation(api.sessions.assignPlayer, {
         sessionId,
         role: "Vice Captain",
         teamName: "Alpha Team",
@@ -1722,11 +1813,10 @@ describe("sessions.assignPlayer", () => {
     });
 
     it("allows same team in different sessions", async () => {
-      const t = createTestContext();
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
 
       // Create two sessions and a team
       const { session1Id, session2Id } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
         const session1Id = await ctx.db.insert(
           "sessions",
           sessionFactory(adminId, { playerCount: 2 })
@@ -1740,14 +1830,14 @@ describe("sessions.assignPlayer", () => {
       });
 
       // Assign to session 1
-      const result1 = await t.mutation(api.sessions.assignPlayer, {
+      const result1 = await authT.mutation(api.sessions.assignPlayer, {
         sessionId: session1Id,
         role: "Captain",
         teamName: "Shared Team",
       });
 
       // Assign same team to session 2 - should succeed
-      const result2 = await t.mutation(api.sessions.assignPlayer, {
+      const result2 = await authT.mutation(api.sessions.assignPlayer, {
         sessionId: session2Id,
         role: "Captain",
         teamName: "Shared Team",
@@ -1764,8 +1854,7 @@ describe("sessions.assignPlayer", () => {
       ["whitespace-only role", "   ", /cannot be empty/i],
       ["role exceeding 100 characters", "a".repeat(101), /100 characters/i],
     ])("throws for %s", async (_description, role, expectedError) => {
-      const t = createTestContext();
-      const { sessionId } = await createSessionInStatus(t, "DRAFT", {
+      const { t, authT, sessionId } = await createAuthenticatedSessionInStatus("DRAFT", {
         playerCount: 2,
       });
 
@@ -1774,7 +1863,7 @@ describe("sessions.assignPlayer", () => {
       });
 
       await expect(
-        t.mutation(api.sessions.assignPlayer, {
+        authT.mutation(api.sessions.assignPlayer, {
           sessionId,
           role,
           teamName: "Test Team",
@@ -1789,12 +1878,38 @@ describe("sessions.assignPlayer", () => {
 // ============================================================================
 
 describe("sessions.setSessionMaps", () => {
-  describe("success cases", () => {
-    it("creates session maps from master maps", async () => {
+  describe("authentication", () => {
+    it("throws when not authenticated", async () => {
       const t = createTestContext();
 
       const { sessionId, masterMapIds } = await t.run(async (ctx) => {
         const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { mapPoolSize: 3 })
+        );
+
+        const masterMapIds = await Promise.all([
+          ctx.db.insert("maps", mapFactory({ name: "Map A" })),
+        ]);
+
+        return { sessionId, masterMapIds };
+      });
+
+      await expect(
+        t.mutation(api.sessions.setSessionMaps, {
+          sessionId,
+          mapIds: masterMapIds,
+        })
+      ).rejects.toThrow(/Authentication required/);
+    });
+  });
+
+  describe("success cases", () => {
+    it("creates session maps from master maps", async () => {
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
+
+      const { sessionId, masterMapIds } = await t.run(async (ctx) => {
         const sessionId = await ctx.db.insert(
           "sessions",
           sessionFactory(adminId, { mapPoolSize: 3 })
@@ -1818,7 +1933,7 @@ describe("sessions.setSessionMaps", () => {
         return { sessionId, masterMapIds };
       });
 
-      const result = await t.mutation(api.sessions.setSessionMaps, {
+      const result = await authT.mutation(api.sessions.setSessionMaps, {
         sessionId,
         mapIds: masterMapIds,
       });
@@ -1837,10 +1952,9 @@ describe("sessions.setSessionMaps", () => {
     });
 
     it("copies map name and imageUrl from master maps", async () => {
-      const t = createTestContext();
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
 
       const { sessionId, masterMapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
         const sessionId = await ctx.db.insert(
           "sessions",
           sessionFactory(adminId, { mapPoolSize: 1 })
@@ -1856,7 +1970,7 @@ describe("sessions.setSessionMaps", () => {
         return { sessionId, masterMapIds };
       });
 
-      await t.mutation(api.sessions.setSessionMaps, {
+      await authT.mutation(api.sessions.setSessionMaps, {
         sessionId,
         mapIds: masterMapIds,
       });
@@ -1875,10 +1989,9 @@ describe("sessions.setSessionMaps", () => {
     });
 
     it("replaces existing session maps", async () => {
-      const t = createTestContext();
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
 
       const { sessionId, newMapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
         const sessionId = await ctx.db.insert(
           "sessions",
           sessionFactory(adminId, { mapPoolSize: 2 })
@@ -1900,7 +2013,7 @@ describe("sessions.setSessionMaps", () => {
         return { sessionId, newMapIds };
       });
 
-      await t.mutation(api.sessions.setSessionMaps, {
+      await authT.mutation(api.sessions.setSessionMaps, {
         sessionId,
         mapIds: newMapIds,
       });
@@ -1920,11 +2033,10 @@ describe("sessions.setSessionMaps", () => {
     });
 
     it("updates session updatedAt timestamp", async () => {
-      const t = createTestContext();
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
 
       // Capture creation time, then set maps and verify updatedAt >= _creationTime
       const { sessionId, mapIds, creationTime } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
         const sessionId = await ctx.db.insert(
           "sessions",
           sessionFactory(adminId, { mapPoolSize: 1 })
@@ -1935,7 +2047,7 @@ describe("sessions.setSessionMaps", () => {
         return { sessionId, mapIds, creationTime: Math.floor(session!._creationTime) };
       });
 
-      await t.mutation(api.sessions.setSessionMaps, { sessionId, mapIds });
+      await authT.mutation(api.sessions.setSessionMaps, { sessionId, mapIds });
 
       const session = await t.run(async (ctx) => ctx.db.get(sessionId));
       // updatedAt should be at least equal to creation time (mutation sets it via Date.now())
@@ -1945,10 +2057,9 @@ describe("sessions.setSessionMaps", () => {
 
   describe("validation errors", () => {
     it("throws when map count does not match mapPoolSize", async () => {
-      const t = createTestContext();
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
 
       const { sessionId, mapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
         const sessionId = await ctx.db.insert(
           "sessions",
           sessionFactory(adminId, { mapPoolSize: 5 })
@@ -1962,15 +2073,14 @@ describe("sessions.setSessionMaps", () => {
       });
 
       await expect(
-        t.mutation(api.sessions.setSessionMaps, { sessionId, mapIds })
+        authT.mutation(api.sessions.setSessionMaps, { sessionId, mapIds })
       ).rejects.toThrow(/Expected 5 maps, received 3/i);
     });
 
     it("throws for duplicate maps", async () => {
-      const t = createTestContext();
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
 
       const { sessionId, mapId } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
         const sessionId = await ctx.db.insert(
           "sessions",
           sessionFactory(adminId, { mapPoolSize: 2 })
@@ -1980,7 +2090,7 @@ describe("sessions.setSessionMaps", () => {
       });
 
       await expect(
-        t.mutation(api.sessions.setSessionMaps, {
+        authT.mutation(api.sessions.setSessionMaps, {
           sessionId,
           mapIds: [mapId, mapId],
         })
@@ -1988,10 +2098,9 @@ describe("sessions.setSessionMaps", () => {
     });
 
     it("throws for non-existent map", async () => {
-      const t = createTestContext();
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
 
       const { sessionId, deletedMapId, validMapId } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
         const sessionId = await ctx.db.insert(
           "sessions",
           sessionFactory(adminId, { mapPoolSize: 2 })
@@ -2003,7 +2112,7 @@ describe("sessions.setSessionMaps", () => {
       });
 
       await expect(
-        t.mutation(api.sessions.setSessionMaps, {
+        authT.mutation(api.sessions.setSessionMaps, {
           sessionId,
           mapIds: [validMapId, deletedMapId],
         })
@@ -2011,10 +2120,9 @@ describe("sessions.setSessionMaps", () => {
     });
 
     it("throws for inactive map", async () => {
-      const t = createTestContext();
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
 
       const { sessionId, mapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
         const sessionId = await ctx.db.insert(
           "sessions",
           sessionFactory(adminId, { mapPoolSize: 2 })
@@ -2033,19 +2141,18 @@ describe("sessions.setSessionMaps", () => {
       });
 
       await expect(
-        t.mutation(api.sessions.setSessionMaps, { sessionId, mapIds })
+        authT.mutation(api.sessions.setSessionMaps, { sessionId, mapIds })
       ).rejects.toThrow(/not active/i);
     });
   });
 
   describe("state restrictions", () => {
     it("throws when setting maps in restricted states", async () => {
-      const t = createTestContext();
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
       const restrictedStatuses = ["WAITING", "IN_PROGRESS", "PAUSED", "COMPLETE", "EXPIRED"] as const;
 
       // Create sessions for all restricted states and maps in a single context
       const { sessionIds, mapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
         const mapIds = [await ctx.db.insert("maps", mapFactory())];
         const ids: Record<string, Id<"sessions">> = {};
         for (const status of restrictedStatuses) {
@@ -2060,7 +2167,7 @@ describe("sessions.setSessionMaps", () => {
       // Test each status throws the expected error
       for (const status of restrictedStatuses) {
         await expect(
-          t.mutation(api.sessions.setSessionMaps, { sessionId: sessionIds[status], mapIds })
+          authT.mutation(api.sessions.setSessionMaps, { sessionId: sessionIds[status], mapIds })
         ).rejects.toThrow(/Cannot set maps/i);
       }
     });
@@ -2068,7 +2175,7 @@ describe("sessions.setSessionMaps", () => {
 
   describe("not found", () => {
     it("throws for non-existent session", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       // Create a map first (persists after session deletion)
       const mapIds = await t.run(async (ctx) => {
@@ -2080,7 +2187,7 @@ describe("sessions.setSessionMaps", () => {
       });
 
       await expect(
-        t.mutation(api.sessions.setSessionMaps, {
+        authT.mutation(api.sessions.setSessionMaps, {
           sessionId: deletedSessionId,
           mapIds,
         })
@@ -2100,10 +2207,9 @@ describe("sessions.setSessionMaps", () => {
 
   describe("audit logging", () => {
     it("creates MAPS_ASSIGNED audit log", async () => {
-      const t = createTestContext();
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
 
       const { sessionId, mapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
         const sessionId = await ctx.db.insert(
           "sessions",
           sessionFactory(adminId, { mapPoolSize: 1 })
@@ -2112,7 +2218,7 @@ describe("sessions.setSessionMaps", () => {
         return { sessionId, mapIds };
       });
 
-      await t.mutation(api.sessions.setSessionMaps, { sessionId, mapIds });
+      await authT.mutation(api.sessions.setSessionMaps, { sessionId, mapIds });
 
       const logs = await t.run(async (ctx) =>
         ctx.db
@@ -2129,10 +2235,9 @@ describe("sessions.setSessionMaps", () => {
     });
 
     it("creates MAPS_ASSIGNED audit log on reassignment", async () => {
-      const t = createTestContext();
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
 
       const { sessionId, oldMapIds, newMapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
         const sessionId = await ctx.db.insert(
           "sessions",
           sessionFactory(adminId, { mapPoolSize: 2 })
@@ -2154,13 +2259,13 @@ describe("sessions.setSessionMaps", () => {
       });
 
       // Initial assignment
-      await t.mutation(api.sessions.setSessionMaps, {
+      await authT.mutation(api.sessions.setSessionMaps, {
         sessionId,
         mapIds: oldMapIds,
       });
 
       // Reassignment
-      await t.mutation(api.sessions.setSessionMaps, {
+      await authT.mutation(api.sessions.setSessionMaps, {
         sessionId,
         mapIds: newMapIds,
       });
@@ -2188,10 +2293,9 @@ describe("sessions.setSessionMaps", () => {
 
   describe("boundary tests", () => {
     it(`handles minimum map pool size (${MIN_MAP_POOL_SIZE} maps)`, async () => {
-      const t = createTestContext();
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
 
       const { sessionId, mapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
         const sessionId = await ctx.db.insert(
           "sessions",
           sessionFactory(adminId, { mapPoolSize: MIN_MAP_POOL_SIZE })
@@ -2206,7 +2310,7 @@ describe("sessions.setSessionMaps", () => {
         return { sessionId, mapIds };
       });
 
-      const result = await t.mutation(api.sessions.setSessionMaps, {
+      const result = await authT.mutation(api.sessions.setSessionMaps, {
         sessionId,
         mapIds,
       });
@@ -2224,10 +2328,9 @@ describe("sessions.setSessionMaps", () => {
     });
 
     it(`handles maximum map pool size (${MAX_MAP_POOL_SIZE} maps)`, async () => {
-      const t = createTestContext();
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
 
       const { sessionId, mapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
         const sessionId = await ctx.db.insert(
           "sessions",
           sessionFactory(adminId, { mapPoolSize: MAX_MAP_POOL_SIZE })
@@ -2242,7 +2345,7 @@ describe("sessions.setSessionMaps", () => {
         return { sessionId, mapIds };
       });
 
-      const result = await t.mutation(api.sessions.setSessionMaps, {
+      const result = await authT.mutation(api.sessions.setSessionMaps, {
         sessionId,
         mapIds,
       });
@@ -2266,10 +2369,9 @@ describe("sessions.setSessionMaps", () => {
 
   describe("snapshot persistence", () => {
     it("preserves snapshot when source map is updated", async () => {
-      const t = createTestContext();
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
 
       const { sessionId, mapId } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
         const sessionId = await ctx.db.insert(
           "sessions",
           sessionFactory(adminId, { mapPoolSize: 1 })
@@ -2282,7 +2384,7 @@ describe("sessions.setSessionMaps", () => {
       });
 
       // Assign map to session
-      await t.mutation(api.sessions.setSessionMaps, {
+      await authT.mutation(api.sessions.setSessionMaps, {
         sessionId,
         mapIds: [mapId],
       });
@@ -2314,10 +2416,9 @@ describe("sessions.setSessionMaps", () => {
     });
 
     it("preserves snapshot when source map is deactivated", async () => {
-      const t = createTestContext();
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
 
       const { sessionId, mapId } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
         const sessionId = await ctx.db.insert(
           "sessions",
           sessionFactory(adminId, { mapPoolSize: 1 })
@@ -2330,7 +2431,7 @@ describe("sessions.setSessionMaps", () => {
       });
 
       // Assign map to session
-      await t.mutation(api.sessions.setSessionMaps, {
+      await authT.mutation(api.sessions.setSessionMaps, {
         sessionId,
         mapIds: [mapId],
       });
@@ -2356,11 +2457,10 @@ describe("sessions.setSessionMaps", () => {
 
   describe("edge cases", () => {
     it("handles maps with very long names (max 100 characters)", async () => {
-      const t = createTestContext();
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
       const longName = "A".repeat(100);
 
       const { sessionId, mapId } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
         const sessionId = await ctx.db.insert(
           "sessions",
           sessionFactory(adminId, { mapPoolSize: 1 })
@@ -2372,7 +2472,7 @@ describe("sessions.setSessionMaps", () => {
         return { sessionId, mapId };
       });
 
-      const result = await t.mutation(api.sessions.setSessionMaps, {
+      const result = await authT.mutation(api.sessions.setSessionMaps, {
         sessionId,
         mapIds: [mapId],
       });
@@ -2391,11 +2491,10 @@ describe("sessions.setSessionMaps", () => {
     });
 
     it("handles maps with special characters in name", async () => {
-      const t = createTestContext();
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
       const specialName = "Mäp with émojis & spëcial <chars> 中文 🗺️";
 
       const { sessionId, mapId } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
         const sessionId = await ctx.db.insert(
           "sessions",
           sessionFactory(adminId, { mapPoolSize: 1 })
@@ -2407,7 +2506,7 @@ describe("sessions.setSessionMaps", () => {
         return { sessionId, mapId };
       });
 
-      const result = await t.mutation(api.sessions.setSessionMaps, {
+      const result = await authT.mutation(api.sessions.setSessionMaps, {
         sessionId,
         mapIds: [mapId],
       });
@@ -2425,12 +2524,10 @@ describe("sessions.setSessionMaps", () => {
     });
 
     it("maintains correct sessionId reference when multiple sessions exist", async () => {
-      const t = createTestContext();
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
 
       const { session1Id, session2Id, maps1, maps2 } = await t.run(
         async (ctx) => {
-          const adminId = await ctx.db.insert("admins", adminFactory());
-
           const session1Id = await ctx.db.insert(
             "sessions",
             sessionFactory(adminId, {
@@ -2463,12 +2560,12 @@ describe("sessions.setSessionMaps", () => {
       );
 
       // Assign maps to both sessions
-      const result1 = await t.mutation(api.sessions.setSessionMaps, {
+      const result1 = await authT.mutation(api.sessions.setSessionMaps, {
         sessionId: session1Id,
         mapIds: maps1,
       });
 
-      const result2 = await t.mutation(api.sessions.setSessionMaps, {
+      const result2 = await authT.mutation(api.sessions.setSessionMaps, {
         sessionId: session2Id,
         mapIds: maps2,
       });
@@ -2508,10 +2605,9 @@ describe("sessions.setSessionMaps", () => {
     });
 
     it("handles rapid sequential reassignments", async () => {
-      const t = createTestContext();
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
 
       const { sessionId, mapSets } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
         const sessionId = await ctx.db.insert(
           "sessions",
           sessionFactory(adminId, { mapPoolSize: 2 })
@@ -2537,17 +2633,17 @@ describe("sessions.setSessionMaps", () => {
       });
 
       // Rapid sequential reassignments
-      const result1 = await t.mutation(api.sessions.setSessionMaps, {
+      const result1 = await authT.mutation(api.sessions.setSessionMaps, {
         sessionId,
         mapIds: mapSets[0],
       });
 
-      const result2 = await t.mutation(api.sessions.setSessionMaps, {
+      const result2 = await authT.mutation(api.sessions.setSessionMaps, {
         sessionId,
         mapIds: mapSets[1],
       });
 
-      const result3 = await t.mutation(api.sessions.setSessionMaps, {
+      const result3 = await authT.mutation(api.sessions.setSessionMaps, {
         sessionId,
         mapIds: mapSets[2],
       });
@@ -2572,10 +2668,9 @@ describe("sessions.setSessionMaps", () => {
     });
 
     it("initializes optional fields correctly (undefined)", async () => {
-      const t = createTestContext();
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
 
       const { sessionId, mapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
         const sessionId = await ctx.db.insert(
           "sessions",
           sessionFactory(adminId, { mapPoolSize: 1 })
@@ -2584,7 +2679,7 @@ describe("sessions.setSessionMaps", () => {
         return { sessionId, mapIds };
       });
 
-      await t.mutation(api.sessions.setSessionMaps, { sessionId, mapIds });
+      await authT.mutation(api.sessions.setSessionMaps, { sessionId, mapIds });
 
       const sessionMaps = await t.run(async (ctx) =>
         ctx.db
@@ -2607,10 +2702,10 @@ describe("sessions.setSessionMaps", () => {
 // ============================================================================
 
 describe("sessions.createSessionFull", () => {
-  describe("success cases", () => {
-    it("creates complete session with ABBA format atomically", async () => {
+  describe("authentication", () => {
+    it("throws when not authenticated", async () => {
       const t = createTestContext();
-      const { adminId, teamNames, mapIds } = await t.run(async (ctx) => {
+      const { adminId, mapIds } = await t.run(async (ctx) => {
         const adminId = await ctx.db.insert("admins", adminFactory());
         await ctx.db.insert("teams", teamFactory({ name: "Team Alpha" }));
         await ctx.db.insert("teams", teamFactory({ name: "Team Beta" }));
@@ -2619,10 +2714,40 @@ describe("sessions.createSessionFull", () => {
           await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
           await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
         ];
-        return { adminId, teamNames: ["Team Alpha", "Team Beta"], mapIds };
+        return { adminId, mapIds };
       });
 
-      const result = await t.mutation(api.sessions.createSessionFull, {
+      await expect(
+        t.mutation(api.sessions.createSessionFull, {
+          matchName: "Grand Final",
+          format: "ABBA",
+          mapPoolSize: 3,
+          players: [
+            { role: "Player A", teamName: "Team Alpha" },
+            { role: "Player B", teamName: "Team Beta" },
+          ],
+          mapIds,
+          createdBy: adminId,
+        })
+      ).rejects.toThrow(/Authentication required/);
+    });
+  });
+
+  describe("success cases", () => {
+    it("creates complete session with ABBA format atomically", async () => {
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
+      const { teamNames, mapIds } = await t.run(async (ctx) => {
+        await ctx.db.insert("teams", teamFactory({ name: "Team Alpha" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team Beta" }));
+        const mapIds = [
+          await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
+        ];
+        return { teamNames: ["Team Alpha", "Team Beta"], mapIds };
+      });
+
+      const result = await authT.mutation(api.sessions.createSessionFull, {
         matchName: "Grand Final",
         format: "ABBA",
         turnTimerSeconds: 45,
@@ -2673,9 +2798,8 @@ describe("sessions.createSessionFull", () => {
     });
 
     it("creates complete session with MULTIPLAYER format atomically", async () => {
-      const t = createTestContext();
-      const { adminId, mapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
+      const { mapIds } = await t.run(async (ctx) => {
         await ctx.db.insert("teams", teamFactory({ name: "Team 1" }));
         await ctx.db.insert("teams", teamFactory({ name: "Team 2" }));
         await ctx.db.insert("teams", teamFactory({ name: "Team 3" }));
@@ -2687,10 +2811,10 @@ describe("sessions.createSessionFull", () => {
           await ctx.db.insert("maps", mapFactory({ name: "Map D" })),
           await ctx.db.insert("maps", mapFactory({ name: "Map E" })),
         ];
-        return { adminId, mapIds };
+        return { mapIds };
       });
 
-      const result = await t.mutation(api.sessions.createSessionFull, {
+      const result = await authT.mutation(api.sessions.createSessionFull, {
         matchName: "Team Battle",
         format: "MULTIPLAYER",
         mapPoolSize: 5,
@@ -2713,9 +2837,8 @@ describe("sessions.createSessionFull", () => {
     });
 
     it("returns unique tokens for each player", async () => {
-      const t = createTestContext();
-      const { adminId, mapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
+      const { mapIds } = await t.run(async (ctx) => {
         await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
         await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
         const mapIds = [
@@ -2723,10 +2846,10 @@ describe("sessions.createSessionFull", () => {
           await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
           await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
         ];
-        return { adminId, mapIds };
+        return { mapIds };
       });
 
-      const result = await t.mutation(api.sessions.createSessionFull, {
+      const result = await authT.mutation(api.sessions.createSessionFull, {
         matchName: "Test Match",
         format: "ABBA",
         mapPoolSize: 3,
@@ -2745,9 +2868,8 @@ describe("sessions.createSessionFull", () => {
     });
 
     it("applies default turnTimerSeconds (30)", async () => {
-      const t = createTestContext();
-      const { adminId, mapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
+      const { mapIds } = await t.run(async (ctx) => {
         await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
         await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
         const mapIds = [
@@ -2755,10 +2877,10 @@ describe("sessions.createSessionFull", () => {
           await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
           await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
         ];
-        return { adminId, mapIds };
+        return { mapIds };
       });
 
-      const result = await t.mutation(api.sessions.createSessionFull, {
+      const result = await authT.mutation(api.sessions.createSessionFull, {
         matchName: "Test",
         format: "ABBA",
         mapPoolSize: 3,
@@ -2775,9 +2897,8 @@ describe("sessions.createSessionFull", () => {
     });
 
     it("applies default mapPoolSize (5)", async () => {
-      const t = createTestContext();
-      const { adminId, mapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
+      const { mapIds } = await t.run(async (ctx) => {
         await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
         await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
         const mapIds = [
@@ -2787,10 +2908,10 @@ describe("sessions.createSessionFull", () => {
           await ctx.db.insert("maps", mapFactory({ name: "Map 4" })),
           await ctx.db.insert("maps", mapFactory({ name: "Map 5" })),
         ];
-        return { adminId, mapIds };
+        return { mapIds };
       });
 
-      const result = await t.mutation(api.sessions.createSessionFull, {
+      const result = await authT.mutation(api.sessions.createSessionFull, {
         matchName: "Test",
         format: "ABBA",
         // mapPoolSize not specified - should default to 5
@@ -2807,9 +2928,8 @@ describe("sessions.createSessionFull", () => {
     });
 
     it("creates audit log entry", async () => {
-      const t = createTestContext();
-      const { adminId, mapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
+      const { mapIds } = await t.run(async (ctx) => {
         await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
         await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
         const mapIds = [
@@ -2817,10 +2937,10 @@ describe("sessions.createSessionFull", () => {
           await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
           await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
         ];
-        return { adminId, mapIds };
+        return { mapIds };
       });
 
-      const result = await t.mutation(api.sessions.createSessionFull, {
+      const result = await authT.mutation(api.sessions.createSessionFull, {
         matchName: "Test",
         format: "ABBA",
         mapPoolSize: 3,
@@ -2845,9 +2965,8 @@ describe("sessions.createSessionFull", () => {
     });
 
     it("trims whitespace from match name", async () => {
-      const t = createTestContext();
-      const { adminId, mapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
+      const { mapIds } = await t.run(async (ctx) => {
         await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
         await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
         const mapIds = [
@@ -2855,10 +2974,10 @@ describe("sessions.createSessionFull", () => {
           await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
           await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
         ];
-        return { adminId, mapIds };
+        return { mapIds };
       });
 
-      const result = await t.mutation(api.sessions.createSessionFull, {
+      const result = await authT.mutation(api.sessions.createSessionFull, {
         matchName: "  Grand Final  ",
         format: "ABBA",
         mapPoolSize: 3,
@@ -2877,9 +2996,8 @@ describe("sessions.createSessionFull", () => {
 
   describe("validation errors", () => {
     it("rejects empty match name", async () => {
-      const t = createTestContext();
-      const { adminId, mapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
+      const { mapIds } = await t.run(async (ctx) => {
         await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
         await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
         const mapIds = [
@@ -2887,11 +3005,11 @@ describe("sessions.createSessionFull", () => {
           await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
           await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
         ];
-        return { adminId, mapIds };
+        return { mapIds };
       });
 
       await expect(
-        t.mutation(api.sessions.createSessionFull, {
+        authT.mutation(api.sessions.createSessionFull, {
           matchName: "   ",
           format: "ABBA",
           mapPoolSize: 3,
@@ -2906,9 +3024,8 @@ describe("sessions.createSessionFull", () => {
     });
 
     it("rejects ABBA format with wrong player count", async () => {
-      const t = createTestContext();
-      const { adminId, mapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
+      const { mapIds } = await t.run(async (ctx) => {
         await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
         await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
         await ctx.db.insert("teams", teamFactory({ name: "Team C" }));
@@ -2917,11 +3034,11 @@ describe("sessions.createSessionFull", () => {
           await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
           await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
         ];
-        return { adminId, mapIds };
+        return { mapIds };
       });
 
       await expect(
-        t.mutation(api.sessions.createSessionFull, {
+        authT.mutation(api.sessions.createSessionFull, {
           matchName: "Test",
           format: "ABBA",
           mapPoolSize: 3,
@@ -2937,9 +3054,8 @@ describe("sessions.createSessionFull", () => {
     });
 
     it("rejects MULTIPLAYER format with wrong player count", async () => {
-      const t = createTestContext();
-      const { adminId, mapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
+      const { mapIds } = await t.run(async (ctx) => {
         await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
         await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
         const mapIds = [
@@ -2947,11 +3063,11 @@ describe("sessions.createSessionFull", () => {
           await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
           await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
         ];
-        return { adminId, mapIds };
+        return { mapIds };
       });
 
       await expect(
-        t.mutation(api.sessions.createSessionFull, {
+        authT.mutation(api.sessions.createSessionFull, {
           matchName: "Test",
           format: "MULTIPLAYER",
           mapPoolSize: 3,
@@ -2966,9 +3082,8 @@ describe("sessions.createSessionFull", () => {
     });
 
     it("rejects duplicate roles in player list", async () => {
-      const t = createTestContext();
-      const { adminId, mapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
+      const { mapIds } = await t.run(async (ctx) => {
         await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
         await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
         const mapIds = [
@@ -2980,7 +3095,7 @@ describe("sessions.createSessionFull", () => {
       });
 
       await expect(
-        t.mutation(api.sessions.createSessionFull, {
+        authT.mutation(api.sessions.createSessionFull, {
           matchName: "Test",
           format: "ABBA",
           mapPoolSize: 3,
@@ -2995,9 +3110,8 @@ describe("sessions.createSessionFull", () => {
     });
 
     it("rejects non-existent team", async () => {
-      const t = createTestContext();
-      const { adminId, mapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
+      const { mapIds } = await t.run(async (ctx) => {
         await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
         // Team B not created
         const mapIds = [
@@ -3005,11 +3119,11 @@ describe("sessions.createSessionFull", () => {
           await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
           await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
         ];
-        return { adminId, mapIds };
+        return { mapIds };
       });
 
       await expect(
-        t.mutation(api.sessions.createSessionFull, {
+        authT.mutation(api.sessions.createSessionFull, {
           matchName: "Test",
           format: "ABBA",
           mapPoolSize: 3,
@@ -3024,9 +3138,8 @@ describe("sessions.createSessionFull", () => {
     });
 
     it("rejects map count mismatch with mapPoolSize", async () => {
-      const t = createTestContext();
-      const { adminId, mapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
+      const { mapIds } = await t.run(async (ctx) => {
         await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
         await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
         const mapIds = [
@@ -3034,11 +3147,11 @@ describe("sessions.createSessionFull", () => {
           await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
           await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
         ];
-        return { adminId, mapIds };
+        return { mapIds };
       });
 
       await expect(
-        t.mutation(api.sessions.createSessionFull, {
+        authT.mutation(api.sessions.createSessionFull, {
           matchName: "Test",
           format: "ABBA",
           mapPoolSize: 5, // Expecting 5 maps
@@ -3053,17 +3166,16 @@ describe("sessions.createSessionFull", () => {
     });
 
     it("rejects duplicate maps in mapIds", async () => {
-      const t = createTestContext();
-      const { adminId, mapId } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
+      const { mapId } = await t.run(async (ctx) => {
         await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
         await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
         const mapId = await ctx.db.insert("maps", mapFactory({ name: "Map 1" }));
-        return { adminId, mapId };
+        return { mapId };
       });
 
       await expect(
-        t.mutation(api.sessions.createSessionFull, {
+        authT.mutation(api.sessions.createSessionFull, {
           matchName: "Test",
           format: "ABBA",
           mapPoolSize: 3,
@@ -3078,16 +3190,15 @@ describe("sessions.createSessionFull", () => {
     });
 
     it("rejects non-existent map", async () => {
-      const t = createTestContext();
-      const { adminId, mapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
+      const { mapIds } = await t.run(async (ctx) => {
         await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
         await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
         const mapIds = [
           await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
           await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
         ];
-        return { adminId, mapIds };
+        return { mapIds };
       });
 
       // Create and delete a map to get a valid but non-existent ID
@@ -3096,7 +3207,7 @@ describe("sessions.createSessionFull", () => {
       );
 
       await expect(
-        t.mutation(api.sessions.createSessionFull, {
+        authT.mutation(api.sessions.createSessionFull, {
           matchName: "Test",
           format: "ABBA",
           mapPoolSize: 3,
@@ -3111,9 +3222,8 @@ describe("sessions.createSessionFull", () => {
     });
 
     it("rejects inactive map", async () => {
-      const t = createTestContext();
-      const { adminId, mapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
+      const { mapIds } = await t.run(async (ctx) => {
         await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
         await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
         const mapIds = [
@@ -3121,11 +3231,11 @@ describe("sessions.createSessionFull", () => {
           await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
           await ctx.db.insert("maps", mapFactory({ name: "Inactive Map", isActive: false })),
         ];
-        return { adminId, mapIds };
+        return { mapIds };
       });
 
       await expect(
-        t.mutation(api.sessions.createSessionFull, {
+        authT.mutation(api.sessions.createSessionFull, {
           matchName: "Test",
           format: "ABBA",
           mapPoolSize: 3,
@@ -3140,22 +3250,24 @@ describe("sessions.createSessionFull", () => {
     });
 
     it("rejects invalid admin ID", async () => {
-      const t = createTestContext();
-      const mapIds = await t.run(async (ctx) => {
+      const { t, authT } = await createAuthenticatedAdmin();
+      const { mapIds } = await t.run(async (ctx) => {
         await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
         await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
-        return [
-          await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
-          await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
-          await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
-        ];
+        return {
+          mapIds: [
+            await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+            await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+            await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
+          ],
+        };
       });
 
       // Create and delete an admin to get a valid but non-existent ID
       const fakeAdminId = await createDeletedAdminId(t);
 
       await expect(
-        t.mutation(api.sessions.createSessionFull, {
+        authT.mutation(api.sessions.createSessionFull, {
           matchName: "Test",
           format: "ABBA",
           mapPoolSize: 3,
@@ -3170,9 +3282,8 @@ describe("sessions.createSessionFull", () => {
     });
 
     it("rejects turn timer below minimum", async () => {
-      const t = createTestContext();
-      const { adminId, mapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
+      const { mapIds } = await t.run(async (ctx) => {
         await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
         await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
         const mapIds = [
@@ -3180,11 +3291,11 @@ describe("sessions.createSessionFull", () => {
           await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
           await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
         ];
-        return { adminId, mapIds };
+        return { mapIds };
       });
 
       await expect(
-        t.mutation(api.sessions.createSessionFull, {
+        authT.mutation(api.sessions.createSessionFull, {
           matchName: "Test",
           format: "ABBA",
           turnTimerSeconds: 5, // Below minimum of 10
@@ -3200,20 +3311,19 @@ describe("sessions.createSessionFull", () => {
     });
 
     it("rejects map pool size below minimum", async () => {
-      const t = createTestContext();
-      const { adminId, mapIds } = await t.run(async (ctx) => {
-        const adminId = await ctx.db.insert("admins", adminFactory());
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
+      const { mapIds } = await t.run(async (ctx) => {
         await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
         await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
         const mapIds = [
           await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
           await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
         ];
-        return { adminId, mapIds };
+        return { mapIds };
       });
 
       await expect(
-        t.mutation(api.sessions.createSessionFull, {
+        authT.mutation(api.sessions.createSessionFull, {
           matchName: "Test",
           format: "ABBA",
           mapPoolSize: 2, // Below minimum of 3

@@ -59,5 +59,48 @@ export function createAuthenticatedContext(identity: {
   });
 }
 
+// ============================================================================
+// Admin Authentication Helper
+// ============================================================================
+
+/** Default admin email used for test authentication */
+export const TEST_ADMIN_EMAIL = "test-admin@test.com";
+
+/**
+ * Admin data matching the default test admin identity.
+ * Use this when inserting an admin to the database before running authenticated mutations.
+ */
+export const TEST_ADMIN_DATA = {
+  email: TEST_ADMIN_EMAIL,
+  name: "Test Admin",
+  isRootAdmin: false,
+  lastLoginAt: Date.now(),
+};
+
+/**
+ * Creates an authenticated test context with a whitelisted admin.
+ * Sets up the admin record in the database and returns an authenticated context.
+ *
+ * @returns Object containing authT (authenticated context) and adminId
+ */
+export async function createAuthenticatedAdmin() {
+  const t = createTestContext();
+
+  // Insert admin into whitelist
+  const adminId = await t.run(async (ctx) =>
+    ctx.db.insert("admins", TEST_ADMIN_DATA)
+  );
+
+  // Create authenticated context with matching email
+  const authT = t.withIdentity({
+    name: TEST_ADMIN_DATA.name,
+    email: TEST_ADMIN_DATA.email,
+    subject: `user_${TEST_ADMIN_DATA.email}`,
+    issuer: "https://auth.example.com",
+  });
+
+  return { t, authT, adminId };
+}
+
 // Re-export for convenience
 export { schema };

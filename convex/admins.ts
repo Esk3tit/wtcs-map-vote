@@ -7,8 +7,8 @@
 import { mutation, query } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import { paginationOptsValidator } from "convex/server";
-import { v } from "convex/values";
-import type { Id } from "./_generated/dataModel";
+import { v, ConvexError } from "convex/values";
+import type { Doc, Id } from "./_generated/dataModel";
 
 import {
   getCurrentAdmin,
@@ -23,6 +23,56 @@ import { logAdminAction } from "./lib/adminAudit";
 // ============================================================================
 
 /**
+ * Get an admin by ID or throw ConvexError if not found.
+ *
+ * @param adminId - The admin ID to look up
+ */
+async function getAdminOrThrow(
+  ctx: MutationCtx,
+  adminId: Id<"admins">
+): Promise<Doc<"admins">> {
+  const admin = await ctx.db.get(adminId);
+  if (!admin) {
+    throw new ConvexError("Admin not found");
+  }
+  return admin;
+}
+
+/**
+ * Ensure we're not removing/demoting the last root admin.
+ *
+ * @param errorMessage - Custom error message to throw
+ */
+async function ensureNotLastRootAdmin(
+  ctx: MutationCtx,
+  errorMessage: string
+): Promise<void> {
+  const rootCount = await ctx.db
+    .query("admins")
+    .withIndex("by_isRootAdmin", (q) => q.eq("isRootAdmin", true))
+    .collect();
+  if (rootCount.length === 1) {
+    throw new ConvexError(errorMessage);
+  }
+}
+
+/**
+ * Get auth user by email from the users table.
+ * Normalizes the email before lookup to ensure consistent matching.
+ *
+ * @param email - Email address to look up
+ */
+async function getAuthUserByEmail(
+  ctx: MutationCtx,
+  email: string
+): Promise<Doc<"users"> | null> {
+  return await ctx.db
+    .query("users")
+    .filter((q) => q.eq(q.field("email"), normalizeEmail(email)))
+    .first();
+}
+
+/**
  * Delete all auth sessions for a user.
  * This invalidates the user's login by removing their session records.
  */
@@ -35,9 +85,7 @@ async function deleteUserSessions(
     .withIndex("userId", (q) => q.eq("userId", userId))
     .collect();
 
-  for (const session of sessions) {
-    await ctx.db.delete(session._id);
-  }
+  await Promise.all(sessions.map((session) => ctx.db.delete(session._id)));
 
   return sessions.length;
 }
@@ -45,31 +93,6 @@ async function deleteUserSessions(
 // ============================================================================
 // Queries
 // ============================================================================
-
-/**
- * Get the currently authenticated user's info.
- * Returns null if not authenticated.
- */
-export const getCurrentUser = query({
-  args: {},
-  returns: v.union(
-    v.object({
-      name: v.string(),
-      email: v.optional(v.string()),
-      picture: v.optional(v.string()),
-    }),
-    v.null()
-  ),
-  handler: async (ctx) => {
-    const identity = await ctx.auth.getUserIdentity();
-    if (!identity) return null;
-    return {
-      name: identity.name ?? "Admin",
-      email: identity.email ?? undefined,
-      picture: identity.pictureUrl ?? undefined,
-    };
-  },
-});
 
 /**
  * Get current authenticated admin with role info.
@@ -124,6 +147,58 @@ export const listAdmins = query({
   handler: async (ctx) => {
     await requireAdmin(ctx);
     return await ctx.db.query("admins").collect();
+  },
+});
+
+/**
+ * Get a specific admin by ID. Requires authenticated admin.
+ *
+ * @param adminId - ID of the admin to fetch
+ */
+export const getAdmin = query({
+  args: { adminId: v.id("admins") },
+  returns: v.union(
+    v.object({
+      _id: v.id("admins"),
+      email: v.string(),
+      name: v.string(),
+      avatarUrl: v.optional(v.string()),
+      isRootAdmin: v.boolean(),
+      lastLoginAt: v.number(),
+    }),
+    v.null()
+  ),
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    return await ctx.db.get(args.adminId);
+  },
+});
+
+/**
+ * Get an admin by email. Requires authenticated admin.
+ *
+ * @param email - Email address to look up
+ */
+export const getAdminByEmail = query({
+  args: { email: v.string() },
+  returns: v.union(
+    v.object({
+      _id: v.id("admins"),
+      email: v.string(),
+      name: v.string(),
+      avatarUrl: v.optional(v.string()),
+      isRootAdmin: v.boolean(),
+      lastLoginAt: v.number(),
+    }),
+    v.null()
+  ),
+  handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+    const normalized = normalizeEmail(args.email);
+    return await ctx.db
+      .query("admins")
+      .withIndex("by_email", (q) => q.eq("email", normalized))
+      .first();
   },
 });
 
@@ -208,7 +283,7 @@ export const addAdmin = mutation({
     // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     if (!emailRegex.test(normalizedEmail)) {
-      throw new Error("Invalid email format");
+      throw new ConvexError("Invalid email format");
     }
 
     // Check for duplicate
@@ -217,13 +292,13 @@ export const addAdmin = mutation({
       .withIndex("by_email", (q) => q.eq("email", normalizedEmail))
       .first();
     if (existing) {
-      throw new Error("Admin with this email already exists");
+      throw new ConvexError("Admin with this email already exists");
     }
 
     // Validate name
     const trimmedName = args.name.trim();
     if (trimmedName.length === 0) {
-      throw new Error("Name is required");
+      throw new ConvexError("Name is required");
     }
 
     const adminId = await ctx.db.insert("admins", {
@@ -260,28 +335,15 @@ export const removeAdmin = mutation({
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
     const currentAdmin = await requireRootAdmin(ctx);
-    const targetAdmin = await ctx.db.get(args.adminId);
-
-    if (!targetAdmin) {
-      throw new Error("Admin not found");
-    }
+    const targetAdmin = await getAdminOrThrow(ctx, args.adminId);
 
     // Self-removal check: only if not last root admin
     if (currentAdmin._id === args.adminId && targetAdmin.isRootAdmin) {
-      const rootCount = await ctx.db
-        .query("admins")
-        .filter((q) => q.eq(q.field("isRootAdmin"), true))
-        .collect();
-      if (rootCount.length === 1) {
-        throw new Error("Cannot remove the last root admin");
-      }
+      await ensureNotLastRootAdmin(ctx, "Cannot remove the last root admin");
     }
 
     // Invalidate the target admin's auth sessions (boot them out)
-    const authUser = await ctx.db
-      .query("users")
-      .filter((q) => q.eq(q.field("email"), targetAdmin.email))
-      .first();
+    const authUser = await getAuthUserByEmail(ctx, targetAdmin.email);
 
     if (authUser) {
       await deleteUserSessions(ctx, authUser._id);
@@ -330,11 +392,7 @@ export const updateAdminRole = mutation({
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
     const currentAdmin = await requireRootAdmin(ctx);
-    const targetAdmin = await ctx.db.get(args.adminId);
-
-    if (!targetAdmin) {
-      throw new Error("Admin not found");
-    }
+    const targetAdmin = await getAdminOrThrow(ctx, args.adminId);
 
     // No-op if already at target state
     if (targetAdmin.isRootAdmin === args.isRootAdmin) {
@@ -343,13 +401,7 @@ export const updateAdminRole = mutation({
 
     // Prevent demoting the last root admin
     if (targetAdmin.isRootAdmin && !args.isRootAdmin) {
-      const rootCount = await ctx.db
-        .query("admins")
-        .filter((q) => q.eq(q.field("isRootAdmin"), true))
-        .collect();
-      if (rootCount.length === 1) {
-        throw new Error("Cannot demote the last root admin");
-      }
+      await ensureNotLastRootAdmin(ctx, "Cannot demote the last root admin");
     }
 
     await ctx.db.patch(args.adminId, { isRootAdmin: args.isRootAdmin });
@@ -382,19 +434,12 @@ export const invalidateAdminSessions = mutation({
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
     const currentAdmin = await requireRootAdmin(ctx);
-    const targetAdmin = await ctx.db.get(args.adminId);
+    const targetAdmin = await getAdminOrThrow(ctx, args.adminId);
 
-    if (!targetAdmin) {
-      throw new Error("Admin not found");
-    }
-
-    const authUser = await ctx.db
-      .query("users")
-      .filter((q) => q.eq(q.field("email"), targetAdmin.email))
-      .first();
+    const authUser = await getAuthUserByEmail(ctx, targetAdmin.email);
 
     if (!authUser) {
-      throw new Error("Admin has no active sessions");
+      throw new ConvexError("Admin has no active sessions");
     }
 
     await deleteUserSessions(ctx, authUser._id);

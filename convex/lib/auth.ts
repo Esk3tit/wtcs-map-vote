@@ -5,6 +5,7 @@
  */
 
 import type { QueryCtx, MutationCtx } from "../_generated/server";
+import { ConvexError } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
 
 // ============================================================================
@@ -36,7 +37,7 @@ export async function requireAdmin(
 ): Promise<Doc<"admins">> {
   const admin = await getCurrentAdmin(ctx);
   if (!admin) {
-    throw new Error("Authentication required");
+    throw new ConvexError("Authentication required");
   }
   return admin;
 }
@@ -49,7 +50,7 @@ export async function requireRootAdmin(
 ): Promise<Doc<"admins">> {
   const admin = await requireAdmin(ctx);
   if (!admin.isRootAdmin) {
-    throw new Error("Root admin access required");
+    throw new ConvexError("Root admin access required");
   }
   return admin;
 }

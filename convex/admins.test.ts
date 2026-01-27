@@ -131,6 +131,190 @@ describe("admins.listAdmins", () => {
 });
 
 // ============================================================================
+// getAdmin Tests
+// ============================================================================
+
+describe("admins.getAdmin", () => {
+  describe("authorization", () => {
+    it("throws when not authenticated", async () => {
+      const t = createTestContext();
+      const adminId = await t.run(async (ctx) =>
+        ctx.db.insert("admins", adminFactory({ email: "target@test.com" }))
+      );
+
+      await expect(
+        t.query(api.admins.getAdmin, { adminId })
+      ).rejects.toThrow(/Authentication required/);
+    });
+
+    it("throws when authenticated but not whitelisted", async () => {
+      const t = createTestContext();
+      const adminId = await t.run(async (ctx) =>
+        ctx.db.insert("admins", adminFactory({ email: "target@test.com" }))
+      );
+      const authT = createAuthenticatedContext({
+        name: "Unknown User",
+        email: "unknown@test.com",
+      });
+
+      await expect(
+        authT.query(api.admins.getAdmin, { adminId })
+      ).rejects.toThrow(/Authentication required/);
+    });
+  });
+
+  describe("success cases", () => {
+    it("returns admin by ID when authenticated", async () => {
+      const t = createTestContext();
+      const { authT } = await createWhitelistedAdmin(t, {
+        email: "admin@test.com",
+        isRootAdmin: false,
+      });
+
+      const targetId = await t.run(async (ctx) =>
+        ctx.db.insert(
+          "admins",
+          adminFactory({
+            email: "target@test.com",
+            name: "Target Admin",
+            isRootAdmin: true,
+          })
+        )
+      );
+
+      const result = await authT.query(api.admins.getAdmin, {
+        adminId: targetId,
+      });
+
+      expect(result).toMatchObject({
+        _id: targetId,
+        email: "target@test.com",
+        name: "Target Admin",
+        isRootAdmin: true,
+      });
+    });
+
+    it("returns null for non-existent admin", async () => {
+      const t = createTestContext();
+      const { authT } = await createWhitelistedAdmin(t, {
+        email: "admin@test.com",
+        isRootAdmin: false,
+      });
+
+      const deletedId = await t.run(async (ctx) => {
+        const id = await ctx.db.insert(
+          "admins",
+          adminFactory({ email: "temp@test.com" })
+        );
+        await ctx.db.delete(id);
+        return id;
+      });
+
+      const result = await authT.query(api.admins.getAdmin, {
+        adminId: deletedId,
+      });
+
+      expect(result).toBeNull();
+    });
+  });
+});
+
+// ============================================================================
+// getAdminByEmail Tests
+// ============================================================================
+
+describe("admins.getAdminByEmail", () => {
+  describe("authorization", () => {
+    it("throws when not authenticated", async () => {
+      const t = createTestContext();
+
+      await expect(
+        t.query(api.admins.getAdminByEmail, { email: "target@test.com" })
+      ).rejects.toThrow(/Authentication required/);
+    });
+
+    it("throws when authenticated but not whitelisted", async () => {
+      const authT = createAuthenticatedContext({
+        name: "Unknown User",
+        email: "unknown@test.com",
+      });
+
+      await expect(
+        authT.query(api.admins.getAdminByEmail, { email: "target@test.com" })
+      ).rejects.toThrow(/Authentication required/);
+    });
+  });
+
+  describe("success cases", () => {
+    it("returns admin by email when authenticated", async () => {
+      const t = createTestContext();
+      const { authT } = await createWhitelistedAdmin(t, {
+        email: "admin@test.com",
+        isRootAdmin: false,
+      });
+
+      const targetId = await t.run(async (ctx) =>
+        ctx.db.insert(
+          "admins",
+          adminFactory({
+            email: "target@test.com",
+            name: "Target Admin",
+            isRootAdmin: true,
+          })
+        )
+      );
+
+      const result = await authT.query(api.admins.getAdminByEmail, {
+        email: "target@test.com",
+      });
+
+      expect(result).toMatchObject({
+        _id: targetId,
+        email: "target@test.com",
+        name: "Target Admin",
+        isRootAdmin: true,
+      });
+    });
+
+    it("normalizes email for lookup", async () => {
+      const t = createTestContext();
+      const { authT } = await createWhitelistedAdmin(t, {
+        email: "admin@test.com",
+        isRootAdmin: false,
+      });
+
+      await t.run(async (ctx) =>
+        ctx.db.insert(
+          "admins",
+          adminFactory({ email: "target@test.com", name: "Target" })
+        )
+      );
+
+      const result = await authT.query(api.admins.getAdminByEmail, {
+        email: "  TARGET@TEST.COM  ",
+      });
+
+      expect(result).not.toBeNull();
+      expect(result?.email).toBe("target@test.com");
+    });
+
+    it("returns null for non-existent email", async () => {
+      const t = createTestContext();
+      const { authT } = await createWhitelistedAdmin(t, {
+        email: "admin@test.com",
+        isRootAdmin: false,
+      });
+
+      const result = await authT.query(api.admins.getAdminByEmail, {
+        email: "nonexistent@test.com",
+      });
+
+      expect(result).toBeNull();
+    });
+  });
+});
+
+// ============================================================================
 // addAdmin Tests
 // ============================================================================
 
