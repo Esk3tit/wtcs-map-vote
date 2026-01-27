@@ -220,6 +220,8 @@ export const isEmailWhitelisted = query({
 
 /**
  * Get admin audit logs with pagination. Root admin only.
+ *
+ * @param paginationOpts - Pagination options (numItems, cursor)
  */
 export const getAdminAuditLogs = query({
   args: {

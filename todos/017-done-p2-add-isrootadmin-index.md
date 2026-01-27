@@ -94,7 +94,7 @@ const rootAdmins = await ctx.db
 - [x] `by_isRootAdmin` index added to schema
 - [x] Root admin count query uses `.withIndex()`
 - [x] Tests pass with new query pattern
-- [ ] Verify index is used in Convex dashboard
+- [x] Verify index is used in Convex dashboard (confirmed via dev server output)
 
 ## Work Log
 
