@@ -61,6 +61,15 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
     setStatus("loading");
     setError(null);
 
+    if (!token.trim()) {
+      setStatus("error");
+      setError("INVALID_TOKEN");
+      return () => {
+        controller.abort();
+        stopHeartbeat();
+      };
+    }
+
     async function validateToken() {
       try {
         const res = await fetch(`${SITE_URL}/api/player/validate-token`, {
@@ -74,7 +83,10 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
 
         const data = (await res.json()) as ValidateTokenResponse;
 
+        if (controller.signal.aborted) return;
+
         if (data.status === "ok") {
+          stopHeartbeat();
           setStatus("authenticated");
           setError(null);
 
