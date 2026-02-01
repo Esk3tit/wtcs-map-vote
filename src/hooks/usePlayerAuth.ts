@@ -61,7 +61,8 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
     setStatus("loading");
     setError(null);
 
-    if (!token.trim()) {
+    const normalizedToken = token.trim();
+    if (!normalizedToken) {
       setStatus("error");
       setError("INVALID_TOKEN");
       return () => {
@@ -75,7 +76,7 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
         const res = await fetch(`${SITE_URL}/api/player/validate-token`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ token }),
+          body: JSON.stringify({ token: normalizedToken }),
           signal: controller.signal,
         });
 
@@ -98,7 +99,7 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
               const hbRes = await fetch(`${SITE_URL}/api/player/heartbeat`, {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ token }),
+                body: JSON.stringify({ token: normalizedToken }),
                 signal: controller.signal,
               });
 
