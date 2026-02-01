@@ -34,4 +34,4 @@ Add `// Must match HEARTBEAT_INTERVAL_MS in convex/lib/constants.ts` in the fron
 
 ## Resources
 
-- PR: https://github.com/Esk3tit/wtcs-map-vote/pull/45
+- PR: [#45](https://github.com/Esk3tit/wtcs-map-vote/pull/45)

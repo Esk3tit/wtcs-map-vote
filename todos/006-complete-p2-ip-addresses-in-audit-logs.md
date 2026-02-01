@@ -47,4 +47,4 @@ Add a structured `metadata` field to audit logs that cleanup can scrub.
 
 ## Resources
 
-- PR: https://github.com/Esk3tit/wtcs-map-vote/pull/45
+- PR: [#45](https://github.com/Esk3tit/wtcs-map-vote/pull/45)

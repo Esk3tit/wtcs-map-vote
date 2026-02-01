@@ -34,4 +34,4 @@ Add an `ipCleared: true` boolean field or timestamp check to skip already-cleane
 
 ## Resources
 
-- PR: https://github.com/Esk3tit/wtcs-map-vote/pull/45
+- PR: [#45](https://github.com/Esk3tit/wtcs-map-vote/pull/45)

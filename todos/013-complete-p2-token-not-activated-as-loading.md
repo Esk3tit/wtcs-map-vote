@@ -48,4 +48,4 @@ if (data.status === "error") {
 
 ## Resources
 
-- PR: https://github.com/Esk3tit/wtcs-map-vote/pull/45
+- PR: [#45](https://github.com/Esk3tit/wtcs-map-vote/pull/45)

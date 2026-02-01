@@ -47,4 +47,4 @@ Check the request `Origin` header against a list of allowed domains.
 
 ## Resources
 
-- PR: https://github.com/Esk3tit/wtcs-map-vote/pull/45
+- PR: [#45](https://github.com/Esk3tit/wtcs-map-vote/pull/45)
