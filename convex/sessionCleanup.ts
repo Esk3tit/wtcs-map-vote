@@ -40,12 +40,20 @@ export const clearSessionIpAddresses = internalMutation({
       .collect();
 
     let clearedCount = 0;
+    const now = Date.now();
 
-    // Clear IP addresses from players that have them
+    // Clear IP addresses and invalidate tokens for players
     for (const player of players) {
+      const patch: Record<string, unknown> = {};
       if (player.ipAddress) {
-        await ctx.db.patch(player._id, { ipAddress: undefined });
+        patch.ipAddress = undefined;
         clearedCount++;
+      }
+      if (player.tokenExpiresAt > now) {
+        patch.tokenExpiresAt = now;
+      }
+      if (Object.keys(patch).length > 0) {
+        await ctx.db.patch(player._id, patch);
       }
     }
 
@@ -109,9 +117,16 @@ export const expireStaleSessions = internalMutation({
         .collect();
 
       for (const player of players) {
+        const patch: Record<string, unknown> = {};
         if (player.ipAddress) {
-          await ctx.db.patch(player._id, { ipAddress: undefined });
+          patch.ipAddress = undefined;
           totalIpsCleared++;
+        }
+        if (player.tokenExpiresAt > now) {
+          patch.tokenExpiresAt = now;
+        }
+        if (Object.keys(patch).length > 0) {
+          await ctx.db.patch(player._id, patch);
         }
       }
 
@@ -171,12 +186,20 @@ export const clearCompletedSessionIps = internalMutation({
         .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
         .collect();
 
+      const now = Date.now();
       let sessionHadIps = false;
       for (const player of players) {
+        const patch: Record<string, unknown> = {};
         if (player.ipAddress) {
-          await ctx.db.patch(player._id, { ipAddress: undefined });
+          patch.ipAddress = undefined;
           totalIpsCleared++;
           sessionHadIps = true;
+        }
+        if (player.tokenExpiresAt > now) {
+          patch.tokenExpiresAt = now;
+        }
+        if (Object.keys(patch).length > 0) {
+          await ctx.db.patch(player._id, patch);
         }
       }
 

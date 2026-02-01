@@ -39,10 +39,13 @@ export type AuditAction =
   | "SESSION_ENDED"
   | "SESSION_DELETED"
   | "SESSION_EXPIRED"
-  // Player events
+  // Player/Token events
   | "PLAYER_CONNECTED"
   | "PLAYER_DISCONNECTED"
   | "PLAYER_ASSIGNED"
+  | "TOKEN_ACTIVATED"
+  | "TOKEN_VALIDATION_FAILED"
+  | "TOKEN_IP_BLOCKED"
   // Map events
   | "MAP_BANNED"
   | "MAPS_ASSIGNED"

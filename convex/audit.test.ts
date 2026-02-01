@@ -10,7 +10,7 @@
  */
 
 import { describe, it, expect, beforeAll } from "vitest";
-import { createTestContext } from "./test.setup";
+import { createTestContext, createAuthenticatedAdmin } from "./test.setup";
 import {
   adminFactory,
   sessionFactory,
@@ -286,10 +286,10 @@ describe("audit.logActionMutation", () => {
 describe("audit.getSessionAuditLog", () => {
   describe("empty state", () => {
     it("returns empty result for session with no logs", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
       const { sessionId } = await createSessionWithAdmin(t);
 
-      const result = await t.query(api.audit.getSessionAuditLog, {
+      const result = await authT.query(api.audit.getSessionAuditLog, {
         sessionId,
         paginationOpts: { numItems: 10, cursor: null },
       });
@@ -301,11 +301,11 @@ describe("audit.getSessionAuditLog", () => {
 
   describe("pagination", () => {
     it("returns correct page size", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
       const { sessionId } = await createSessionWithAdmin(t);
       await createLogsWithSequentialTimestamps(t, sessionId, 10);
 
-      const result = await t.query(api.audit.getSessionAuditLog, {
+      const result = await authT.query(api.audit.getSessionAuditLog, {
         sessionId,
         paginationOpts: { numItems: 3, cursor: null },
       });
@@ -314,11 +314,11 @@ describe("audit.getSessionAuditLog", () => {
     });
 
     it("continues from cursor correctly", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
       const { sessionId } = await createSessionWithAdmin(t);
       await createLogsWithSequentialTimestamps(t, sessionId, 5);
 
-      const page1 = await t.query(api.audit.getSessionAuditLog, {
+      const page1 = await authT.query(api.audit.getSessionAuditLog, {
         sessionId,
         paginationOpts: { numItems: 2, cursor: null },
       });
@@ -326,7 +326,7 @@ describe("audit.getSessionAuditLog", () => {
       expect(page1.page).toHaveLength(2);
       expect(page1.continueCursor).toBeDefined();
 
-      const page2 = await t.query(api.audit.getSessionAuditLog, {
+      const page2 = await authT.query(api.audit.getSessionAuditLog, {
         sessionId,
         paginationOpts: { numItems: 2, cursor: page1.continueCursor },
       });
@@ -335,11 +335,11 @@ describe("audit.getSessionAuditLog", () => {
     });
 
     it("sets isDone correctly for last page", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
       const { sessionId } = await createSessionWithAdmin(t);
       await createLogsWithSequentialTimestamps(t, sessionId, 3);
 
-      const result = await t.query(api.audit.getSessionAuditLog, {
+      const result = await authT.query(api.audit.getSessionAuditLog, {
         sessionId,
         paginationOpts: { numItems: 10, cursor: null },
       });
@@ -349,11 +349,11 @@ describe("audit.getSessionAuditLog", () => {
     });
 
     it("sets isDone: false when more pages available", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
       const { sessionId } = await createSessionWithAdmin(t);
       await createLogsWithSequentialTimestamps(t, sessionId, 10);
 
-      const result = await t.query(api.audit.getSessionAuditLog, {
+      const result = await authT.query(api.audit.getSessionAuditLog, {
         sessionId,
         paginationOpts: { numItems: 5, cursor: null },
       });
@@ -362,16 +362,16 @@ describe("audit.getSessionAuditLog", () => {
     });
 
     it("has no overlap between pages", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
       const { sessionId } = await createSessionWithAdmin(t);
       await createLogsWithSequentialTimestamps(t, sessionId, 6);
 
-      const page1 = await t.query(api.audit.getSessionAuditLog, {
+      const page1 = await authT.query(api.audit.getSessionAuditLog, {
         sessionId,
         paginationOpts: { numItems: 3, cursor: null },
       });
 
-      const page2 = await t.query(api.audit.getSessionAuditLog, {
+      const page2 = await authT.query(api.audit.getSessionAuditLog, {
         sessionId,
         paginationOpts: { numItems: 3, cursor: page1.continueCursor },
       });
@@ -387,11 +387,11 @@ describe("audit.getSessionAuditLog", () => {
 
   describe("ordering", () => {
     it("returns logs in descending timestamp order (newest first)", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
       const { sessionId } = await createSessionWithAdmin(t);
       await createLogsWithSequentialTimestamps(t, sessionId, 5);
 
-      const result = await t.query(api.audit.getSessionAuditLog, {
+      const result = await authT.query(api.audit.getSessionAuditLog, {
         sessionId,
         paginationOpts: { numItems: 10, cursor: null },
       });
@@ -405,16 +405,16 @@ describe("audit.getSessionAuditLog", () => {
     });
 
     it("maintains order across paginated results", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
       const { sessionId } = await createSessionWithAdmin(t);
       await createLogsWithSequentialTimestamps(t, sessionId, 6);
 
-      const page1 = await t.query(api.audit.getSessionAuditLog, {
+      const page1 = await authT.query(api.audit.getSessionAuditLog, {
         sessionId,
         paginationOpts: { numItems: 3, cursor: null },
       });
 
-      const page2 = await t.query(api.audit.getSessionAuditLog, {
+      const page2 = await authT.query(api.audit.getSessionAuditLog, {
         sessionId,
         paginationOpts: { numItems: 3, cursor: page1.continueCursor },
       });
@@ -433,7 +433,7 @@ describe("audit.getSessionAuditLog", () => {
 
   describe("session filtering", () => {
     it("only returns logs for specified session", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       // Create two sessions with logs
       const { sessionId: session1Id, adminId } = await createSessionWithAdmin(t);
@@ -457,7 +457,7 @@ describe("audit.getSessionAuditLog", () => {
         );
       });
 
-      const result = await t.query(api.audit.getSessionAuditLog, {
+      const result = await authT.query(api.audit.getSessionAuditLog, {
         sessionId: session1Id,
         paginationOpts: { numItems: 10, cursor: null },
       });
@@ -469,7 +469,7 @@ describe("audit.getSessionAuditLog", () => {
     });
 
     it("does not return logs from other sessions", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
       const { sessionId: session1Id, adminId } = await createSessionWithAdmin(t);
       const session2Id = await t.run(async (ctx) =>
         ctx.db.insert("sessions", sessionFactory(adminId, { matchName: "Session 2" }))
@@ -483,7 +483,7 @@ describe("audit.getSessionAuditLog", () => {
         );
       });
 
-      const result = await t.query(api.audit.getSessionAuditLog, {
+      const result = await authT.query(api.audit.getSessionAuditLog, {
         sessionId: session1Id,
         paginationOpts: { numItems: 10, cursor: null },
       });
@@ -500,7 +500,7 @@ describe("audit.getSessionAuditLog", () => {
 describe("audit.getRecentLogs", () => {
   describe("default behavior", () => {
     it("returns default of 50 logs when limit not specified", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
       const { sessionId } = await createSessionWithAdmin(t);
 
       // Create 60 logs
@@ -513,17 +513,17 @@ describe("audit.getRecentLogs", () => {
         }
       });
 
-      const result = await t.query(api.audit.getRecentLogs, { sessionId });
+      const result = await authT.query(api.audit.getRecentLogs, { sessionId });
 
       expect(result).toHaveLength(50);
     });
 
     it("returns logs in descending timestamp order", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
       const { sessionId } = await createSessionWithAdmin(t);
       await createLogsWithSequentialTimestamps(t, sessionId, 5);
 
-      const result = await t.query(api.audit.getRecentLogs, {
+      const result = await authT.query(api.audit.getRecentLogs, {
         sessionId,
         limit: 5,
       });
@@ -539,11 +539,11 @@ describe("audit.getRecentLogs", () => {
 
   describe("limit handling", () => {
     it("respects custom limit parameter", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
       const { sessionId } = await createSessionWithAdmin(t);
       await createLogsWithSequentialTimestamps(t, sessionId, 20);
 
-      const result = await t.query(api.audit.getRecentLogs, {
+      const result = await authT.query(api.audit.getRecentLogs, {
         sessionId,
         limit: 7,
       });
@@ -552,11 +552,11 @@ describe("audit.getRecentLogs", () => {
     });
 
     it("returns fewer logs if fewer exist than limit", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
       const { sessionId } = await createSessionWithAdmin(t);
       await createLogsWithSequentialTimestamps(t, sessionId, 3);
 
-      const result = await t.query(api.audit.getRecentLogs, {
+      const result = await authT.query(api.audit.getRecentLogs, {
         sessionId,
         limit: 10,
       });
@@ -570,9 +570,12 @@ describe("audit.getRecentLogs", () => {
     // (6 tests × 150 logs = 900 inserts → 150 inserts once)
     let sharedSessionId: Id<"sessions">;
     let sharedContext: ReturnType<typeof createTestContext>;
+    let sharedAuthContext: Awaited<ReturnType<typeof createAuthenticatedAdmin>>["authT"];
 
     beforeAll(async () => {
-      sharedContext = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
+      sharedContext = t;
+      sharedAuthContext = authT;
       const { sessionId } = await createSessionWithAdmin(sharedContext);
       sharedSessionId = sessionId;
 
@@ -595,7 +598,7 @@ describe("audit.getRecentLogs", () => {
       { input: 100, expected: 100, description: "accepts maximum boundary (100)" },
       { input: 200, expected: 100, description: "clamps over-limit to maximum of 100" },
     ])("$description (limit: $input)", async ({ input, expected }) => {
-      const result = await sharedContext.query(api.audit.getRecentLogs, {
+      const result = await sharedAuthContext.query(api.audit.getRecentLogs, {
         sessionId: sharedSessionId,
         limit: input,
       });
@@ -629,14 +632,14 @@ describe("audit.getRecentLogs", () => {
 describe("audit log edge cases", () => {
   describe("boundary conditions", () => {
     it("handles session with exactly one log", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
       const { sessionId } = await createSessionWithAdmin(t);
 
       await t.run(async (ctx) => {
         await ctx.db.insert("auditLogs", auditLogFactory(sessionId));
       });
 
-      const paginatedResult = await t.query(api.audit.getSessionAuditLog, {
+      const paginatedResult = await authT.query(api.audit.getSessionAuditLog, {
         sessionId,
         paginationOpts: { numItems: 10, cursor: null },
       });
@@ -644,7 +647,7 @@ describe("audit log edge cases", () => {
       expect(paginatedResult.page).toHaveLength(1);
       expect(paginatedResult.isDone).toBe(true);
 
-      const recentResult = await t.query(api.audit.getRecentLogs, {
+      const recentResult = await authT.query(api.audit.getRecentLogs, {
         sessionId,
         limit: 10,
       });
@@ -653,7 +656,7 @@ describe("audit log edge cases", () => {
     });
 
     it("handles logs with identical timestamps (deterministic order)", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
       const { sessionId } = await createSessionWithAdmin(t);
       const sameTimestamp = 1000000;
 
@@ -673,7 +676,7 @@ describe("audit log edge cases", () => {
         return ids;
       });
 
-      const result = await t.query(api.audit.getSessionAuditLog, {
+      const result = await authT.query(api.audit.getSessionAuditLog, {
         sessionId,
         paginationOpts: { numItems: 10, cursor: null },
       });

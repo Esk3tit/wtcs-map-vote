@@ -4,6 +4,7 @@ import { api } from "../../convex/_generated/api";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { TokenErrorPage } from "@/components/session/TokenErrorPage";
+import { usePlayerAuth } from "@/hooks/usePlayerAuth";
 import { Lock, Loader2, Clock } from "lucide-react";
 import { useEffect } from "react";
 
@@ -15,9 +16,16 @@ function PlayerLobbyPage() {
   const { token } = Route.useParams();
   const navigate = useNavigate();
 
-  const data = useQuery(api.sessions.getSessionByToken, { token });
+  // Step 1: Validate token and lock IP via HTTP action
+  const auth = usePlayerAuth(token);
 
-  // Auto-redirect based on session status
+  // Step 2: Subscribe to reactive session data (only after auth succeeds)
+  const data = useQuery(
+    api.sessions.getSessionByToken,
+    auth.status === "authenticated" ? { token } : "skip"
+  );
+
+  // Auto-redirect based on session status (hook must be before early returns)
   useEffect(() => {
     if (data?.status === "valid") {
       const { session } = data;
@@ -29,7 +37,21 @@ function PlayerLobbyPage() {
     }
   }, [data, navigate, token]);
 
-  // Loading state
+  // Auth loading
+  if (auth.status === "loading") {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  // Auth error
+  if (auth.status === "error") {
+    return <TokenErrorPage error={auth.error ?? "INVALID_TOKEN"} />;
+  }
+
+  // Loading state (waiting for reactive query after auth)
   if (data === undefined) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -38,7 +60,7 @@ function PlayerLobbyPage() {
     );
   }
 
-  // Error states
+  // Error states from reactive query
   if (data.status === "error") {
     return <TokenErrorPage error={data.error} />;
   }

@@ -7,6 +7,8 @@ export const MAX_URL_LENGTH = 2048;
 // Session lifecycle constants
 export const SESSION_EXPIRY_MS = 14 * 24 * 60 * 60 * 1000; // 2 weeks
 export const TOKEN_EXPIRY_MS = 24 * 60 * 60 * 1000; // 24 hours
+export const HEARTBEAT_INTERVAL_MS = 30 * 1000; // 30 seconds
+export const HEARTBEAT_TIMEOUT_MS = 2 * 60 * 1000; // 2 minutes (disconnect threshold)
 export const DEFAULT_TURN_TIMER_SECONDS = 30;
 export const DEFAULT_MAP_POOL_SIZE = 5;
 export const MIN_PLAYER_COUNT = 2;
