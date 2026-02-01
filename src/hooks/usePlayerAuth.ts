@@ -8,7 +8,7 @@ if (!CONVEX_URL || typeof CONVEX_URL !== "string" || !CONVEX_URL.includes(".clou
 }
 const SITE_URL = CONVEX_URL.replace(".cloud", ".site");
 
-// Must match HEARTBEAT_INTERVAL_MS in convex/lib/constants.ts
+// Heartbeat interval - must stay in sync with server-side expectations
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
 type AuthStatus = "loading" | "authenticated" | "error";

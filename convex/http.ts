@@ -4,10 +4,11 @@
  * HTTP router for auth callback routes, player token validation,
  * and heartbeat endpoints.
  */
-import { httpRouter } from "convex/server";
 import { httpAction } from "./_generated/server";
-
 import { internal } from "./_generated/api";
+
+import { httpRouter } from "convex/server";
+
 import { auth } from "./auth";
 
 const http = httpRouter();
