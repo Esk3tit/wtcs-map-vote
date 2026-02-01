@@ -14,21 +14,6 @@ import { ACTIVE_SESSION_STATUSES } from "./lib/constants";
 import { logAction } from "./audit";
 
 // ============================================================================
-// Token Validation Error Types
-// ============================================================================
-
-/**
- * Error codes returned by token validation.
- * These map to user-facing messages in TokenErrorPage.
- */
-export type TokenValidationError =
-  | "INVALID_TOKEN"
-  | "TOKEN_EXPIRED"
-  | "SESSION_NOT_FOUND"
-  | "SESSION_NOT_ACTIVE"
-  | "IP_MISMATCH";
-
-// ============================================================================
 // Internal Mutations
 // ============================================================================
 
@@ -110,7 +95,7 @@ export const validateAndLockToken = internalMutation({
           actorType: "SYSTEM",
           details: {
             teamName: player.teamName,
-            reason: `IP mismatch: expected ${player.ipAddress}, got ${ipAddress}`,
+            reason: `IP mismatch detected for player ${player.teamName}`,
           },
         });
 
@@ -137,7 +122,7 @@ export const validateAndLockToken = internalMutation({
         actorId: player._id,
         details: {
           teamName: player.teamName,
-          reason: `Token activated from IP ${ipAddress}`,
+          reason: `Token activated for player ${player.teamName}`,
         },
       });
     }
@@ -171,7 +156,8 @@ export const playerHeartbeat = internalMutation({
       error: v.union(
         v.literal("INVALID_TOKEN"),
         v.literal("TOKEN_EXPIRED"),
-        v.literal("IP_MISMATCH")
+        v.literal("IP_MISMATCH"),
+        v.literal("TOKEN_NOT_ACTIVATED")
       ),
     })
   ),
@@ -192,9 +178,24 @@ export const playerHeartbeat = internalMutation({
       return { status: "error" as const, error: "TOKEN_EXPIRED" as const };
     }
 
-    // Verify IP matches (token must have been activated first)
-    if (player.ipAddress && player.ipAddress !== ipAddress) {
+    // Require token to be activated first
+    if (!player.ipAddress) {
+      return { status: "error" as const, error: "TOKEN_NOT_ACTIVATED" as const };
+    }
+
+    // Verify IP matches
+    if (player.ipAddress !== ipAddress) {
       return { status: "error" as const, error: "IP_MISMATCH" as const };
+    }
+
+    // Skip write if heartbeat is still fresh (reduces reactive query churn)
+    const HEARTBEAT_SKIP_MS = 15_000;
+    if (
+      player.isConnected &&
+      player.lastHeartbeat &&
+      now - player.lastHeartbeat < HEARTBEAT_SKIP_MS
+    ) {
+      return { status: "ok" as const };
     }
 
     // Update heartbeat

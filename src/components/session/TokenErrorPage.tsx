@@ -1,8 +1,17 @@
 import { Card } from "@/components/ui/card";
 import { AlertTriangle } from "lucide-react";
 
-export function TokenErrorPage({ error }: { error: string }) {
-  const errorMessages: Record<string, { title: string; message: string }> = {
+export type TokenError =
+  | "INVALID_TOKEN"
+  | "TOKEN_EXPIRED"
+  | "SESSION_NOT_FOUND"
+  | "TOKEN_NOT_ACTIVATED"
+  | "IP_MISMATCH"
+  | "SESSION_NOT_ACTIVE"
+  | "NETWORK_ERROR";
+
+export function TokenErrorPage({ error }: { error: TokenError }) {
+  const errorMessages: Record<TokenError, { title: string; message: string }> = {
     INVALID_TOKEN: {
       title: "Invalid Access Code",
       message:

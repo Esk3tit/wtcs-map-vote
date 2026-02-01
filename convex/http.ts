@@ -33,23 +33,44 @@ function extractClientIp(req: Request): string {
   return req.headers.get("X-Real-Ip") ?? "unknown";
 }
 
+/**
+ * CORS origin for player API responses.
+ * TODO: Restrict to the app domain in production (Phase 2)
+ * by reading the origin inside each handler via `process.env.FRONTEND_URL`
+ * (available at runtime in Convex HTTP actions, but not at module scope for TS).
+ */
+const ALLOWED_ORIGIN = "*";
+
 /** Standard CORS headers for player API responses. */
 const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
   "Access-Control-Allow-Methods": "POST, OPTIONS",
   "Access-Control-Allow-Headers": "Content-Type",
 };
 
 /**
- * Validate a player token and lock it to the client's IP.
- * Called once on page load by the frontend.
+ * Create a POST handler for player endpoints that share the same structure:
+ * parse JSON body, validate token, call an internal mutation, return result.
+ *
+ * @param mutationRef - The internal mutation to invoke with { token, ipAddress }
  */
-http.route({
-  path: "/api/player/validate-token",
-  method: "POST",
-  handler: httpAction(async (ctx, req) => {
-    const body = await req.json();
-    const token = body?.token;
+function createPlayerHandler(
+  mutationRef: typeof internal.playerAuth.validateAndLockToken | typeof internal.playerAuth.playerHeartbeat
+) {
+  return httpAction(async (ctx, req) => {
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ status: "error", error: "INVALID_REQUEST" }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    const token = typeof body === "object" && body !== null && "token" in body
+      ? (body as { token: unknown }).token
+      : undefined;
 
     if (typeof token !== "string" || token.length === 0) {
       return new Response(
@@ -59,30 +80,36 @@ http.route({
     }
 
     const ipAddress = extractClientIp(req);
-
-    const result = await ctx.runMutation(
-      internal.playerAuth.validateAndLockToken,
-      { token, ipAddress }
-    );
-
+    const result = await ctx.runMutation(mutationRef, { token, ipAddress });
     const statusCode = result.status === "ok" ? 200 : 403;
 
     return new Response(JSON.stringify(result), {
       status: statusCode,
       headers: { "Content-Type": "application/json", ...corsHeaders },
     });
-  }),
+  });
+}
+
+/** Shared CORS preflight handler for player endpoints. */
+const corsPreflightHandler = httpAction(async () => {
+  return new Response(null, { status: 204, headers: corsHeaders });
 });
 
 /**
- * Handle CORS preflight for validate-token endpoint.
+ * Validate a player token and lock it to the client's IP.
+ * Called once on page load by the frontend.
  */
 http.route({
   path: "/api/player/validate-token",
+  method: "POST",
+  handler: createPlayerHandler(internal.playerAuth.validateAndLockToken),
+});
+
+/** Handle CORS preflight for validate-token endpoint. */
+http.route({
+  path: "/api/player/validate-token",
   method: "OPTIONS",
-  handler: httpAction(async () => {
-    return new Response(null, { status: 204, headers: corsHeaders });
-  }),
+  handler: corsPreflightHandler,
 });
 
 /**
@@ -92,42 +119,14 @@ http.route({
 http.route({
   path: "/api/player/heartbeat",
   method: "POST",
-  handler: httpAction(async (ctx, req) => {
-    const body = await req.json();
-    const token = body?.token;
-
-    if (typeof token !== "string" || token.length === 0) {
-      return new Response(
-        JSON.stringify({ status: "error", error: "INVALID_TOKEN" }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
-
-    const ipAddress = extractClientIp(req);
-
-    const result = await ctx.runMutation(
-      internal.playerAuth.playerHeartbeat,
-      { token, ipAddress }
-    );
-
-    const statusCode = result.status === "ok" ? 200 : 403;
-
-    return new Response(JSON.stringify(result), {
-      status: statusCode,
-      headers: { "Content-Type": "application/json", ...corsHeaders },
-    });
-  }),
+  handler: createPlayerHandler(internal.playerAuth.playerHeartbeat),
 });
 
-/**
- * Handle CORS preflight for heartbeat endpoint.
- */
+/** Handle CORS preflight for heartbeat endpoint. */
 http.route({
   path: "/api/player/heartbeat",
   method: "OPTIONS",
-  handler: httpAction(async () => {
-    return new Response(null, { status: 204, headers: corsHeaders });
-  }),
+  handler: corsPreflightHandler,
 });
 
 export default http;

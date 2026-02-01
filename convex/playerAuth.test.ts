@@ -433,7 +433,7 @@ describe("playerAuth.playerHeartbeat", () => {
   });
 
   describe("unactivated tokens", () => {
-    it("succeeds for unactivated token (no IP to compare)", async () => {
+    it("returns TOKEN_NOT_ACTIVATED for unactivated token", async () => {
       const t = createTestContext();
       const { token } = await createSessionWithUnactivatedPlayer(t);
 
@@ -442,8 +442,11 @@ describe("playerAuth.playerHeartbeat", () => {
         ipAddress: "10.0.0.1",
       });
 
-      // Heartbeat doesn't enforce activation - it just updates connection status
-      expect(result).toEqual({ status: "ok" });
+      // Heartbeat requires token to be activated first
+      expect(result).toEqual({
+        status: "error",
+        error: "TOKEN_NOT_ACTIVATED",
+      });
     });
   });
 });

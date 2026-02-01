@@ -44,16 +44,14 @@ export const clearSessionIpAddresses = internalMutation({
 
     // Clear IP addresses and invalidate tokens for players
     for (const player of players) {
-      const patch: Record<string, unknown> = {};
-      if (player.ipAddress) {
-        patch.ipAddress = undefined;
-        clearedCount++;
-      }
-      if (player.tokenExpiresAt > now) {
-        patch.tokenExpiresAt = now;
-      }
-      if (Object.keys(patch).length > 0) {
-        await ctx.db.patch(player._id, patch);
+      if (player.ipAddress || player.tokenExpiresAt > now) {
+        await ctx.db.patch(player._id, {
+          ipAddress: undefined,
+          tokenExpiresAt: Math.min(player.tokenExpiresAt, now),
+        });
+        if (player.ipAddress) {
+          clearedCount++;
+        }
       }
     }
 
@@ -117,16 +115,14 @@ export const expireStaleSessions = internalMutation({
         .collect();
 
       for (const player of players) {
-        const patch: Record<string, unknown> = {};
-        if (player.ipAddress) {
-          patch.ipAddress = undefined;
-          totalIpsCleared++;
-        }
-        if (player.tokenExpiresAt > now) {
-          patch.tokenExpiresAt = now;
-        }
-        if (Object.keys(patch).length > 0) {
-          await ctx.db.patch(player._id, patch);
+        if (player.ipAddress || player.tokenExpiresAt > now) {
+          await ctx.db.patch(player._id, {
+            ipAddress: undefined,
+            tokenExpiresAt: Math.min(player.tokenExpiresAt, now),
+          });
+          if (player.ipAddress) {
+            totalIpsCleared++;
+          }
         }
       }
 
@@ -187,19 +183,24 @@ export const clearCompletedSessionIps = internalMutation({
         .collect();
 
       const now = Date.now();
+
+      // Skip sessions where all players are already cleaned
+      const hasDataToClean = players.some(
+        (p) => p.ipAddress || p.tokenExpiresAt > now
+      );
+      if (!hasDataToClean) continue;
+
       let sessionHadIps = false;
       for (const player of players) {
-        const patch: Record<string, unknown> = {};
-        if (player.ipAddress) {
-          patch.ipAddress = undefined;
-          totalIpsCleared++;
-          sessionHadIps = true;
-        }
-        if (player.tokenExpiresAt > now) {
-          patch.tokenExpiresAt = now;
-        }
-        if (Object.keys(patch).length > 0) {
-          await ctx.db.patch(player._id, patch);
+        if (player.ipAddress || player.tokenExpiresAt > now) {
+          await ctx.db.patch(player._id, {
+            ipAddress: undefined,
+            tokenExpiresAt: Math.min(player.tokenExpiresAt, now),
+          });
+          if (player.ipAddress) {
+            totalIpsCleared++;
+            sessionHadIps = true;
+          }
         }
       }
 

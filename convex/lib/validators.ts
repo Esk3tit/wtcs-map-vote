@@ -55,7 +55,6 @@ export const auditActionValidator = v.union(
   v.literal("PLAYER_DISCONNECTED"),
   v.literal("PLAYER_ASSIGNED"),
   v.literal("TOKEN_ACTIVATED"),
-  v.literal("TOKEN_VALIDATION_FAILED"),
   v.literal("TOKEN_IP_BLOCKED"),
   // Map events
   v.literal("MAP_BANNED"),

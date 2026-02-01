@@ -44,7 +44,6 @@ export type AuditAction =
   | "PLAYER_DISCONNECTED"
   | "PLAYER_ASSIGNED"
   | "TOKEN_ACTIVATED"
-  | "TOKEN_VALIDATION_FAILED"
   | "TOKEN_IP_BLOCKED"
   // Map events
   | "MAP_BANNED"

@@ -62,6 +62,15 @@ function PlayerLobbyPage() {
 
   // Error states from reactive query
   if (data.status === "error") {
+    // TOKEN_NOT_ACTIVATED is a transient state while the token is being activated.
+    // Show a loading spinner instead of an error page.
+    if (data.error === "TOKEN_NOT_ACTIVATED") {
+      return (
+        <div className="min-h-screen flex items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+        </div>
+      );
+    }
     return <TokenErrorPage error={data.error} />;
   }
 
