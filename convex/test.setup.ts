@@ -39,22 +39,30 @@ export function createTestContext() {
 
 /**
  * Create an authenticated test context with identity.
+ * Inserts a users table record and sets the subject in "userId|sessionId"
+ * format matching what @convex-dev/auth generates (parsed by getAuthUserId).
  *
  * @param identity - Auth identity to attach to the test context
  */
-export function createAuthenticatedContext(identity: {
+export async function createAuthenticatedContext(identity: {
   name: string;
   email?: string;
   subject?: string;
   issuer?: string;
 }) {
   const t = convexTest(schema, modules);
+
+  // Insert auth user into users table (required for getAuthUserId lookup)
+  const authUserId = await t.run(async (ctx) =>
+    ctx.db.insert("users", {
+      email: identity.email,
+      name: identity.name,
+    })
+  );
+
   return t.withIdentity({
     name: identity.name,
-    email: identity.email,
-    subject:
-      identity.subject ??
-      `user_${identity.name.toLowerCase().replace(/\s/g, "_")}`,
+    subject: identity.subject ?? `${authUserId}|fake_session_id`,
     issuer: identity.issuer ?? "https://auth.example.com",
   });
 }
@@ -79,23 +87,29 @@ export const TEST_ADMIN_DATA = {
 
 /**
  * Creates an authenticated test context with a whitelisted admin.
- * Sets up the admin record in the database and returns an authenticated context.
+ * Sets up auth user + admin records in the database and returns an authenticated context.
+ * The identity subject matches the format used by @convex-dev/auth: "userId|sessionId".
  *
  * @returns Object containing authT (authenticated context) and adminId
  */
 export async function createAuthenticatedAdmin() {
   const t = createTestContext();
 
+  // Insert auth user into users table (required for getAuthUserId lookup)
+  const authUserId = await t.run(async (ctx) =>
+    ctx.db.insert("users", { email: TEST_ADMIN_DATA.email, name: TEST_ADMIN_DATA.name })
+  );
+
   // Insert admin into whitelist
   const adminId = await t.run(async (ctx) =>
     ctx.db.insert("admins", TEST_ADMIN_DATA)
   );
 
-  // Create authenticated context with matching email
+  // Create authenticated context with subject in "userId|sessionId" format
+  // matching what @convex-dev/auth generates (parsed by getAuthUserId)
   const authT = t.withIdentity({
     name: TEST_ADMIN_DATA.name,
-    email: TEST_ADMIN_DATA.email,
-    subject: `user_${TEST_ADMIN_DATA.email}`,
+    subject: `${authUserId}|fake_session_id`,
     issuer: "https://auth.example.com",
   });
 

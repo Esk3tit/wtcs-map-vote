@@ -10,7 +10,7 @@ import { internalMutation } from "./_generated/server";
 
 import { v } from "convex/values";
 
-import { ACTIVE_SESSION_STATUSES } from "./lib/constants";
+import { ACTIVE_SESSION_STATUSES, HEARTBEAT_SKIP_MS } from "./lib/constants";
 import { logAction } from "./audit";
 
 // ============================================================================
@@ -189,7 +189,6 @@ export const playerHeartbeat = internalMutation({
     }
 
     // Skip write if heartbeat is still fresh (reduces reactive query churn)
-    const HEARTBEAT_SKIP_MS = 15_000;
     if (
       player.isConnected &&
       player.lastHeartbeat &&

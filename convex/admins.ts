@@ -22,6 +22,12 @@ import { logAdminAction } from "./lib/adminAudit";
 // Private Helpers
 // ============================================================================
 
+/** Strip _creationTime from an admin document to match return validators. */
+function toAdminResponse(admin: Doc<"admins">) {
+  const { _creationTime, ...rest } = admin;
+  return rest;
+}
+
 /**
  * Get an admin by ID or throw ConvexError if not found.
  *
@@ -112,7 +118,8 @@ export const getMe = query({
     v.null()
   ),
   handler: async (ctx) => {
-    return await getCurrentAdmin(ctx);
+    const admin = await getCurrentAdmin(ctx);
+    return admin ? toAdminResponse(admin) : null;
   },
 });
 
@@ -146,7 +153,8 @@ export const listAdmins = query({
   ),
   handler: async (ctx) => {
     await requireAdmin(ctx);
-    return await ctx.db.query("admins").collect();
+    const admins = await ctx.db.query("admins").collect();
+    return admins.map(toAdminResponse);
   },
 });
 
@@ -170,7 +178,8 @@ export const getAdmin = query({
   ),
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
-    return await ctx.db.get(args.adminId);
+    const admin = await ctx.db.get(args.adminId);
+    return admin ? toAdminResponse(admin) : null;
   },
 });
 
@@ -195,10 +204,11 @@ export const getAdminByEmail = query({
   handler: async (ctx, args) => {
     await requireAdmin(ctx);
     const normalized = normalizeEmail(args.email);
-    return await ctx.db
+    const admin = await ctx.db
       .query("admins")
       .withIndex("by_email", (q) => q.eq("email", normalized))
       .first();
+    return admin ? toAdminResponse(admin) : null;
   },
 });
 

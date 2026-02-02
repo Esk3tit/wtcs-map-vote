@@ -15,19 +15,25 @@ import { api } from "./_generated/api";
 
 /**
  * Creates an authenticated context with admin in whitelist.
+ * Sets up auth user + admin records and uses "userId|sessionId" subject format.
  */
 async function createWhitelistedAdmin(
   t: ReturnType<typeof createTestContext>,
   overrides: Partial<Parameters<typeof adminFactory>[0]> = {}
 ) {
   const adminData = adminFactory(overrides);
+
+  // Insert auth user into users table (required for getAuthUserId lookup)
+  const authUserId = await t.run(async (ctx) =>
+    ctx.db.insert("users", { email: adminData.email, name: adminData.name })
+  );
+
   const adminId = await t.run(async (ctx) =>
     ctx.db.insert("admins", adminData)
   );
   const authT = t.withIdentity({
     name: adminData.name,
-    email: adminData.email,
-    subject: `user_${adminData.email}`,
+    subject: `${authUserId}|fake_session_id`,
     issuer: "https://auth.example.com",
   });
   return { adminId, adminData, authT };
@@ -67,7 +73,7 @@ describe("admins.getMe", () => {
     });
 
     it("returns null when authenticated but not whitelisted", async () => {
-      const authT = createAuthenticatedContext({
+      const authT = await createAuthenticatedContext({
         name: "Unknown User",
         email: "unknown@test.com",
       });
@@ -94,7 +100,7 @@ describe("admins.listAdmins", () => {
     });
 
     it("throws when authenticated but not whitelisted", async () => {
-      const authT = createAuthenticatedContext({
+      const authT = await createAuthenticatedContext({
         name: "Unknown User",
         email: "unknown@test.com",
       });
@@ -152,7 +158,7 @@ describe("admins.getAdmin", () => {
       const adminId = await t.run(async (ctx) =>
         ctx.db.insert("admins", adminFactory({ email: "target@test.com" }))
       );
-      const authT = createAuthenticatedContext({
+      const authT = await createAuthenticatedContext({
         name: "Unknown User",
         email: "unknown@test.com",
       });
@@ -234,7 +240,7 @@ describe("admins.getAdminByEmail", () => {
     });
 
     it("throws when authenticated but not whitelisted", async () => {
-      const authT = createAuthenticatedContext({
+      const authT = await createAuthenticatedContext({
         name: "Unknown User",
         email: "unknown@test.com",
       });

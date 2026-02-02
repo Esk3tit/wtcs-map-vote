@@ -16,6 +16,9 @@ export const MAX_TURN_TIMER_SECONDS = 300;
 export const MIN_MAP_POOL_SIZE = 3;
 export const MAX_MAP_POOL_SIZE = 15;
 
+// Player heartbeat constants
+export const HEARTBEAT_SKIP_MS = 15_000; // Skip DB write if heartbeat is still fresh
+
 // Type-safe active session statuses (validated against schema)
 export type SessionStatus = Doc<"sessions">["status"];
 export const ACTIVE_SESSION_STATUSES: Set<SessionStatus> = new Set([

@@ -7,6 +7,7 @@
 import type { QueryCtx, MutationCtx } from "../_generated/server";
 import { ConvexError } from "convex/values";
 import type { Doc } from "../_generated/dataModel";
+import { getAuthUserId } from "@convex-dev/auth/server";
 
 // ============================================================================
 // Authentication Helpers
@@ -14,15 +15,20 @@ import type { Doc } from "../_generated/dataModel";
 
 /**
  * Get the current admin from auth identity.
+ * Uses getAuthUserId to extract userId from the JWT subject claim,
+ * then looks up the user's email to find the matching admin.
  * Returns null if not authenticated or admin not found in whitelist.
  */
 export async function getCurrentAdmin(
   ctx: QueryCtx | MutationCtx
 ): Promise<Doc<"admins"> | null> {
-  const identity = await ctx.auth.getUserIdentity();
-  if (!identity?.email) return null;
+  const userId = await getAuthUserId(ctx);
+  if (!userId) return null;
 
-  const normalizedEmail = normalizeEmail(identity.email);
+  const user = await ctx.db.get(userId);
+  if (!user?.email) return null;
+
+  const normalizedEmail = normalizeEmail(user.email);
   return await ctx.db
     .query("admins")
     .withIndex("by_email", (q) => q.eq("email", normalizedEmail))

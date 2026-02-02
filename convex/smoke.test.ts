@@ -66,7 +66,7 @@ describe("convex-test setup", () => {
   });
 
   it("can create authenticated context", async () => {
-    const asAdmin = createAuthenticatedContext({
+    const asAdmin = await createAuthenticatedContext({
       name: "Test Admin",
       email: "admin@test.com",
     });

@@ -82,6 +82,7 @@ function createPlayerHandler(
 
     const ipAddress = extractClientIp(req);
     const result = await ctx.runMutation(mutationRef, { token, ipAddress });
+    // Use 403 for all auth failures to avoid leaking token/session existence
     const statusCode = result.status === "ok" ? 200 : 403;
 
     return new Response(JSON.stringify(result), {

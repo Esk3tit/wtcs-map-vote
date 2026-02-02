@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
-import { createFileRoute, useSearch } from '@tanstack/react-router'
+import { createFileRoute, useSearch, useNavigate } from '@tanstack/react-router'
 import { useAuthActions } from '@convex-dev/auth/react'
+import { useConvexAuth } from '@/lib/convex'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Loader2, AlertCircle } from 'lucide-react'
@@ -36,9 +37,18 @@ function GoogleIcon() {
 }
 
 function LoginPage() {
-  const { signIn } = useAuthActions()
+  const { signIn, signOut } = useAuthActions()
+  const { isAuthenticated, isLoading: authLoading } = useConvexAuth()
   const { error } = useSearch({ from: '/login' })
+  const navigate = useNavigate()
   const [isLoading, setIsLoading] = useState(false)
+
+  // Redirect authenticated users to dashboard
+  useEffect(() => {
+    if (!authLoading && isAuthenticated) {
+      void navigate({ to: '/admin/dashboard', replace: true })
+    }
+  }, [isAuthenticated, authLoading, navigate])
 
   // Reset loading state when window regains focus (handles OAuth popup cancel)
   useEffect(() => {
@@ -58,8 +68,14 @@ function LoginPage() {
   const handleGoogleSignIn = async () => {
     setIsLoading(true)
     try {
+      // Flag that OAuth is in progress so the index route shows a spinner
+      // instead of redirecting to /login during the code exchange
+      sessionStorage.setItem('oauthInProgress', 'true')
+      // Clear stale tokens before OAuth to prevent refresh race condition
+      await signOut()
       await signIn("google")
     } catch (error) {
+      sessionStorage.removeItem('oauthInProgress')
       console.error("Sign in failed:", error)
       setIsLoading(false)
     }
