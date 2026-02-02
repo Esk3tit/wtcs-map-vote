@@ -11,6 +11,7 @@ import { internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
 import { ACTIVE_SESSION_STATUSES, HEARTBEAT_SKIP_MS } from "./lib/constants";
+
 import { logAction } from "./audit";
 
 // ============================================================================
@@ -44,6 +45,7 @@ export const validateAndLockToken = internalMutation({
       status: v.literal("error"),
       error: v.union(
         v.literal("INVALID_TOKEN"),
+        v.literal("INVALID_IP"),
         v.literal("TOKEN_EXPIRED"),
         v.literal("SESSION_NOT_FOUND"),
         v.literal("SESSION_NOT_ACTIVE"),
@@ -52,8 +54,14 @@ export const validateAndLockToken = internalMutation({
     })
   ),
   handler: async (ctx, args) => {
-    const { token, ipAddress } = args;
+    const { token } = args;
+    const ipAddress = args.ipAddress.trim();
     const now = Date.now();
+
+    // Reject empty or whitespace-only IP addresses
+    if (!ipAddress) {
+      return { status: "error" as const, error: "INVALID_IP" as const };
+    }
 
     // Look up player by token
     const player = await ctx.db
@@ -155,6 +163,7 @@ export const playerHeartbeat = internalMutation({
       status: v.literal("error"),
       error: v.union(
         v.literal("INVALID_TOKEN"),
+        v.literal("INVALID_IP"),
         v.literal("TOKEN_EXPIRED"),
         v.literal("IP_MISMATCH"),
         v.literal("TOKEN_NOT_ACTIVATED")
@@ -162,8 +171,14 @@ export const playerHeartbeat = internalMutation({
     })
   ),
   handler: async (ctx, args) => {
-    const { token, ipAddress } = args;
+    const { token } = args;
+    const ipAddress = args.ipAddress.trim();
     const now = Date.now();
+
+    // Reject empty or whitespace-only IP addresses
+    if (!ipAddress) {
+      return { status: "error" as const, error: "INVALID_IP" as const };
+    }
 
     const player = await ctx.db
       .query("sessionPlayers")

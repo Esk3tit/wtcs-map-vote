@@ -8,7 +8,10 @@ if (!CONVEX_URL || typeof CONVEX_URL !== "string" || !CONVEX_URL.includes(".clou
 }
 const SITE_URL = CONVEX_URL.replace(".cloud", ".site");
 
-// Heartbeat interval - must stay in sync with server-side expectations
+// Heartbeat interval in milliseconds.
+// SYNC: Must be greater than HEARTBEAT_SKIP_MS (convex/lib/constants.ts, currently 15s)
+// to avoid every heartbeat being skipped by the server's freshness check.
+// If the server adds a staleness timeout, this interval must be shorter than that threshold.
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
 type AuthStatus = "loading" | "authenticated" | "error";
