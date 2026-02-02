@@ -197,6 +197,8 @@ export const listSessions = query({
     status: v.optional(sessionStatusValidator),
   },
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
     // Single status filter: use index for efficient query
     if (args.status) {
       return await ctx.db
@@ -226,6 +228,8 @@ export const getSession = query({
   },
   returns: v.union(sessionWithRelationsValidator, v.null()),
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
     const session = await ctx.db.get(args.sessionId);
     if (!session) return null;
 
@@ -265,6 +269,8 @@ export const listSessionsForDashboard = query({
     status: v.optional(sessionStatusValidator),
   },
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
     const { status } = args;
     const sessionsQuery = status
       ? ctx.db
@@ -1048,7 +1054,8 @@ export const getSessionByToken = query({
       error: v.union(
         v.literal("INVALID_TOKEN"),
         v.literal("TOKEN_EXPIRED"),
-        v.literal("SESSION_NOT_FOUND")
+        v.literal("SESSION_NOT_FOUND"),
+        v.literal("TOKEN_NOT_ACTIVATED")
       ),
     })
   ),
@@ -1072,6 +1079,14 @@ export const getSessionByToken = query({
     const session = await ctx.db.get(player.sessionId);
     if (!session) {
       return { status: "error" as const, error: "SESSION_NOT_FOUND" as const };
+    }
+
+    // Check that token has been activated via HTTP action (IP locked)
+    if (!player.ipAddress) {
+      return {
+        status: "error" as const,
+        error: "TOKEN_NOT_ACTIVATED" as const,
+      };
     }
 
     // Get all players and maps in parallel

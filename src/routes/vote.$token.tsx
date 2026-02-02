@@ -15,6 +15,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { TokenErrorPage } from "@/components/session/TokenErrorPage";
+import { usePlayerAuth } from "@/hooks/usePlayerAuth";
 import { Check, Lock, X, Loader2 } from "lucide-react";
 import type { Id } from "../../convex/_generated/dataModel";
 
@@ -73,14 +74,21 @@ function PlayerVotingPage() {
   const { token } = Route.useParams();
   const navigate = useNavigate();
 
-  const data = useQuery(api.sessions.getSessionByToken, { token });
+  // Step 1: Validate token and lock IP via HTTP action
+  const auth = usePlayerAuth(token);
+
+  // Step 2: Subscribe to reactive session data (only after auth succeeds)
+  const data = useQuery(
+    api.sessions.getSessionByToken,
+    auth.status === "authenticated" ? { token } : "skip"
+  );
 
   const [confirmBanMap, setConfirmBanMap] = useState<{
     _id: Id<"sessionMaps">;
     name: string;
   } | null>(null);
 
-  // Auto-redirect to results when session completes
+  // Auto-redirect to results when session completes (hook before early returns)
   useEffect(() => {
     if (data?.status === "valid") {
       const { session } = data;
@@ -95,7 +103,21 @@ function PlayerVotingPage() {
     }
   }, [data, navigate, token]);
 
-  // Loading state
+  // Auth loading
+  if (auth.status === "loading") {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  // Auth error
+  if (auth.status === "error") {
+    return <TokenErrorPage error={auth.error ?? "INVALID_TOKEN"} />;
+  }
+
+  // Loading state (waiting for reactive query after auth)
   if (data === undefined) {
     return (
       <div className="min-h-screen flex items-center justify-center">
@@ -104,8 +126,17 @@ function PlayerVotingPage() {
     );
   }
 
-  // Error states
+  // Error states from reactive query
   if (data.status === "error") {
+    // TOKEN_NOT_ACTIVATED is a transient state while the token is being activated.
+    // Show a loading spinner instead of an error page.
+    if (data.error === "TOKEN_NOT_ACTIVATED") {
+      return (
+        <div className="min-h-screen flex items-center justify-center">
+          <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+        </div>
+      );
+    }
     return <TokenErrorPage error={data.error} />;
   }
 

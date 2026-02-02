@@ -1,8 +1,17 @@
 import { Card } from "@/components/ui/card";
 import { AlertTriangle } from "lucide-react";
 
-export function TokenErrorPage({ error }: { error: string }) {
-  const errorMessages: Record<string, { title: string; message: string }> = {
+export type TokenError =
+  | "INVALID_TOKEN"
+  | "TOKEN_EXPIRED"
+  | "SESSION_NOT_FOUND"
+  | "TOKEN_NOT_ACTIVATED"
+  | "IP_MISMATCH"
+  | "SESSION_NOT_ACTIVE"
+  | "NETWORK_ERROR";
+
+export function TokenErrorPage({ error }: { error: TokenError }) {
+  const errorMessages: Record<TokenError, { title: string; message: string }> = {
     INVALID_TOKEN: {
       title: "Invalid Access Code",
       message:
@@ -17,6 +26,26 @@ export function TokenErrorPage({ error }: { error: string }) {
       title: "Session Not Found",
       message:
         "The voting session could not be found. It may have been deleted.",
+    },
+    TOKEN_NOT_ACTIVATED: {
+      title: "Connecting...",
+      message:
+        "Your session is being verified. If this persists, please refresh the page.",
+    },
+    IP_MISMATCH: {
+      title: "Session Locked to Another Device",
+      message:
+        "This session is locked to a different device. Each access link can only be used from one device.",
+    },
+    SESSION_NOT_ACTIVE: {
+      title: "Session Not Active",
+      message:
+        "This voting session is no longer active. It may have been completed or expired.",
+    },
+    NETWORK_ERROR: {
+      title: "Connection Error",
+      message:
+        "Unable to connect to the server. Please check your internet connection and try again.",
     },
   };
 

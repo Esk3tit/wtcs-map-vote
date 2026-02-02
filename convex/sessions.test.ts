@@ -559,9 +559,9 @@ describe("sessions.createSession", () => {
 describe("sessions.listSessions", () => {
   describe("empty state", () => {
     it("returns empty page when no sessions exist", async () => {
-      const t = createTestContext();
+      const { authT } = await createAuthenticatedAdmin();
 
-      const result = await t.query(api.sessions.listSessions, {
+      const result = await authT.query(api.sessions.listSessions, {
         paginationOpts: { numItems: 10, cursor: null },
       });
 
@@ -572,7 +572,7 @@ describe("sessions.listSessions", () => {
 
   describe("pagination", () => {
     it("returns correct page size", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       await t.run(async (ctx) => {
         const adminId = await ctx.db.insert("admins", adminFactory());
@@ -584,7 +584,7 @@ describe("sessions.listSessions", () => {
         }
       });
 
-      const result = await t.query(api.sessions.listSessions, {
+      const result = await authT.query(api.sessions.listSessions, {
         paginationOpts: { numItems: 2, cursor: null },
       });
 
@@ -593,7 +593,7 @@ describe("sessions.listSessions", () => {
     });
 
     it("continues from cursor", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       await t.run(async (ctx) => {
         const adminId = await ctx.db.insert("admins", adminFactory());
@@ -605,14 +605,14 @@ describe("sessions.listSessions", () => {
         }
       });
 
-      const page1 = await t.query(api.sessions.listSessions, {
+      const page1 = await authT.query(api.sessions.listSessions, {
         paginationOpts: { numItems: 2, cursor: null },
       });
 
       expect(page1.page.length).toBeGreaterThan(0);
       expect(page1.continueCursor).toBeDefined();
 
-      const page2 = await t.query(api.sessions.listSessions, {
+      const page2 = await authT.query(api.sessions.listSessions, {
         paginationOpts: { numItems: 2, cursor: page1.continueCursor },
       });
 
@@ -623,7 +623,7 @@ describe("sessions.listSessions", () => {
     });
 
     it("returns sessions in descending order by creation time", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       // Create sessions in a single transaction - Convex assigns sequential _creationTime
       await t.run(async (ctx) => {
@@ -638,7 +638,7 @@ describe("sessions.listSessions", () => {
         );
       });
 
-      const result = await t.query(api.sessions.listSessions, {
+      const result = await authT.query(api.sessions.listSessions, {
         paginationOpts: { numItems: 10, cursor: null },
       });
 
@@ -650,7 +650,7 @@ describe("sessions.listSessions", () => {
 
   describe("status filtering", () => {
     it("filters by DRAFT status", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       await t.run(async (ctx) => {
         const adminId = await ctx.db.insert("admins", adminFactory());
@@ -674,7 +674,7 @@ describe("sessions.listSessions", () => {
         );
       });
 
-      const result = await t.query(api.sessions.listSessions, {
+      const result = await authT.query(api.sessions.listSessions, {
         paginationOpts: { numItems: 10, cursor: null },
         status: "DRAFT",
       });
@@ -684,7 +684,7 @@ describe("sessions.listSessions", () => {
     });
 
     it("returns all sessions when no status filter provided", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       await t.run(async (ctx) => {
         const adminId = await ctx.db.insert("admins", adminFactory());
@@ -702,7 +702,7 @@ describe("sessions.listSessions", () => {
         );
       });
 
-      const result = await t.query(api.sessions.listSessions, {
+      const result = await authT.query(api.sessions.listSessions, {
         paginationOpts: { numItems: 10, cursor: null },
       });
 
@@ -710,7 +710,7 @@ describe("sessions.listSessions", () => {
     });
 
     it("filters by all status values correctly", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
       const statuses = [
         "DRAFT",
         "WAITING",
@@ -733,7 +733,7 @@ describe("sessions.listSessions", () => {
 
       // Test filtering for each status
       for (const status of statuses) {
-        const result = await t.query(api.sessions.listSessions, {
+        const result = await authT.query(api.sessions.listSessions, {
           paginationOpts: { numItems: 10, cursor: null },
           status,
         });
@@ -752,9 +752,9 @@ describe("sessions.listSessions", () => {
 describe("sessions.listSessionsForDashboard", () => {
   describe("empty state", () => {
     it("returns empty page when no sessions exist", async () => {
-      const t = createTestContext();
+      const { authT } = await createAuthenticatedAdmin();
 
-      const result = await t.query(api.sessions.listSessionsForDashboard, {
+      const result = await authT.query(api.sessions.listSessionsForDashboard, {
         paginationOpts: { numItems: 10, cursor: null },
       });
 
@@ -765,7 +765,7 @@ describe("sessions.listSessionsForDashboard", () => {
 
   describe("enrichment", () => {
     it("includes assignedPlayerCount and teams for each session", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       const { sessionId } = await createSessionInStatus(t, "WAITING");
 
@@ -787,7 +787,7 @@ describe("sessions.listSessionsForDashboard", () => {
         );
       });
 
-      const result = await t.query(api.sessions.listSessionsForDashboard, {
+      const result = await authT.query(api.sessions.listSessionsForDashboard, {
         paginationOpts: { numItems: 10, cursor: null },
       });
 
@@ -800,7 +800,7 @@ describe("sessions.listSessionsForDashboard", () => {
     });
 
     it("returns unique team names (no duplicates)", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       const { sessionId } = await createSessionInStatus(t, "WAITING");
 
@@ -822,7 +822,7 @@ describe("sessions.listSessionsForDashboard", () => {
         );
       });
 
-      const result = await t.query(api.sessions.listSessionsForDashboard, {
+      const result = await authT.query(api.sessions.listSessionsForDashboard, {
         paginationOpts: { numItems: 10, cursor: null },
       });
 
@@ -832,11 +832,11 @@ describe("sessions.listSessionsForDashboard", () => {
     });
 
     it("returns empty teams and zero count when no players assigned", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       await createSessionInStatus(t, "DRAFT");
 
-      const result = await t.query(api.sessions.listSessionsForDashboard, {
+      const result = await authT.query(api.sessions.listSessionsForDashboard, {
         paginationOpts: { numItems: 10, cursor: null },
       });
 
@@ -847,7 +847,7 @@ describe("sessions.listSessionsForDashboard", () => {
 
   describe("status filtering", () => {
     it("filters by single status using index", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       const adminId = await createAdmin(t);
       await t.run(async (ctx) => {
@@ -856,7 +856,7 @@ describe("sessions.listSessionsForDashboard", () => {
         await ctx.db.insert("sessions", sessionFactory(adminId, { status: "COMPLETE" }));
       });
 
-      const result = await t.query(api.sessions.listSessionsForDashboard, {
+      const result = await authT.query(api.sessions.listSessionsForDashboard, {
         paginationOpts: { numItems: 10, cursor: null },
         status: "COMPLETE",
       });
@@ -866,7 +866,7 @@ describe("sessions.listSessionsForDashboard", () => {
     });
 
     it("returns only active sessions when no status filter provided", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       const adminId = await createAdmin(t);
       await t.run(async (ctx) => {
@@ -876,7 +876,7 @@ describe("sessions.listSessionsForDashboard", () => {
         await ctx.db.insert("sessions", sessionFactory(adminId, { status: "EXPIRED" }));
       });
 
-      const result = await t.query(api.sessions.listSessionsForDashboard, {
+      const result = await authT.query(api.sessions.listSessionsForDashboard, {
         paginationOpts: { numItems: 10, cursor: null },
       });
 
@@ -889,7 +889,7 @@ describe("sessions.listSessionsForDashboard", () => {
 
   describe("pagination", () => {
     it("respects numItems limit", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       const adminId = await createAdmin(t);
       await t.run(async (ctx) => {
@@ -901,7 +901,7 @@ describe("sessions.listSessionsForDashboard", () => {
         }
       });
 
-      const result = await t.query(api.sessions.listSessionsForDashboard, {
+      const result = await authT.query(api.sessions.listSessionsForDashboard, {
         paginationOpts: { numItems: 2, cursor: null },
       });
 
@@ -910,7 +910,7 @@ describe("sessions.listSessionsForDashboard", () => {
     });
 
     it("returns next page with continueCursor", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       const adminId = await createAdmin(t);
       await t.run(async (ctx) => {
@@ -922,14 +922,14 @@ describe("sessions.listSessionsForDashboard", () => {
         }
       });
 
-      const firstPage = await t.query(api.sessions.listSessionsForDashboard, {
+      const firstPage = await authT.query(api.sessions.listSessionsForDashboard, {
         paginationOpts: { numItems: 2, cursor: null },
       });
 
       expect(firstPage.page).toHaveLength(2);
       expect(firstPage.isDone).toBe(false);
 
-      const secondPage = await t.query(api.sessions.listSessionsForDashboard, {
+      const secondPage = await authT.query(api.sessions.listSessionsForDashboard, {
         paginationOpts: { numItems: 2, cursor: firstPage.continueCursor },
       });
 
@@ -943,7 +943,7 @@ describe("sessions.listSessionsForDashboard", () => {
     });
 
     it("enriches all pages with player data", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       const adminId = await createAdmin(t);
       const sessionIds = await t.run(async (ctx) => {
@@ -964,7 +964,7 @@ describe("sessions.listSessionsForDashboard", () => {
       });
 
       // Fetch all in one page
-      const result = await t.query(api.sessions.listSessionsForDashboard, {
+      const result = await authT.query(api.sessions.listSessionsForDashboard, {
         paginationOpts: { numItems: 10, cursor: null },
       });
 
@@ -991,10 +991,10 @@ describe("sessions.listSessionsForDashboard", () => {
 describe("sessions.getSession", () => {
   describe("success cases", () => {
     it("returns session with players and maps", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
       const { sessionId } = await createFullSession(t);
 
-      const session = await t.query(api.sessions.getSession, { sessionId });
+      const session = await authT.query(api.sessions.getSession, { sessionId });
 
       expect(session).not.toBeNull();
       expect(session?.matchName).toBe("Test Match");
@@ -1003,10 +1003,10 @@ describe("sessions.getSession", () => {
     });
 
     it("returns session without players or maps (empty relations)", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
       const { sessionId } = await createSessionInStatus(t, "DRAFT");
 
-      const session = await t.query(api.sessions.getSession, { sessionId });
+      const session = await authT.query(api.sessions.getSession, { sessionId });
 
       expect(session).not.toBeNull();
       expect(session?.players).toEqual([]);
@@ -1014,10 +1014,10 @@ describe("sessions.getSession", () => {
     });
 
     it("includes player details in response", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
       const { sessionId } = await createFullSession(t);
 
-      const session = await t.query(api.sessions.getSession, { sessionId });
+      const session = await authT.query(api.sessions.getSession, { sessionId });
 
       expect(session?.players[0]).toMatchObject({
         role: expect.any(String),
@@ -1028,10 +1028,10 @@ describe("sessions.getSession", () => {
     });
 
     it("includes map details in response", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
       const { sessionId } = await createFullSession(t);
 
-      const session = await t.query(api.sessions.getSession, { sessionId });
+      const session = await authT.query(api.sessions.getSession, { sessionId });
 
       expect(session?.maps[0]).toMatchObject({
         name: expect.any(String),
@@ -1043,10 +1043,10 @@ describe("sessions.getSession", () => {
 
   describe("not found", () => {
     it("returns null for non-existent session", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
       const deletedSessionId = await createDeletedSessionId(t);
 
-      const session = await t.query(api.sessions.getSession, {
+      const session = await authT.query(api.sessions.getSession, {
         sessionId: deletedSessionId,
       });
 

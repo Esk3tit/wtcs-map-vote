@@ -146,7 +146,7 @@ export const sessionPlayerFactory = (
     teamName: overrides.teamName ?? "Test Team",
     token: overrides.token ?? crypto.randomUUID(),
     tokenExpiresAt: overrides.tokenExpiresAt ?? now + ONE_DAY_MS,
-    ipAddress: overrides.ipAddress,
+    ipAddress: "ipAddress" in overrides ? overrides.ipAddress : "127.0.0.1",
     isConnected: overrides.isConnected ?? false,
     lastHeartbeat: overrides.lastHeartbeat,
     hasVotedThisRound: overrides.hasVotedThisRound ?? false,
