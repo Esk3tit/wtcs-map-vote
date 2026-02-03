@@ -10,6 +10,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+#### Phase 3: Authentication - Player Token Auth & OAuth Fixes (WAR-26, PR #45)
+- **Server-side player token validation** via HTTP actions (`POST /api/player/validate-token`, `POST /api/player/heartbeat`)
+- **IP locking** on first token use — prevents link sharing between devices
+- **`usePlayerAuth` hook** (`src/hooks/usePlayerAuth.ts`) — HTTP-based token validation with heartbeat, AbortController cleanup, visibility-state awareness
+- **Security hardening**: `requireAdmin` on 5 unauthenticated admin queries (sessions + audit), `Referrer-Policy: same-origin` header, token invalidation on session cleanup
+- **Audit logging**: `TOKEN_ACTIVATED`, `TOKEN_IP_BLOCKED` events
+- **22 new unit tests** for `playerAuth` module; 431 total tests passing
+- **Solution documentation**: `docs/solutions/integration-issues/convex-auth-oauth-login-failures.md`
+
 #### Phase 3: Authentication - Admin Whitelist System (WAR-25)
 - **Admin whitelist table** (`admins`) with email-based access control
 - **`by_isRootAdmin` index** for efficient role-based queries
@@ -27,6 +36,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
   - `convex-patterns/boolean-index-for-role-queries.md`
   - `test-failures/convex-test-auth-whitelist-pattern.md`
   - `integration-issues/github-graphql-api-queries-with-gh-cli.md`
+
+### Fixed
+
+#### OAuth Login Failures (WAR-26, PR #45)
+- **`getCurrentAdmin()` JWT fix** — was reading `identity.email` from JWT which `@convex-dev/auth` doesn't include; now uses `getAuthUserId()` to look up email from `users` table
+- **Return validator mismatch** — admin queries returned `_creationTime` not in validators; added `toAdminResponse()` helper to strip system fields
+- **OAuth callback race condition** — `beforeLoad` redirect stripped `?code=` before ConvexAuthProvider could process it (worked ~1 in 8 attempts); replaced with component-level redirect and `sessionStorage` flag
+- **Stale refresh tokens** — `signOut()` before `signIn()` in OAuth flow to clear stale tokens
+- **Test setup for `getAuthUserId`** — identity subject now uses `userId|sessionId` format with `users` table record
 
 ### Changed
 - **convex/auth.ts** - Uses `extractProfileString()` helper for type-safe profile field access

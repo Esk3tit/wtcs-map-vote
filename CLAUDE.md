@@ -57,6 +57,8 @@ WTCS Map Vote - A React application for map voting functionality.
     │   ├── lobby.$token.tsx    # Player waiting room
     │   ├── vote.$token.tsx     # Player voting interface
     │   └── results.$sessionId.tsx  # Session results page
+    ├── hooks/
+    │   └── usePlayerAuth.ts  # Player token validation hook (HTTP-based)
     ├── lib/
     │   └── utils.ts      # Utility functions (cn helper)
     ├── routeTree.gen.ts  # Auto-generated route tree (do not edit)
@@ -201,6 +203,8 @@ bunx vitest                           # Watch mode
 - `convex/maps.test.ts` - Maps CRUD unit tests
 - `convex/sessions.test.ts` - Sessions CRUD unit tests
 - `convex/audit.test.ts` - Audit logging unit tests
+- `convex/playerAuth.test.ts` - Player token auth unit tests
+- `convex/admins.test.ts` - Admin CRUD unit tests
 
 **Key patterns:**
 ```typescript
@@ -311,6 +315,7 @@ Reusable modules in `convex/lib/`:
 | `cascadeDelete.ts` | Atomic cascade delete for sessions and related data |
 | `types.ts` | Shared TypeScript types (`PlayerRole`, `AuditAction`) |
 | `imageConstants.ts` | Image upload constraints (max size, allowed types) |
+| `auth.ts` | Admin auth helpers (`getCurrentAdmin`, `requireAdmin`, `requireRootAdmin`) |
 
 **Always check for existing utilities** before creating new validation or helper functions.
 
@@ -330,6 +335,22 @@ The schema is defined in `convex/schema.ts` with 8 tables:
 | `auditLogs` | Action history | `by_sessionId`, `by_timestamp` |
 
 **Important:** Convex indexes do not enforce uniqueness. Mutations must validate uniqueness for `token` and `email` fields before inserting.
+
+### Authentication Pattern
+
+Admin auth uses `getAuthUserId()` from `@convex-dev/auth/server` (not `ctx.auth.getUserIdentity()`). The JWT subject contains a `userId|sessionId` composite — email is looked up from the `users` table:
+
+```typescript
+import { getAuthUserId } from "@convex-dev/auth/server";
+
+const userId = await getAuthUserId(ctx);
+const user = await ctx.db.get(userId);
+// user.email → look up in admins table
+```
+
+**Do not** use `ctx.auth.getUserIdentity().email` — `@convex-dev/auth` JWTs do not include email claims. See `docs/solutions/integration-issues/convex-auth-oauth-login-failures.md` for details.
+
+Player auth uses HTTP actions (`POST /api/player/validate-token`, `POST /api/player/heartbeat`) with IP locking. See `convex/playerAuth.ts` and `src/hooks/usePlayerAuth.ts`.
 
 ## Code Security
 
