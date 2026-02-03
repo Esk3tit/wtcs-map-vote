@@ -35,19 +35,20 @@ function extractClientIp(req: Request): string {
 }
 
 /**
- * CORS origin for player API responses.
- * TODO: Restrict to the app domain in production (Phase 2)
- * by reading the origin inside each handler via `process.env.FRONTEND_URL`
- * (available at runtime in Convex HTTP actions, but not at module scope for TS).
+ * Build CORS headers for player API responses.
+ * Uses FRONTEND_URL env var when set (production), falls back to "*" (development).
+ * Must be called inside handlers because env vars are only available at runtime.
  */
-const ALLOWED_ORIGIN = "*";
-
-/** Standard CORS headers for player API responses. */
-const corsHeaders = {
-  "Access-Control-Allow-Origin": ALLOWED_ORIGIN,
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers": "Content-Type",
-};
+function getCorsHeaders(): Record<string, string> {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const env = (globalThis as any).process?.env as Record<string, string> | undefined;
+  const origin = env?.FRONTEND_URL ?? "*";
+  return {
+    "Access-Control-Allow-Origin": origin,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers": "Content-Type",
+  };
+}
 
 /**
  * Create a POST handler for player endpoints that share the same structure:
@@ -59,6 +60,7 @@ function createPlayerHandler(
   mutationRef: typeof internal.playerAuth.validateAndLockToken | typeof internal.playerAuth.playerHeartbeat
 ) {
   return httpAction(async (ctx, req) => {
+    const corsHeaders = getCorsHeaders();
     let body: unknown;
     try {
       body = await req.json();
@@ -94,7 +96,7 @@ function createPlayerHandler(
 
 /** Shared CORS preflight handler for player endpoints. */
 const corsPreflightHandler = httpAction(async () => {
-  return new Response(null, { status: 204, headers: corsHeaders });
+  return new Response(null, { status: 204, headers: getCorsHeaders() });
 });
 
 /**

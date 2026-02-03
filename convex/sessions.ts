@@ -334,7 +334,6 @@ export const listSessionsForDashboard = query({
  * @param playerCount - Number of players expected (2-8)
  * @param turnTimerSeconds - Seconds per turn (default: 30)
  * @param mapPoolSize - Number of maps in pool (default: 5)
- * @param createdBy - Admin ID who created session (required until auth is integrated)
  */
 export const createSession = mutation({
   args: {
@@ -343,12 +342,10 @@ export const createSession = mutation({
     playerCount: v.number(),
     turnTimerSeconds: v.optional(v.number()),
     mapPoolSize: v.optional(v.number()),
-    // TODO: Remove this arg when auth is integrated - will be auto-populated from ctx.auth
-    createdBy: v.optional(v.id("admins")),
   },
   returns: v.object({ sessionId: v.id("sessions") }),
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    const admin = await requireAdmin(ctx);
 
     // Validate match name
     const trimmedName = validateMatchName(args.matchName);
@@ -380,20 +377,6 @@ export const createSession = mutation({
       "Map pool size"
     );
 
-    // TODO: Get createdBy from ctx.auth when auth is integrated
-    // For now, require it to be passed explicitly
-    if (!args.createdBy) {
-      throw new ConvexError(
-        "createdBy is required. Authentication will auto-populate this in a future update."
-      );
-    }
-
-    // Verify the admin exists
-    const admin = await ctx.db.get(args.createdBy);
-    if (!admin) {
-      throw new ConvexError("Invalid admin ID provided for createdBy");
-    }
-
     const now = Date.now();
     const sessionId = await ctx.db.insert("sessions", {
       matchName: trimmedName,
@@ -404,7 +387,7 @@ export const createSession = mutation({
       playerCount: args.playerCount,
       currentTurn: 0,
       currentRound: 1,
-      createdBy: args.createdBy,
+      createdBy: admin._id,
       updatedAt: now,
       expiresAt: now + SESSION_EXPIRY_MS,
     });
@@ -414,7 +397,7 @@ export const createSession = mutation({
       sessionId,
       action: "SESSION_CREATED",
       actorType: "ADMIN",
-      actorId: args.createdBy,
+      actorId: admin._id,
     });
 
     return { sessionId };
@@ -774,7 +757,6 @@ export const setSessionMaps = mutation({
  * @param mapPoolSize - Number of maps in pool (default: 5)
  * @param players - Array of player assignments with role and teamName
  * @param mapIds - Array of map IDs from the master maps table
- * @param createdBy - Admin ID who created session (required until auth is integrated)
  */
 export const createSessionFull = mutation({
   args: {
@@ -789,8 +771,6 @@ export const createSessionFull = mutation({
       })
     ),
     mapIds: v.array(v.id("maps")),
-    // TODO: Remove this arg when auth is integrated - will be auto-populated from ctx.auth
-    createdBy: v.id("admins"),
   },
   returns: v.object({
     sessionId: v.id("sessions"),
@@ -802,7 +782,7 @@ export const createSessionFull = mutation({
     ),
   }),
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    const admin = await requireAdmin(ctx);
 
     // ========================================================================
     // 1. Validate all inputs upfront before any DB writes
@@ -897,12 +877,6 @@ export const createSessionFull = mutation({
       }
     }
 
-    // Verify the admin exists
-    const admin = await ctx.db.get(args.createdBy);
-    if (!admin) {
-      throw new ConvexError("Invalid admin ID provided for createdBy");
-    }
-
     // ========================================================================
     // 2. Create session
     // ========================================================================
@@ -917,7 +891,7 @@ export const createSessionFull = mutation({
       playerCount: args.players.length,
       currentTurn: 0,
       currentRound: 1,
-      createdBy: args.createdBy,
+      createdBy: admin._id,
       updatedAt: now,
       expiresAt: now + SESSION_EXPIRY_MS,
     });
@@ -994,7 +968,7 @@ export const createSessionFull = mutation({
       sessionId,
       action: "SESSION_CREATED",
       actorType: "ADMIN",
-      actorId: args.createdBy,
+      actorId: admin._id,
       details: {
         reason: `Created with ${args.players.length} players and ${args.mapIds.length} maps`,
       },

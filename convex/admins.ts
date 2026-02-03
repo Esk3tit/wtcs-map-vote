@@ -124,19 +124,6 @@ export const getMe = query({
 });
 
 /**
- * Get the first admin in the database.
- * Temporary solution until auth is integrated.
- */
-export const getFirstAdmin = query({
-  args: {},
-  returns: v.union(v.id("admins"), v.null()),
-  handler: async (ctx) => {
-    const admin = await ctx.db.query("admins").first();
-    return admin?._id ?? null;
-  },
-});
-
-/**
  * List all admins. Requires authenticated admin.
  */
 export const listAdmins = query({

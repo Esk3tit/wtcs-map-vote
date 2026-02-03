@@ -105,7 +105,6 @@ function CreateSessionPage() {
   // Load real data from Convex
   const teamsQuery = usePaginatedQuery(api.teams.listTeams, {}, { initialNumItems: 100 })
   const maps = useQuery(api.maps.listMaps, { includeInactive: false })
-  const adminId = useQuery(api.admins.getFirstAdmin)
 
   // Derive teams array from paginated query (memoized to prevent unnecessary re-renders)
   const teams: Team[] = useMemo(
@@ -151,11 +150,6 @@ function CreateSessionPage() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!adminId) {
-      toast.error('No admin found. Please seed the database first.')
-      return
-    }
-
     if (selectedMaps.length !== mapPoolSize) {
       toast.error(`Please select exactly ${mapPoolSize} maps`)
       return
@@ -199,7 +193,6 @@ function CreateSessionPage() {
         mapPoolSize,
         players,
         mapIds: selectedMaps,
-        createdBy: adminId,
       })
 
       toast.success('Session created successfully!')
@@ -222,7 +215,6 @@ function CreateSessionPage() {
     !isSubmitting &&
     !isLoadingTeams &&
     !isLoadingMaps &&
-    adminId != null &&
     selectedMaps.length === mapPoolSize &&
     matchName.trim() !== '' &&
     isTurnTimerValid &&
