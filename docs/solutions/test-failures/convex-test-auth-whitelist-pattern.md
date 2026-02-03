@@ -3,6 +3,7 @@ title: Convex-Test Authentication with Whitelist Pattern
 category: test-failures
 tags: [convex, testing, authentication, convex-test]
 created: 2026-01-27
+updated: 2026-02-03
 problem_type: test_configuration
 severity: moderate
 components: [convex-test, authentication]
@@ -193,16 +194,49 @@ export const mapFactory = (overrides = {}) => ({
 });
 ```
 
+## Important: `@convex-dev/auth` Subject Format
+
+> **Updated (2026-02-03):** When using `@convex-dev/auth`, the test setup must match the library's JWT subject format. See [OAuth Login Failures](../integration-issues/convex-auth-oauth-login-failures.md) for the full story.
+
+If your `requireAdmin` uses `getAuthUserId()` (which parses the JWT subject), the identity subject must be in `userId|sessionId` format, and a matching record must exist in the `users` table:
+
+```typescript
+export async function createAuthenticatedAdmin() {
+  const t = createTestContext();
+
+  // Insert auth user into users table (required for getAuthUserId lookup)
+  const authUserId = await t.run(async (ctx) =>
+    ctx.db.insert("users", { email: TEST_ADMIN_DATA.email, name: TEST_ADMIN_DATA.name })
+  );
+
+  const adminId = await t.run(async (ctx) =>
+    ctx.db.insert("admins", TEST_ADMIN_DATA)
+  );
+
+  // Subject must match "userId|sessionId" format
+  const authT = t.withIdentity({
+    name: TEST_ADMIN_DATA.name,
+    subject: `${authUserId}|fake_session_id`,
+    issuer: "https://auth.example.com",
+  });
+
+  return { t, authT, adminId };
+}
+```
+
 ## Prevention
 
 1. Always check if mutations require whitelist membership
 2. Create shared test setup helpers early in development
 3. Test both positive (authorized) and negative (unauthorized) cases
 4. Use consistent email values across identity and database
+5. Match the JWT subject format expected by your auth library
 
 ## Related
 
 - [convex-test Documentation](https://docs.convex.dev/testing)
 - [Convex Authentication](https://docs.convex.dev/auth)
+- [OAuth Login Failures](../integration-issues/convex-auth-oauth-login-failures.md)
 - docs/solutions/test-failures/convex-test-runner-bun-vs-vitest.md
 - PR #44: Admin whitelist implementation
+- PR #45: Player token auth (auth fix applied)

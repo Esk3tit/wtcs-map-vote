@@ -2,7 +2,7 @@
 
 Current progress and next steps for the WTCS Map Vote project.
 
-**Last Updated:** January 27, 2026
+**Last Updated:** February 3, 2026
 
 ---
 
@@ -109,7 +109,12 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] Admin management UI (`/admin/settings`)
 - [x] Admin audit logging (`adminAuditLogs` table)
 - [x] Session invalidation for removed admins
-- [x] 409 unit tests for admin functionality
+- [x] Player token authentication flow (WAR-26, PR #45)
+- [x] Server-side token validation via HTTP actions with IP locking
+- [x] `usePlayerAuth` hook with heartbeat and AbortController cleanup
+- [x] OAuth login fixes - JWT email claim, return validators, callback race condition
+- [x] Security hardening - requireAdmin on queries, Referrer-Policy, token invalidation
+- [x] 431 unit tests passing (22 new playerAuth tests)
 
 ---
 
@@ -117,16 +122,15 @@ Current progress and next steps for the WTCS Map Vote project.
 
 ### Phase 3: Authentication & Session Lifecycle (Priority: High)
 
-1. **Authentication**
+1. **Authentication** (COMPLETE)
    - [x] Set up Convex Auth infrastructure (WAR-23) - auth tables, providers, HTTP routes
    - [x] Add Google OAuth provider (WAR-24) - login UI, logout, real user display
    - [x] Admin whitelist system (WAR-25) - Complete with backend auth, route guards, UI
-   - [ ] Create player token authentication flow (WAR-26)
-   - [ ] Add uniqueness validation (email, token)
+   - [x] Create player token authentication flow (WAR-26) - HTTP actions, IP locking, heartbeat
+   - [x] OAuth login bug fixes - JWT claims, return validators, callback race condition
 
 2. **Session Lifecycle**
    - [ ] Session lifecycle mutations (finalize, start, pause, resume, end)
-   - [ ] Player token validation and IP locking
    - [ ] Voting mutations (submitBan, submitVote)
    - [ ] Timer expiration handling (scheduled functions)
 
