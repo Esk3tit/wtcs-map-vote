@@ -2956,6 +2956,34 @@ describe("sessions.createSessionFull", () => {
       const session = await t.run(async (ctx) => ctx.db.get(result.sessionId));
       expect(session?.matchName).toBe("Grand Final");
     });
+
+    it("derives createdBy from authenticated admin", async () => {
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
+      const { mapIds } = await t.run(async (ctx) => {
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        const mapIds = [
+          await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
+        ];
+        return { mapIds };
+      });
+
+      const result = await authT.mutation(api.sessions.createSessionFull, {
+        matchName: "Test",
+        format: "ABBA",
+        mapPoolSize: 3,
+        players: [
+          { role: "Player A", teamName: "Team A" },
+          { role: "Player B", teamName: "Team B" },
+        ],
+        mapIds,
+      });
+
+      const session = await t.run(async (ctx) => ctx.db.get(result.sessionId));
+      expect(session?.createdBy).toBe(adminId);
+    });
   });
 
   describe("validation errors", () => {
