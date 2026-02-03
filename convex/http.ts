@@ -36,13 +36,24 @@ function extractClientIp(req: Request): string {
 
 /**
  * Build CORS headers for player API responses.
- * Uses FRONTEND_URL env var when set (production), falls back to "*" (development).
+ * Uses FRONTEND_URL env var when set, falls back to "*" in local dev.
+ * Fails closed in Convex Cloud deployments if FRONTEND_URL is missing.
  * Must be called inside handlers because env vars are only available at runtime.
  */
 function getCorsHeaders(): Record<string, string> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const env = (globalThis as any).process?.env as Record<string, string> | undefined;
-  const origin = env?.FRONTEND_URL ?? "*";
+  let origin: string;
+  if (env?.FRONTEND_URL) {
+    origin = env.FRONTEND_URL;
+  } else if (env?.CONVEX_CLOUD_URL) {
+    // Running in Convex Cloud without FRONTEND_URL — fail closed
+    console.error("CORS misconfiguration: FRONTEND_URL is not set in Convex Cloud. Blocking all origins.");
+    origin = "about:blank";
+  } else {
+    // Local development — allow all origins
+    origin = "*";
+  }
   return {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
