@@ -38,10 +38,10 @@ Add `describe("authentication")` blocks with "throws when not authenticated" tes
 - Reference pattern: `convex/maps.test.ts` auth rejection tests
 
 ## Acceptance Criteria
-- [ ] Auth rejection test for `listSessions`
-- [ ] Auth rejection test for `getSession`
-- [ ] Auth rejection test for `listSessionsForDashboard`
-- [ ] All tests pass
+- [x] Auth rejection test for `listSessions`
+- [x] Auth rejection test for `getSession`
+- [x] Auth rejection test for `listSessionsForDashboard`
+- [x] All tests pass
 
 ## Work Log
 

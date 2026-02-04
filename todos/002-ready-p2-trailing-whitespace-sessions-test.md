@@ -36,9 +36,9 @@ Find and remove the 9 trailing-whitespace blank lines in `convex/sessions.test.t
 - Original finding: WAR-27 code review (PR #47)
 
 ## Acceptance Criteria
-- [ ] No trailing whitespace blank lines remain in sessions.test.ts
-- [ ] Tests pass
-- [ ] Lint passes
+- [x] No trailing whitespace blank lines remain in sessions.test.ts
+- [x] Tests pass
+- [x] Lint passes
 
 ## Work Log
 

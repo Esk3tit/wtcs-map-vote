@@ -38,9 +38,9 @@ Add a multi-line `// DESIGN DECISION:` comment above `isEmailWhitelisted` explai
 - Reference: `getSessionResults` design decision comment at `convex/sessions.ts:1229-1241`
 
 ## Acceptance Criteria
-- [ ] DESIGN DECISION comment added to `isEmailWhitelisted`
-- [ ] Comment explains why it's intentionally unauthenticated
-- [ ] Comment acknowledges email enumeration risk
+- [x] DESIGN DECISION comment added to `isEmailWhitelisted`
+- [x] Comment explains why it's intentionally unauthenticated
+- [x] Comment acknowledges email enumeration risk
 
 ## Work Log
 

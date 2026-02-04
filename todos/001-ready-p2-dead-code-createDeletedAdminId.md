@@ -36,10 +36,10 @@ Delete `createDeletedAdminId` from `convex/test.factories.ts`.
 - Original finding: WAR-27 code review (PR #47)
 
 ## Acceptance Criteria
-- [ ] `createDeletedAdminId` removed from `convex/test.factories.ts`
-- [ ] No references remain in codebase
-- [ ] Tests pass
-- [ ] Typecheck passes
+- [x] `createDeletedAdminId` removed from `convex/test.factories.ts`
+- [x] No references remain in codebase
+- [x] Tests pass
+- [x] Typecheck passes
 
 ## Work Log
 

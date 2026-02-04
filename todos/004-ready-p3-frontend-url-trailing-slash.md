@@ -36,8 +36,8 @@ Add `origin = env.FRONTEND_URL.replace(/\/+$/, '')` after reading the env var.
 - Original finding: WAR-27 code review (PR #47)
 
 ## Acceptance Criteria
-- [ ] Trailing slash normalization added to FRONTEND_URL usage
-- [ ] Typecheck passes
+- [x] Trailing slash normalization added to FRONTEND_URL usage
+- [x] Typecheck passes
 
 ## Work Log
 

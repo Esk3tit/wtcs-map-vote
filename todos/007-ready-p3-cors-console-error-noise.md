@@ -43,8 +43,8 @@ Downgrade to `console.warn` since the error is operational (misconfiguration) ra
 - Original finding: WAR-27 code review (PR #47)
 
 ## Acceptance Criteria
-- [ ] `console.error` changed to `console.warn` for CORS misconfiguration
-- [ ] Typecheck passes
+- [x] `console.error` changed to `console.warn` for CORS misconfiguration
+- [x] Typecheck passes
 
 ## Work Log
 

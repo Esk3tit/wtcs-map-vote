@@ -49,7 +49,7 @@ function getCorsHeaders(): Record<string, string> {
   } else if (env?.CONVEX_CLOUD_URL) {
     // Running in Convex Cloud without FRONTEND_URL — fail closed
     console.warn("CORS misconfiguration: FRONTEND_URL is not set in Convex Cloud. Blocking all origins.");
-    origin = "about:blank";
+    origin = "https://blocked.invalid";
   } else {
     // Local development — allow all origins
     origin = "*";

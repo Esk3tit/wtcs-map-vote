@@ -37,8 +37,8 @@ Add `...(origin !== "*" ? { Vary: "Origin" } : {})` to the return object in `get
 - Original finding: WAR-27 code review (PR #47)
 
 ## Acceptance Criteria
-- [ ] `Vary: Origin` header added when origin is not `"*"`
-- [ ] Typecheck passes
+- [x] `Vary: Origin` header added when origin is not `"*"`
+- [x] Typecheck passes
 
 ## Work Log
 
