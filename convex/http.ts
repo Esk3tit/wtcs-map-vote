@@ -45,10 +45,10 @@ function getCorsHeaders(): Record<string, string> {
   const env = (globalThis as any).process?.env as Record<string, string> | undefined;
   let origin: string;
   if (env?.FRONTEND_URL) {
-    origin = env.FRONTEND_URL;
+    origin = env.FRONTEND_URL.replace(/\/+$/, "");
   } else if (env?.CONVEX_CLOUD_URL) {
     // Running in Convex Cloud without FRONTEND_URL — fail closed
-    console.error("CORS misconfiguration: FRONTEND_URL is not set in Convex Cloud. Blocking all origins.");
+    console.warn("CORS misconfiguration: FRONTEND_URL is not set in Convex Cloud. Blocking all origins.");
     origin = "about:blank";
   } else {
     // Local development — allow all origins
@@ -58,6 +58,7 @@ function getCorsHeaders(): Record<string, string> {
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "POST, OPTIONS",
     "Access-Control-Allow-Headers": "Content-Type",
+    ...(origin !== "*" ? { Vary: "Origin" } : {}),
   };
 }
 

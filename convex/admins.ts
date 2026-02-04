@@ -201,6 +201,20 @@ export const getAdminByEmail = query({
 
 /**
  * Check if an email is whitelisted (for login flow).
+ *
+ * DESIGN DECISION: This query is intentionally unauthenticated.
+ * It is called during the login flow before the user has authenticated,
+ * so requiring auth would create a chicken-and-egg problem.
+ *
+ * Security considerations:
+ * - Risk: enables email enumeration (an attacker can probe if an email is whitelisted)
+ * - Acceptable at this project's scale (~12 admin users with known emails)
+ * - The `afterUserCreatedOrUpdated` callback in `convex/auth.ts` performs
+ *   the same whitelist check server-side during OAuth, so this query is
+ *   only used for early UI feedback, not as the sole gate
+ *
+ * @param email - The email address to check
+ * @returns Whether the email is whitelisted
  */
 export const isEmailWhitelisted = query({
   args: { email: v.string() },

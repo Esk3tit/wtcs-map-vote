@@ -410,7 +410,6 @@ describe("sessions.createSession", () => {
           matchName: "Test",
           format: "ABBA",
           playerCount: 1,
-  
         })
       ).rejects.toThrow(/must be at least 2/i);
     });
@@ -423,7 +422,6 @@ describe("sessions.createSession", () => {
           matchName: "Test",
           format: "ABBA",
           playerCount: 9,
-  
         })
       ).rejects.toThrow(/cannot exceed 8/i);
     });
@@ -437,7 +435,6 @@ describe("sessions.createSession", () => {
           format: "ABBA",
           playerCount: 2,
           turnTimerSeconds: 9,
-  
         })
       ).rejects.toThrow(/must be at least 10/i);
     });
@@ -451,7 +448,6 @@ describe("sessions.createSession", () => {
           format: "ABBA",
           playerCount: 2,
           turnTimerSeconds: 301,
-  
         })
       ).rejects.toThrow(/cannot exceed 300/i);
     });
@@ -465,7 +461,6 @@ describe("sessions.createSession", () => {
           format: "ABBA",
           playerCount: 2,
           mapPoolSize: 2,
-  
         })
       ).rejects.toThrow(/must be at least 3/i);
     });
@@ -479,7 +474,6 @@ describe("sessions.createSession", () => {
           format: "ABBA",
           playerCount: 2,
           mapPoolSize: 16,
-  
         })
       ).rejects.toThrow(/cannot exceed 15/i);
     });
@@ -530,6 +524,18 @@ describe("sessions.createSession", () => {
 // ============================================================================
 
 describe("sessions.listSessions", () => {
+  describe("authentication", () => {
+    it("throws when not authenticated", async () => {
+      const t = createTestContext();
+
+      await expect(
+        t.query(api.sessions.listSessions, {
+          paginationOpts: { numItems: 10, cursor: null },
+        })
+      ).rejects.toThrow(/Authentication required/);
+    });
+  });
+
   describe("empty state", () => {
     it("returns empty page when no sessions exist", async () => {
       const { authT } = await createAuthenticatedAdmin();
@@ -723,6 +729,18 @@ describe("sessions.listSessions", () => {
 // ============================================================================
 
 describe("sessions.listSessionsForDashboard", () => {
+  describe("authentication", () => {
+    it("throws when not authenticated", async () => {
+      const t = createTestContext();
+
+      await expect(
+        t.query(api.sessions.listSessionsForDashboard, {
+          paginationOpts: { numItems: 10, cursor: null },
+        })
+      ).rejects.toThrow(/Authentication required/);
+    });
+  });
+
   describe("empty state", () => {
     it("returns empty page when no sessions exist", async () => {
       const { authT } = await createAuthenticatedAdmin();
@@ -962,6 +980,17 @@ describe("sessions.listSessionsForDashboard", () => {
 // ============================================================================
 
 describe("sessions.getSession", () => {
+  describe("authentication", () => {
+    it("throws when not authenticated", async () => {
+      const t = createTestContext();
+      const { sessionId } = await createSessionInStatus(t, "DRAFT");
+
+      await expect(
+        t.query(api.sessions.getSession, { sessionId })
+      ).rejects.toThrow(/Authentication required/);
+    });
+  });
+
   describe("success cases", () => {
     it("returns session with players and maps", async () => {
       const { t, authT } = await createAuthenticatedAdmin();
@@ -3147,7 +3176,6 @@ describe("sessions.createSessionFull", () => {
             { role: "Player B", teamName: "Team B" },
           ],
           mapIds, // Only 3 maps provided
-  
         })
       ).rejects.toThrow("Expected 5 maps, received 3");
     });
@@ -3171,7 +3199,6 @@ describe("sessions.createSessionFull", () => {
             { role: "Player B", teamName: "Team B" },
           ],
           mapIds: [mapId, mapId, mapId], // Duplicates
-  
         })
       ).rejects.toThrow("Duplicate maps not allowed");
     });
@@ -3203,7 +3230,6 @@ describe("sessions.createSessionFull", () => {
             { role: "Player B", teamName: "Team B" },
           ],
           mapIds: [...mapIds, fakeMapId],
-  
         })
       ).rejects.toThrow("Map not found");
     });
