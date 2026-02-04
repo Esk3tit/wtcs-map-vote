@@ -115,6 +115,8 @@ export const listMaps = query({
   },
   returns: v.array(mapObjectValidator),
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
     const maps = args.includeInactive
       ? await ctx.db.query("maps").withIndex("by_name").order("asc").collect()
       : await ctx.db
@@ -129,7 +131,7 @@ export const listMaps = query({
 });
 
 /**
- * Get a single map by ID.
+ * Get a single map by ID. Requires authenticated admin.
  * Returns null if map doesn't exist.
  * Resolves imageStorageId to URL for display.
  */
@@ -139,6 +141,8 @@ export const getMap = query({
   },
   returns: v.union(mapObjectValidator, v.null()),
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
     const map = await ctx.db.get(args.mapId);
     if (!map) return null;
 

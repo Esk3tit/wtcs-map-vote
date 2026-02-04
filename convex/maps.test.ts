@@ -275,11 +275,21 @@ describe("maps.createMap", () => {
 // ============================================================================
 
 describe("maps.listMaps", () => {
-  describe("empty state", () => {
-    it("returns empty array when no maps exist", async () => {
+  describe("authentication", () => {
+    it("throws when not authenticated", async () => {
       const t = createTestContext();
 
-      const result = await t.query(api.maps.listMaps, {});
+      await expect(
+        t.query(api.maps.listMaps, {})
+      ).rejects.toThrow(/Authentication required/);
+    });
+  });
+
+  describe("empty state", () => {
+    it("returns empty array when no maps exist", async () => {
+      const { authT } = await createAuthenticatedAdmin();
+
+      const result = await authT.query(api.maps.listMaps, {});
 
       expect(result).toEqual([]);
     });
@@ -287,7 +297,7 @@ describe("maps.listMaps", () => {
 
   describe("filtering", () => {
     it("excludes inactive maps by default", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       await t.run(async (ctx) => {
         await ctx.db.insert(
@@ -300,14 +310,14 @@ describe("maps.listMaps", () => {
         );
       });
 
-      const result = await t.query(api.maps.listMaps, {});
+      const result = await authT.query(api.maps.listMaps, {});
 
       expect(result).toHaveLength(1);
       expect(result[0].name).toBe("Active Map");
     });
 
     it("includes inactive maps when includeInactive=true", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       await t.run(async (ctx) => {
         await ctx.db.insert(
@@ -320,7 +330,7 @@ describe("maps.listMaps", () => {
         );
       });
 
-      const result = await t.query(api.maps.listMaps, { includeInactive: true });
+      const result = await authT.query(api.maps.listMaps, { includeInactive: true });
 
       expect(result).toHaveLength(2);
     });
@@ -328,7 +338,7 @@ describe("maps.listMaps", () => {
 
   describe("sorting", () => {
     it("returns maps sorted alphabetically by name", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       await t.run(async (ctx) => {
         await ctx.db.insert("maps", mapFactory({ name: "Zebra", imageUrl: "https://example.com/z.png" }));
@@ -336,7 +346,7 @@ describe("maps.listMaps", () => {
         await ctx.db.insert("maps", mapFactory({ name: "Mango", imageUrl: "https://example.com/m.png" }));
       });
 
-      const result = await t.query(api.maps.listMaps, {});
+      const result = await authT.query(api.maps.listMaps, {});
 
       const names = result.map((m) => m.name);
       expect(names).toEqual(["Alpha", "Mango", "Zebra"]);
@@ -349,16 +359,30 @@ describe("maps.listMaps", () => {
 // ============================================================================
 
 describe("maps.getMap", () => {
+  describe("authentication", () => {
+    it("throws when not authenticated", async () => {
+      const { t } = await createAuthenticatedAdmin();
+
+      const mapId = await t.run(async (ctx) =>
+        ctx.db.insert("maps", mapFactory({ name: "Test", imageUrl: "https://example.com/test.png" }))
+      );
+
+      await expect(
+        t.query(api.maps.getMap, { mapId })
+      ).rejects.toThrow(/Authentication required/);
+    });
+  });
+
   describe("success cases", () => {
     it("returns map by ID", async () => {
-      const { t, authT } = await createAuthenticatedAdmin();
+      const { authT } = await createAuthenticatedAdmin();
 
       const { mapId } = await authT.mutation(api.maps.createMap, {
         name: "Found Map",
         imageUrl: "https://example.com/map.png",
       });
 
-      const map = await t.query(api.maps.getMap, { mapId });
+      const map = await authT.query(api.maps.getMap, { mapId });
 
       expect(map).toMatchObject({
         name: "Found Map",
@@ -367,14 +391,14 @@ describe("maps.getMap", () => {
     });
 
     it("returns map with imageUrl preserved", async () => {
-      const { t, authT } = await createAuthenticatedAdmin();
+      const { authT } = await createAuthenticatedAdmin();
 
       const { mapId } = await authT.mutation(api.maps.createMap, {
         name: "URL Map",
         imageUrl: "https://example.com/external.png",
       });
 
-      const map = await t.query(api.maps.getMap, { mapId });
+      const map = await authT.query(api.maps.getMap, { mapId });
 
       expect(map?.imageUrl).toBe("https://example.com/external.png");
     });
@@ -382,7 +406,7 @@ describe("maps.getMap", () => {
 
   describe("not found", () => {
     it("returns null for non-existent map", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       // Create and delete a map via direct DB access to get a truly deleted ID
       const deletedMapId = await t.run(async (ctx) => {
@@ -394,7 +418,7 @@ describe("maps.getMap", () => {
         return id;
       });
 
-      const result = await t.query(api.maps.getMap, { mapId: deletedMapId });
+      const result = await authT.query(api.maps.getMap, { mapId: deletedMapId });
       expect(result).toBeNull();
     });
   });

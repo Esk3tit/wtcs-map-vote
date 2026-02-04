@@ -60,6 +60,8 @@ export const listTeams = query({
     paginationOpts: paginationOptsValidator,
   },
   handler: async (ctx, args) => {
+    await requireAdmin(ctx);
+
     const result = await ctx.db
       .query("teams")
       .withIndex("by_name")

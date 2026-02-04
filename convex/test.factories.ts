@@ -274,19 +274,6 @@ export async function createDeletedId<T extends TableNames>(
 }
 
 /**
- * Creates a deleted admin ID for testing non-existent admin scenarios.
- *
- * @param t - Test context from createTestContext()
- */
-export async function createDeletedAdminId(
-  t: TestContext
-): Promise<Id<"admins">> {
-  return createDeletedId(t, async (ctx) =>
-    ctx.db.insert("admins", adminFactory())
-  );
-}
-
-/**
  * Creates a deleted session ID for testing non-existent session scenarios.
  * Automatically creates the required admin first.
  *

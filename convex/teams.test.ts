@@ -226,11 +226,23 @@ describe("teams.createTeam", () => {
 // ============================================================================
 
 describe("teams.listTeams", () => {
-  describe("empty state", () => {
-    it("returns empty page when no teams exist", async () => {
+  describe("authentication", () => {
+    it("throws when not authenticated", async () => {
       const t = createTestContext();
 
-      const result = await t.query(api.teams.listTeams, {
+      await expect(
+        t.query(api.teams.listTeams, {
+          paginationOpts: { numItems: 10, cursor: null },
+        })
+      ).rejects.toThrow(/Authentication required/);
+    });
+  });
+
+  describe("empty state", () => {
+    it("returns empty page when no teams exist", async () => {
+      const { authT } = await createAuthenticatedAdmin();
+
+      const result = await authT.query(api.teams.listTeams, {
         paginationOpts: { numItems: 10, cursor: null },
       });
 
@@ -241,7 +253,7 @@ describe("teams.listTeams", () => {
 
   describe("pagination", () => {
     it("returns teams sorted by name ascending", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       await t.run(async (ctx) => {
         await ctx.db.insert("teams", teamFactory({ name: "Zebra" }));
@@ -249,7 +261,7 @@ describe("teams.listTeams", () => {
         await ctx.db.insert("teams", teamFactory({ name: "Mango" }));
       });
 
-      const result = await t.query(api.teams.listTeams, {
+      const result = await authT.query(api.teams.listTeams, {
         paginationOpts: { numItems: 10, cursor: null },
       });
 
@@ -258,7 +270,7 @@ describe("teams.listTeams", () => {
     });
 
     it("returns correct page size", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       await t.run(async (ctx) => {
         for (let i = 1; i <= 5; i++) {
@@ -266,7 +278,7 @@ describe("teams.listTeams", () => {
         }
       });
 
-      const result = await t.query(api.teams.listTeams, {
+      const result = await authT.query(api.teams.listTeams, {
         paginationOpts: { numItems: 2, cursor: null },
       });
 
@@ -275,7 +287,7 @@ describe("teams.listTeams", () => {
     });
 
     it("continues from cursor", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       await t.run(async (ctx) => {
         await ctx.db.insert("teams", teamFactory({ name: "Alpha" }));
@@ -284,13 +296,13 @@ describe("teams.listTeams", () => {
         await ctx.db.insert("teams", teamFactory({ name: "Delta" }));
       });
 
-      const page1 = await t.query(api.teams.listTeams, {
+      const page1 = await authT.query(api.teams.listTeams, {
         paginationOpts: { numItems: 2, cursor: null },
       });
 
       expect(page1.page.map((t) => t.name)).toEqual(["Alpha", "Beta"]);
 
-      const page2 = await t.query(api.teams.listTeams, {
+      const page2 = await authT.query(api.teams.listTeams, {
         paginationOpts: { numItems: 2, cursor: page1.continueCursor },
       });
 
@@ -298,14 +310,14 @@ describe("teams.listTeams", () => {
     });
 
     it("sets isDone correctly for last page", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       await t.run(async (ctx) => {
         await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
         await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
       });
 
-      const result = await t.query(api.teams.listTeams, {
+      const result = await authT.query(api.teams.listTeams, {
         paginationOpts: { numItems: 10, cursor: null },
       });
 
@@ -316,7 +328,7 @@ describe("teams.listTeams", () => {
 
   describe("logo handling", () => {
     it("returns teams with external logoUrl", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       await t.run(async (ctx) => {
         await ctx.db.insert("teams", {
@@ -325,7 +337,7 @@ describe("teams.listTeams", () => {
         });
       });
 
-      const result = await t.query(api.teams.listTeams, {
+      const result = await authT.query(api.teams.listTeams, {
         paginationOpts: { numItems: 10, cursor: null },
       });
 
@@ -335,13 +347,13 @@ describe("teams.listTeams", () => {
 
   describe("sessions count", () => {
     it("returns sessionsCount of 0 for team not in any session", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       await t.run(async (ctx) => {
         await ctx.db.insert("teams", teamFactory({ name: "Lonely Team" }));
       });
 
-      const result = await t.query(api.teams.listTeams, {
+      const result = await authT.query(api.teams.listTeams, {
         paginationOpts: { numItems: 10, cursor: null },
       });
 
@@ -349,7 +361,7 @@ describe("teams.listTeams", () => {
     });
 
     it("returns correct sessionsCount for team in one session", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       await t.run(async (ctx) => {
         const adminId = await ctx.db.insert("admins", adminFactory());
@@ -364,7 +376,7 @@ describe("teams.listTeams", () => {
         );
       });
 
-      const result = await t.query(api.teams.listTeams, {
+      const result = await authT.query(api.teams.listTeams, {
         paginationOpts: { numItems: 10, cursor: null },
       });
 
@@ -372,7 +384,7 @@ describe("teams.listTeams", () => {
     });
 
     it("returns correct sessionsCount for team in multiple sessions", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       await t.run(async (ctx) => {
         const adminId = await ctx.db.insert("admins", adminFactory());
@@ -391,7 +403,7 @@ describe("teams.listTeams", () => {
         }
       });
 
-      const result = await t.query(api.teams.listTeams, {
+      const result = await authT.query(api.teams.listTeams, {
         paginationOpts: { numItems: 10, cursor: null },
       });
 
@@ -399,7 +411,7 @@ describe("teams.listTeams", () => {
     });
 
     it("counts unique sessions when team has multiple players in same session", async () => {
-      const t = createTestContext();
+      const { t, authT } = await createAuthenticatedAdmin();
 
       await t.run(async (ctx) => {
         const adminId = await ctx.db.insert("admins", adminFactory());
@@ -420,7 +432,7 @@ describe("teams.listTeams", () => {
         );
       });
 
-      const result = await t.query(api.teams.listTeams, {
+      const result = await authT.query(api.teams.listTeams, {
         paginationOpts: { numItems: 10, cursor: null },
       });
 
