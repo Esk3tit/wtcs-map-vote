@@ -58,8 +58,8 @@ export const validateAndLockToken = internalMutation({
     const ipAddress = args.ipAddress.trim();
     const now = Date.now();
 
-    // Reject empty or whitespace-only IP addresses
-    if (!ipAddress) {
+    // Reject empty, whitespace-only, or unresolved IP addresses
+    if (!ipAddress || ipAddress === "unknown") {
       return { status: "error" as const, error: "INVALID_IP" as const };
     }
 
@@ -186,8 +186,8 @@ export const playerHeartbeat = internalMutation({
     const ipAddress = args.ipAddress.trim();
     const now = Date.now();
 
-    // Reject empty or whitespace-only IP addresses
-    if (!ipAddress) {
+    // Reject empty, whitespace-only, or unresolved IP addresses
+    if (!ipAddress || ipAddress === "unknown") {
       return { status: "error" as const, error: "INVALID_IP" as const };
     }
 

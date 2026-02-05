@@ -10,6 +10,46 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+#### Auth System Tests (WAR-30, WAR-21, PR #50)
+- **Comprehensive auth test coverage**; 481 total tests passing (11 skipped)
+- **`convex/authCallback.test.ts`** (6 tests) — `extractProfileString` pure function, documented untestable callback paths
+- **`convex/http.test.ts`** (20 tests) — `extractClientIp` parsing incl. IPv6/edge cases, `getCorsHeaders` CORS origin logic with env mocking
+- **Extended `convex/playerAuth.test.ts`** (+17 tests) — IP validation edge cases, `"unknown"` IP rejection, reconnection logging, heartbeat throttling, token expiry boundary
+- **Extended `convex/admins.test.ts`** (+18 tests) — `invalidateAdminSessions` success cases, audit log pagination, consolidated auth helper tests
+- **Deleted `convex/lib/auth.test.ts`** — duplicate tests consolidated into `admins.test.ts`
+- **Shared `createAuthenticatedAdmin`** helper in `test.setup.ts` now accepts overrides
+- **100% coverage** on `admins.ts`, `playerAuth.ts`, and `lib/auth.ts`
+
+### Changed
+
+- Exported `extractProfileString` from `convex/auth.ts` for direct testing
+- Exported `extractClientIp` and `getCorsHeaders` from `convex/http.ts` for direct testing
+- Updated dependencies: react 19.2.4, convex 1.31.7, @tanstack/react-router 1.158.1, typescript-eslint 8.54.0, shadcn 3.8.3
+
+#### Auth Event Logging (WAR-29, PR #49)
+- **`ADMIN_LOGIN` audit event** — logged to `adminAuditLogs` when whitelisted admin signs in via Google OAuth
+- **`PLAYER_CONNECTED` audit event** — logged to session `auditLogs` on actual reconnections (not every page load)
+- **Documented `ADMIN_LOGIN_DENIED` limitation** — Convex transactional rollback prevents persisting audit logs when `ConvexError` is thrown
+- **Extracted duplicated name/avatar update logic** in auth callback into shared pattern
+
+#### Branding & Polish (WAR-28, PR #48)
+- **WTCS logo** integrated into login page and admin sidebar header (clickable link to dashboard)
+- **Mobile padding fixes** on create session and admin settings pages (hamburger menu overlap)
+- **Settings page layout** restructured for mobile responsiveness with table overflow handling
+- **Centralized mobile padding** in `admin.tsx` layout (`pl-16 md:pl-0`)
+- **Removed placeholder assets** (`placeholder-logo.svg`, `placeholder-logo.png`)
+
+#### Protected Routes & Server-Side Auth (WAR-27, PR #47)
+- **Derive `createdBy` server-side** from `requireAdmin(ctx)` in `createSession` — removed client-supplied `createdBy` arg
+- **Added `requireAdmin`** to read queries (`listMaps`, `getMap`, `listTeams`) preventing unauthenticated data access
+- **Restricted CORS** to `SITE_URL` env var in production with `Vary: Origin` header; falls back to `*` in local dev; fails closed in Convex Cloud when `SITE_URL` is missing
+- **Deleted `getFirstAdmin`** temporary workaround query
+- **Updated all tests** for auth context requirements and removed obsolete `createdBy` validation tests
+
+#### OAuth Login Documentation (PR #46)
+- **Solution doc** for three OAuth login root causes from PR #45
+- **CLAUDE.md** updated with auth pattern guidance (`getAuthUserId` vs `ctx.auth.getUserIdentity()`)
+
 #### Phase 3: Authentication - Player Token Auth & OAuth Fixes (WAR-26, PR #45)
 - **Server-side player token validation** via HTTP actions (`POST /api/player/validate-token`, `POST /api/player/heartbeat`)
 - **IP locking** on first token use — prevents link sharing between devices

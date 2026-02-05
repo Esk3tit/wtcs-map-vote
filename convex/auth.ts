@@ -15,7 +15,7 @@ import { logAdminAction } from "./lib/adminAudit";
  * Safely extracts a string value from an unknown profile field.
  * Returns the value if it's a non-empty string, otherwise returns undefined.
  */
-function extractProfileString(value: unknown): string | undefined {
+export function extractProfileString(value: unknown): string | undefined {
   return typeof value === "string" && value.length > 0 ? value : undefined;
 }
 
