@@ -11,14 +11,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 ### Added
 
 #### Auth System Tests (WAR-30, WAR-21, PR #50)
-- **64 new unit tests** covering auth system end-to-end; 500 total tests passing
-- **`convex/lib/auth.test.ts`** (14 tests) — `getCurrentAdmin`, `requireAdmin`, `requireRootAdmin`, `normalizeEmail` via public API
-- **`convex/authCallback.test.ts`** (20 tests) — `extractProfileString` pure function, callback effects for login/bootstrap/unauthorized paths
-- **`convex/http.test.ts`** (14 tests) — `extractClientIp` parsing, `getCorsHeaders` CORS origin logic with env mocking
-- **Extended `convex/playerAuth.test.ts`** (+13 tests) — IP validation edge cases, reconnection logging, heartbeat throttling, token expiry boundary
-- **Extended `convex/admins.test.ts`** (+17 tests) — `invalidateAdminSessions` success cases, audit log pagination with cursors
-- **100% coverage** on `admins.ts`, `playerAuth.ts`, and `lib/auth.ts` (up from 95.5%, 91.6%, 94.4%)
-- **Overall coverage** 83.28% → 86.72%
+- **Comprehensive auth test coverage**; 481 total tests passing (11 skipped)
+- **`convex/authCallback.test.ts`** (6 tests) — `extractProfileString` pure function, documented untestable callback paths
+- **`convex/http.test.ts`** (20 tests) — `extractClientIp` parsing incl. IPv6/edge cases, `getCorsHeaders` CORS origin logic with env mocking
+- **Extended `convex/playerAuth.test.ts`** (+17 tests) — IP validation edge cases, `"unknown"` IP rejection, reconnection logging, heartbeat throttling, token expiry boundary
+- **Extended `convex/admins.test.ts`** (+18 tests) — `invalidateAdminSessions` success cases, audit log pagination, consolidated auth helper tests
+- **Deleted `convex/lib/auth.test.ts`** — duplicate tests consolidated into `admins.test.ts`
+- **Shared `createAuthenticatedAdmin`** helper in `test.setup.ts` now accepts overrides
+- **100% coverage** on `admins.ts`, `playerAuth.ts`, and `lib/auth.ts`
 
 ### Changed
 
