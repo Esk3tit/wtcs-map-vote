@@ -10,7 +10,7 @@ dependencies: []
 
 ## Problem Statement
 
-`buildLobbyUrl(player.token)` is called 3 times per player per render: in the Input value, the onClick handler, and the copiedUrl comparison. Should be computed once per player in the `.map()` callback.
+`buildLobbyUrl(player.token)` is called 3 times per player per render: in the Input value, the onClick handler, and the copiedUrl comparison. It should be computed once per player in the `.map()` callback.
 
 ## Findings
 

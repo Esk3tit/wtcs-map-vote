@@ -135,29 +135,26 @@ function SessionDetailPage() {
   const { sessionId } = Route.useParams();
   const isValidId = isValidSessionId(sessionId);
   const typedSessionId = sessionId as Id<"sessions">;
-  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
-  const [copiedAll, setCopiedAll] = useState(false);
-  const copyUrlTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const copyAllTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [lastCopied, setLastCopied] = useState<"all" | string | null>(null);
+  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
-      if (copyUrlTimeoutRef.current) clearTimeout(copyUrlTimeoutRef.current);
-      if (copyAllTimeoutRef.current) clearTimeout(copyAllTimeoutRef.current);
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
     };
   }, []);
 
   const buildLobbyUrl = (token: string) =>
     `${window.location.origin}/lobby/${token}`;
 
-  const handleCopyUrl = async (url: string) => {
+  const handleCopy = async (text: string, id: "all" | string) => {
     try {
-      await navigator.clipboard.writeText(url);
-      setCopiedUrl(url);
-      if (copyUrlTimeoutRef.current) clearTimeout(copyUrlTimeoutRef.current);
-      copyUrlTimeoutRef.current = setTimeout(() => setCopiedUrl(null), 2000);
+      await navigator.clipboard.writeText(text);
+      setLastCopied(id);
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = setTimeout(() => setLastCopied(null), 2000);
     } catch (err) {
-      console.error("Failed to copy URL:", err);
+      console.error("Failed to copy:", err);
     }
   };
 
@@ -167,14 +164,7 @@ function SessionDetailPage() {
     const text = players
       .map((p) => `${p.teamName}: ${buildLobbyUrl(p.token)}`)
       .join("\n");
-    try {
-      await navigator.clipboard.writeText(text);
-      setCopiedAll(true);
-      if (copyAllTimeoutRef.current) clearTimeout(copyAllTimeoutRef.current);
-      copyAllTimeoutRef.current = setTimeout(() => setCopiedAll(false), 2000);
-    } catch (err) {
-      console.error("Failed to copy URLs:", err);
-    }
+    await handleCopy(text, "all");
   };
 
   const session = useQuery(
@@ -337,12 +327,12 @@ function SessionDetailPage() {
                   onClick={() => handleCopyAllLinks(session.players)}
                   className="shrink-0 gap-2"
                 >
-                  {copiedAll ? (
+                  {lastCopied === "all" ? (
                     <CheckCircle2 className="w-4 h-4 text-chart-4" />
                   ) : (
                     <Copy className="w-4 h-4" />
                   )}
-                  {copiedAll ? "Copied!" : "Copy All Links"}
+                  {lastCopied === "all" ? "Copied!" : "Copy All Links"}
                 </Button>
               )}
             </div>
@@ -381,12 +371,12 @@ function SessionDetailPage() {
                         <Button
                           variant="outline"
                           size="icon"
-                          onClick={() => handleCopyUrl(lobbyUrl)}
+                          onClick={() => handleCopy(lobbyUrl, lobbyUrl)}
                           className="shrink-0"
                           aria-label="Copy lobby link"
                           title="Copy lobby link"
                         >
-                          {copiedUrl === lobbyUrl ? (
+                          {lastCopied === lobbyUrl ? (
                             <CheckCircle2 className="w-4 h-4 text-chart-4" />
                           ) : (
                             <Copy className="w-4 h-4" />
