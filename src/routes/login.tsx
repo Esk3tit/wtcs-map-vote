@@ -5,6 +5,7 @@ import { useConvexAuth } from '@/lib/convex'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Loader2, AlertCircle } from 'lucide-react'
+import wtcsLogo from '@/assets/wtcs-logo.png'
 
 export const Route = createFileRoute('/login')({
   component: LoginPage,
@@ -87,22 +88,8 @@ function LoginPage() {
         <div className="p-6 sm:p-8 space-y-6">
           {/* Logo/Title Section */}
           <div className="text-center space-y-2">
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <div className="size-10 bg-primary rounded-lg flex items-center justify-center shadow-sm">
-                <svg
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  className="size-6 text-primary-foreground"
-                >
-                  <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" />
-                  <polyline points="3.27 6.96 12 12.01 20.73 6.96" />
-                  <line x1="12" y1="22.08" x2="12" y2="12" />
-                </svg>
-              </div>
+            <div className="flex items-center justify-center mb-2">
+              <img src={wtcsLogo} alt="" className="h-16 w-auto" />
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">WTCS Map Vote</h1>
             <p className="text-muted-foreground text-xs sm:text-sm font-medium tracking-wide uppercase">Admin Portal</p>

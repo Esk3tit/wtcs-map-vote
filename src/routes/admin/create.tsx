@@ -223,7 +223,7 @@ function CreateSessionPage() {
   return (
     <div className="flex-1 flex flex-col bg-background">
       <header className="border-b border-border/50 bg-card/30 backdrop-blur-sm">
-        <div className="px-8 py-4">
+        <div className="px-4 py-4 pl-16 md:px-8 md:pl-8">
           <Button
             variant="ghost"
             size="sm"
@@ -237,7 +237,7 @@ function CreateSessionPage() {
         </div>
       </header>
 
-      <main className="flex-1 px-8 py-8 overflow-y-auto">
+      <main className="flex-1 px-4 py-8 md:px-8 overflow-y-auto">
         <form onSubmit={handleSubmit} className="max-w-4xl mx-auto space-y-8">
           {/* Match Name */}
           <div className="space-y-2">

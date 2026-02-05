@@ -4,6 +4,7 @@ import { useQuery, api } from '@/lib/convex'
 import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { LogOut, User, Users, Calendar, Map as MapIcon, Settings } from 'lucide-react'
+import wtcsLogo from '@/assets/wtcs-logo.png'
 
 interface AdminSidebarProps {
   onNavigate?: () => void
@@ -40,8 +41,13 @@ export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
   return (
     <aside className="w-64 border-r border-border/50 bg-card/30 backdrop-blur-sm flex flex-col h-full">
       <div className="p-6 pl-14 md:pl-6 border-b border-border/50">
-        <h2 className="text-xl font-bold text-foreground">WTCS Map Vote</h2>
-        <p className="text-sm text-muted-foreground">Admin Portal</p>
+        <Link to="/admin/dashboard" className="flex items-center gap-3">
+          <img src={wtcsLogo} alt="" className="size-8 shrink-0" />
+          <div className="grid text-left text-sm leading-tight">
+            <span className="truncate font-semibold text-foreground">WTCS Map Vote</span>
+            <span className="truncate text-xs text-muted-foreground">Admin Portal</span>
+          </div>
+        </Link>
       </div>
 
       <nav className="flex-1 p-4 space-y-1">

@@ -147,7 +147,7 @@ function AdminSettings() {
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-8">
+    <div className="p-6 pl-16 md:pl-6 max-w-4xl mx-auto space-y-8">
       <div>
         <h1 className="text-2xl font-bold">Admin Management</h1>
         <p className="text-muted-foreground">
