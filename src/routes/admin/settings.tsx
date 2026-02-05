@@ -149,7 +149,7 @@ function AdminSettings() {
   return (
     <div className="flex-1 flex flex-col">
       <header className="border-b border-border/50 bg-card/30 backdrop-blur-sm">
-        <div className="px-4 py-4 pl-16 md:px-8 md:pl-8">
+        <div className="px-4 py-4 md:px-8">
           <h1 className="text-2xl font-bold text-foreground">Admin Management</h1>
           <p className="text-sm text-muted-foreground">
             Manage admin whitelist and permissions

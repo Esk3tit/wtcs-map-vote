@@ -40,7 +40,7 @@ export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
 
   return (
     <aside className="w-64 border-r border-border/50 bg-card/30 backdrop-blur-sm flex flex-col h-full">
-      <div className="p-6 pl-14 md:pl-6 border-b border-border/50">
+      <div className="p-6 pl-16 md:pl-6 border-b border-border/50">
         <Link to="/admin/dashboard" className="flex items-center gap-3" onClick={handleNavClick}>
           <img src={wtcsLogo} alt="" className="size-8 shrink-0" />
           <div className="grid text-left text-sm leading-tight">

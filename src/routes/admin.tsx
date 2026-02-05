@@ -76,7 +76,7 @@ function AdminLayout() {
       </div>
 
       {/* Main content */}
-      <main className="flex-1 flex flex-col min-w-0 md:ml-0">
+      <main className="flex-1 flex flex-col min-w-0 pl-16 md:pl-0 md:ml-0">
         <Outlet />
       </main>
     </div>
