@@ -39,8 +39,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Centralized mobile padding** in `admin.tsx` layout (`pl-16 md:pl-0`)
 - **Removed placeholder assets** (`placeholder-logo.svg`, `placeholder-logo.png`)
 
-### Changed
-
 #### Protected Routes & Server-Side Auth (WAR-27, PR #47)
 - **Derive `createdBy` server-side** from `requireAdmin(ctx)` in `createSession` — removed client-supplied `createdBy` arg
 - **Added `requireAdmin`** to read queries (`listMaps`, `getMap`, `listTeams`) preventing unauthenticated data access
