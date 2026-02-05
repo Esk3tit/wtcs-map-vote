@@ -135,7 +135,8 @@ function SessionDetailPage() {
   const { sessionId } = Route.useParams();
   const isValidId = isValidSessionId(sessionId);
   const typedSessionId = sessionId as Id<"sessions">;
-  const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
+  const [copiedAll, setCopiedAll] = useState(false);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -144,14 +145,33 @@ function SessionDetailPage() {
     };
   }, []);
 
-  const handleCopyToken = async (token: string) => {
+  const buildLobbyUrl = (token: string) =>
+    `${window.location.origin}/lobby/${token}`;
+
+  const handleCopyUrl = async (url: string) => {
     try {
-      await navigator.clipboard.writeText(token);
-      setCopiedToken(token);
+      await navigator.clipboard.writeText(url);
+      setCopiedUrl(url);
       if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
-      copyTimeoutRef.current = setTimeout(() => setCopiedToken(null), 2000);
+      copyTimeoutRef.current = setTimeout(() => setCopiedUrl(null), 2000);
     } catch (err) {
-      console.error("Failed to copy token:", err);
+      console.error("Failed to copy URL:", err);
+    }
+  };
+
+  const handleCopyAllLinks = async (
+    players: { teamName: string; token: string }[]
+  ) => {
+    const text = players
+      .map((p) => `${p.teamName}: ${buildLobbyUrl(p.token)}`)
+      .join("\n");
+    try {
+      await navigator.clipboard.writeText(text);
+      setCopiedAll(true);
+      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      copyTimeoutRef.current = setTimeout(() => setCopiedAll(false), 2000);
+    } catch (err) {
+      console.error("Failed to copy URLs:", err);
     }
   };
 
@@ -297,14 +317,33 @@ function SessionDetailPage() {
 
       {/* Main Content */}
       <main className="flex-1 px-4 py-6 md:px-8 md:py-8 space-y-6">
-        {/* Player Access Codes Card */}
+        {/* Player Lobby Links Card */}
         <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle>Player Access Codes</CardTitle>
-            <CardDescription>
-              Share these codes with each team. Codes lock to their IP on first
-              use.
-            </CardDescription>
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1.5">
+                <CardTitle>Player Lobby Links</CardTitle>
+                <CardDescription>
+                  Share these links with each team. Links lock to their IP on
+                  first use.
+                </CardDescription>
+              </div>
+              {session.players.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleCopyAllLinks(session.players)}
+                  className="shrink-0 gap-2"
+                >
+                  {copiedAll ? (
+                    <CheckCircle2 className="w-4 h-4 text-chart-4" />
+                  ) : (
+                    <Copy className="w-4 h-4" />
+                  )}
+                  {copiedAll ? "Copied!" : "Copy All Links"}
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {session.players.length === 0 ? (
@@ -328,22 +367,24 @@ function SessionDetailPage() {
                       {formatPlayerRole(player.role, session.format)}
                     </p>
                   </div>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-3 flex-wrap min-w-0">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
                       <Input
-                        value={player.token}
+                        value={buildLobbyUrl(player.token)}
                         readOnly
-                        className="w-28 font-mono text-center text-sm bg-muted border-border/50"
+                        className="min-w-0 flex-1 font-mono text-sm bg-muted border-border/50"
                       />
                       <Button
                         variant="outline"
                         size="icon"
-                        onClick={() => handleCopyToken(player.token)}
+                        onClick={() =>
+                          handleCopyUrl(buildLobbyUrl(player.token))
+                        }
                         className="shrink-0"
-                        aria-label="Copy access code"
-                        title="Copy access code"
+                        aria-label="Copy lobby link"
+                        title="Copy lobby link"
                       >
-                        {copiedToken === player.token ? (
+                        {copiedUrl === buildLobbyUrl(player.token) ? (
                           <CheckCircle2 className="w-4 h-4 text-chart-4" />
                         ) : (
                           <Copy className="w-4 h-4" />
