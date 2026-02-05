@@ -8,7 +8,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
+*No unreleased changes.*
+
+---
+
+## [0.8.0] - 2026-02-05 - Phase 3 Complete: Authentication & Admin UX
+
+Phase 3 complete! Full authentication system with admin whitelist, player token auth, OAuth login, audit logging, and comprehensive test coverage. Plus admin UX improvements.
+
 ### Added
+
+#### Show Full Lobby URLs (WAR-31, PR #51)
+- **Full lobby URLs** displayed in session detail page instead of raw 32-char tokens
+- **"Copy All Links"** button copies all player URLs as formatted list (`Team Name: URL`)
+- **Unified copy handler** with `lastCopied` state — eliminates duplication, prevents timeout race conditions
 
 #### Auth System Tests (WAR-30, WAR-21, PR #50)
 - **Comprehensive auth test coverage**; 481 total tests passing (11 skipped)
