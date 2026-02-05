@@ -115,6 +115,14 @@ export const validateAndLockToken = internalMutation({
         isConnected: true,
         lastHeartbeat: now,
       });
+
+      await logAction(ctx, {
+        sessionId: session._id,
+        action: "PLAYER_CONNECTED",
+        actorType: "PLAYER",
+        actorId: player._id,
+        details: { teamName: player.teamName },
+      });
     } else {
       // First use: lock IP to token
       await ctx.db.patch(player._id, {

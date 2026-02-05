@@ -54,6 +54,18 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
             extractProfileString(args.profile.image) ?? existingAdmin.avatarUrl,
           lastLoginAt: Date.now(),
         });
+
+        await logAdminAction(ctx, {
+          action: "ADMIN_LOGIN",
+          actorId: existingAdmin._id,
+          actorEmail: normalizedEmail,
+          targetEmail: normalizedEmail,
+          details: {
+            targetName:
+              extractProfileString(args.profile.name) ?? existingAdmin.name,
+          },
+        });
+
         return;
       }
 
@@ -83,7 +95,15 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
         return;
       }
 
-      // Not whitelisted and not first user - throw to prevent sign-in
+      // Not whitelisted and not first user - log and throw to prevent sign-in
+      await logAdminAction(ctx, {
+        action: "ADMIN_LOGIN_DENIED",
+        targetEmail: normalizedEmail,
+        details: {
+          message: "Non-whitelisted email attempted login",
+        },
+      });
+
       throw new ConvexError(
         "Your email is not authorized. Contact an administrator for access."
       );
