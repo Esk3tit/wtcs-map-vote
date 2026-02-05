@@ -10,6 +10,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+#### Auth System Tests (WAR-30, WAR-21, PR #50)
+- **64 new unit tests** covering auth system end-to-end; 500 total tests passing
+- **`convex/lib/auth.test.ts`** (14 tests) — `getCurrentAdmin`, `requireAdmin`, `requireRootAdmin`, `normalizeEmail` via public API
+- **`convex/authCallback.test.ts`** (20 tests) — `extractProfileString` pure function, callback effects for login/bootstrap/unauthorized paths
+- **`convex/http.test.ts`** (14 tests) — `extractClientIp` parsing, `getCorsHeaders` CORS origin logic with env mocking
+- **Extended `convex/playerAuth.test.ts`** (+13 tests) — IP validation edge cases, reconnection logging, heartbeat throttling, token expiry boundary
+- **Extended `convex/admins.test.ts`** (+17 tests) — `invalidateAdminSessions` success cases, audit log pagination with cursors
+- **100% coverage** on `admins.ts`, `playerAuth.ts`, and `lib/auth.ts` (up from 95.5%, 91.6%, 94.4%)
+- **Overall coverage** 83.28% → 86.72%
+
+### Changed
+
+- Exported `extractProfileString` from `convex/auth.ts` for direct testing
+- Exported `extractClientIp` and `getCorsHeaders` from `convex/http.ts` for direct testing
+- Updated dependencies: react 19.2.4, convex 1.31.7, @tanstack/react-router 1.158.1, typescript-eslint 8.54.0, shadcn 3.8.3
+
 #### Phase 3: Authentication - Player Token Auth & OAuth Fixes (WAR-26, PR #45)
 - **Server-side player token validation** via HTTP actions (`POST /api/player/validate-token`, `POST /api/player/heartbeat`)
 - **IP locking** on first token use — prevents link sharing between devices

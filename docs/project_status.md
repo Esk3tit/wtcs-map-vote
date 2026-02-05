@@ -2,7 +2,7 @@
 
 Current progress and next steps for the WTCS Map Vote project.
 
-**Last Updated:** February 3, 2026
+**Last Updated:** February 5, 2026
 
 ---
 
@@ -115,6 +115,9 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] OAuth login fixes - JWT email claim, return validators, callback race condition
 - [x] Security hardening - requireAdmin on queries, Referrer-Policy, token invalidation
 - [x] 431 unit tests passing (22 new playerAuth tests)
+- [x] Auth system tests (WAR-30, WAR-21, PR #50) — 64 new tests, 500 total
+- [x] 100% coverage on admins.ts, playerAuth.ts, lib/auth.ts
+- [x] Auth callback, HTTP helpers, and admin session management tests
 
 ---
 
