@@ -89,7 +89,7 @@ function LoginPage() {
           {/* Logo/Title Section */}
           <div className="text-center space-y-2">
             <div className="flex items-center justify-center mb-2">
-              <img src={wtcsLogo} alt="" className="h-16 w-auto" />
+              <img src={wtcsLogo} alt="WTCS Logo" className="h-16 w-auto" />
             </div>
             <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-foreground">WTCS Map Vote</h1>
             <p className="text-muted-foreground text-xs sm:text-sm font-medium tracking-wide uppercase">Admin Portal</p>
