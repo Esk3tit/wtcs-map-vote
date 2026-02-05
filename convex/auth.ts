@@ -48,12 +48,26 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
 
       if (existingAdmin) {
         // Update profile data and lastLoginAt
+        const updatedName =
+          extractProfileString(args.profile.name) ?? existingAdmin.name;
+        const updatedAvatar =
+          extractProfileString(args.profile.image) ?? existingAdmin.avatarUrl;
+
         await db.patch(existingAdmin._id, {
-          name: extractProfileString(args.profile.name) ?? existingAdmin.name,
-          avatarUrl:
-            extractProfileString(args.profile.image) ?? existingAdmin.avatarUrl,
+          name: updatedName,
+          avatarUrl: updatedAvatar,
           lastLoginAt: Date.now(),
         });
+
+        await logAdminAction(ctx, {
+          action: "ADMIN_LOGIN",
+          actorId: existingAdmin._id,
+          actorEmail: normalizedEmail,
+          targetId: existingAdmin._id,
+          targetEmail: normalizedEmail,
+          details: { targetName: updatedName },
+        });
+
         return;
       }
 
@@ -83,7 +97,11 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
         return;
       }
 
-      // Not whitelisted and not first user - throw to prevent sign-in
+      // Not whitelisted and not first user — throw to prevent sign-in.
+      // NOTE: Cannot audit log here because Convex mutations are transactional:
+      // the throw rolls back all writes including any audit log insert.
+      // ctx.scheduler.runAfter is also rolled back on throw.
+      // The ConvexError already surfaces as a 403 to the client.
       throw new ConvexError(
         "Your email is not authorized. Contact an administrator for access."
       );

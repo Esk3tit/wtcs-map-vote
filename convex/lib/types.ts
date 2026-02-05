@@ -84,6 +84,7 @@ export interface AuditDetails {
  * Used for tracking admin management actions (separate from session audit logs).
  */
 export type AdminAuditAction =
+  | "ADMIN_LOGIN"
   | "ADMIN_ADDED"
   | "ADMIN_REMOVED"
   | "ADMIN_PROMOTED"
