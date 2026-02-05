@@ -137,11 +137,13 @@ function SessionDetailPage() {
   const typedSessionId = sessionId as Id<"sessions">;
   const [copiedUrl, setCopiedUrl] = useState<string | null>(null);
   const [copiedAll, setCopiedAll] = useState(false);
-  const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyUrlTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const copyAllTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     return () => {
-      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
+      if (copyUrlTimeoutRef.current) clearTimeout(copyUrlTimeoutRef.current);
+      if (copyAllTimeoutRef.current) clearTimeout(copyAllTimeoutRef.current);
     };
   }, []);
 
@@ -152,8 +154,8 @@ function SessionDetailPage() {
     try {
       await navigator.clipboard.writeText(url);
       setCopiedUrl(url);
-      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
-      copyTimeoutRef.current = setTimeout(() => setCopiedUrl(null), 2000);
+      if (copyUrlTimeoutRef.current) clearTimeout(copyUrlTimeoutRef.current);
+      copyUrlTimeoutRef.current = setTimeout(() => setCopiedUrl(null), 2000);
     } catch (err) {
       console.error("Failed to copy URL:", err);
     }
@@ -168,8 +170,8 @@ function SessionDetailPage() {
     try {
       await navigator.clipboard.writeText(text);
       setCopiedAll(true);
-      if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
-      copyTimeoutRef.current = setTimeout(() => setCopiedAll(false), 2000);
+      if (copyAllTimeoutRef.current) clearTimeout(copyAllTimeoutRef.current);
+      copyAllTimeoutRef.current = setTimeout(() => setCopiedAll(false), 2000);
     } catch (err) {
       console.error("Failed to copy URLs:", err);
     }
@@ -354,72 +356,73 @@ function SessionDetailPage() {
                 </p>
               </div>
             ) : (
-              session.players.map((player) => (
-                <div
-                  key={player._id}
-                  className="flex flex-col gap-3 p-4 rounded-lg border border-border/50 bg-background/50 sm:flex-row sm:items-center sm:gap-4"
-                >
-                  <div className="flex-1 space-y-1 min-w-0">
-                    <p className="font-semibold text-foreground truncate">
-                      {player.teamName}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {formatPlayerRole(player.role, session.format)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3 flex-wrap min-w-0">
-                    <div className="flex items-center gap-2 min-w-0 flex-1">
-                      <Input
-                        value={buildLobbyUrl(player.token)}
-                        readOnly
-                        className="min-w-0 flex-1 font-mono text-sm bg-muted border-border/50"
-                      />
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() =>
-                          handleCopyUrl(buildLobbyUrl(player.token))
-                        }
-                        className="shrink-0"
-                        aria-label="Copy lobby link"
-                        title="Copy lobby link"
-                      >
-                        {copiedUrl === buildLobbyUrl(player.token) ? (
-                          <CheckCircle2 className="w-4 h-4 text-chart-4" />
-                        ) : (
-                          <Copy className="w-4 h-4" />
-                        )}
-                      </Button>
+              session.players.map((player) => {
+                const lobbyUrl = buildLobbyUrl(player.token);
+                return (
+                  <div
+                    key={player._id}
+                    className="flex flex-col gap-3 p-4 rounded-lg border border-border/50 bg-background/50 sm:flex-row sm:items-center sm:gap-4"
+                  >
+                    <div className="flex-1 space-y-1 min-w-0">
+                      <p className="font-semibold text-foreground truncate">
+                        {player.teamName}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {formatPlayerRole(player.role, session.format)}
+                      </p>
                     </div>
-                    {player.ipAddress ? (
-                      <Badge
-                        variant="outline"
-                        className="gap-1 bg-chart-4/20 text-chart-4 border-chart-4/30"
-                      >
-                        <Lock className="w-3 h-3" />
-                        <span className="hidden sm:inline">Locked to </span>
-                        {player.ipAddress}
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="outline"
-                        className="bg-muted text-muted-foreground border-border"
-                      >
-                        Not activated
-                      </Badge>
-                    )}
-                    {player.isConnected && (
-                      <Badge
-                        variant="outline"
-                        className="gap-1 bg-green-500/20 text-green-600 border-green-500/30"
-                      >
-                        <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                        Connected
-                      </Badge>
-                    )}
+                    <div className="flex items-center gap-3 flex-wrap min-w-0">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <Input
+                          value={lobbyUrl}
+                          readOnly
+                          className="min-w-0 flex-1 font-mono text-sm bg-muted border-border/50"
+                        />
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => handleCopyUrl(lobbyUrl)}
+                          className="shrink-0"
+                          aria-label="Copy lobby link"
+                          title="Copy lobby link"
+                        >
+                          {copiedUrl === lobbyUrl ? (
+                            <CheckCircle2 className="w-4 h-4 text-chart-4" />
+                          ) : (
+                            <Copy className="w-4 h-4" />
+                          )}
+                        </Button>
+                      </div>
+                      {player.ipAddress ? (
+                        <Badge
+                          variant="outline"
+                          className="gap-1 bg-chart-4/20 text-chart-4 border-chart-4/30"
+                        >
+                          <Lock className="w-3 h-3" />
+                          <span className="hidden sm:inline">Locked to </span>
+                          {player.ipAddress}
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="bg-muted text-muted-foreground border-border"
+                        >
+                          Not activated
+                        </Badge>
+                      )}
+                      {player.isConnected && (
+                        <Badge
+                          variant="outline"
+                          className="gap-1 bg-green-500/20 text-green-600 border-green-500/30"
+                        >
+                          <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                          Connected
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </CardContent>
         </Card>
