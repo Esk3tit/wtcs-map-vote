@@ -13,6 +13,7 @@ import {
 } from "./test.factories";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { HEARTBEAT_SKIP_MS } from "./lib/constants";
 
 // ============================================================================
 // Test Helpers
@@ -327,6 +328,158 @@ describe("playerAuth.validateAndLockToken", () => {
       expect(result.status).toBe("ok");
     });
   });
+
+  describe("IP validation", () => {
+    it("returns INVALID_IP for empty string IP address", async () => {
+      const t = createTestContext();
+      const { token } = await createSessionWithUnactivatedPlayer(t);
+
+      const result = await t.mutation(
+        internal.playerAuth.validateAndLockToken,
+        { token, ipAddress: "" }
+      );
+
+      expect(result).toEqual({
+        status: "error",
+        error: "INVALID_IP",
+      });
+    });
+
+    it("returns INVALID_IP for whitespace-only IP address", async () => {
+      const t = createTestContext();
+      const { token } = await createSessionWithUnactivatedPlayer(t);
+
+      const result = await t.mutation(
+        internal.playerAuth.validateAndLockToken,
+        { token, ipAddress: "   " }
+      );
+
+      expect(result).toEqual({
+        status: "error",
+        error: "INVALID_IP",
+      });
+    });
+  });
+
+  describe("reconnection logging", () => {
+    it("logs PLAYER_CONNECTED when previously disconnected player validates", async () => {
+      const t = createTestContext();
+      const { token, playerId, sessionId } =
+        await createSessionWithActivatedPlayer(t, "10.0.0.1");
+
+      // Disconnect the player first
+      await t.run(async (ctx) =>
+        ctx.db.patch(playerId, { isConnected: false })
+      );
+
+      await t.mutation(internal.playerAuth.validateAndLockToken, {
+        token,
+        ipAddress: "10.0.0.1",
+      });
+
+      const logs = await t.run(async (ctx) =>
+        ctx.db
+          .query("auditLogs")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+          .collect()
+      );
+
+      expect(logs).toHaveLength(1);
+      expect(logs[0]).toMatchObject({
+        action: "PLAYER_CONNECTED",
+        actorType: "PLAYER",
+      });
+      expect(logs[0].details.teamName).toBeDefined();
+    });
+
+    it("does NOT log PLAYER_CONNECTED when already-connected player validates", async () => {
+      const t = createTestContext();
+      const { token, sessionId } =
+        await createSessionWithActivatedPlayer(t, "10.0.0.1");
+
+      // Player is already connected (default in createSessionWithActivatedPlayer)
+      await t.mutation(internal.playerAuth.validateAndLockToken, {
+        token,
+        ipAddress: "10.0.0.1",
+      });
+
+      const logs = await t.run(async (ctx) =>
+        ctx.db
+          .query("auditLogs")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+          .collect()
+      );
+
+      // No PLAYER_CONNECTED log should exist
+      const connectLogs = logs.filter((l) => l.action === "PLAYER_CONNECTED");
+      expect(connectLogs).toHaveLength(0);
+    });
+  });
+
+  describe("token expiry boundary", () => {
+    it("token works 1ms before expiry", async () => {
+      const t = createTestContext();
+      const now = Date.now();
+      const { token } = await createSessionWithUnactivatedPlayer(t, {
+        tokenExpiresAt: now + 1, // Expires 1ms from now
+      });
+
+      const result = await t.mutation(
+        internal.playerAuth.validateAndLockToken,
+        { token, ipAddress: "10.0.0.1" }
+      );
+
+      expect(result.status).toBe("ok");
+    });
+
+    it("multiple players in same session validate independently", async () => {
+      const t = createTestContext();
+
+      const { sessionId } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { status: "WAITING" })
+        );
+        return { adminId, sessionId };
+      });
+
+      const token1 = crypto.randomUUID();
+      const token2 = crypto.randomUUID();
+      await t.run(async (ctx) => {
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: token1,
+            ipAddress: undefined,
+            teamName: "Team Alpha",
+            role: "PLAYER_A",
+          })
+        );
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: token2,
+            ipAddress: undefined,
+            teamName: "Team Beta",
+            role: "PLAYER_B",
+          })
+        );
+      });
+
+      const result1 = await t.mutation(
+        internal.playerAuth.validateAndLockToken,
+        { token: token1, ipAddress: "10.0.0.1" }
+      );
+      const result2 = await t.mutation(
+        internal.playerAuth.validateAndLockToken,
+        { token: token2, ipAddress: "10.0.0.2" }
+      );
+
+      expect(result1.status).toBe("ok");
+      expect(result2.status).toBe("ok");
+    });
+  });
 });
 
 // ============================================================================
@@ -447,6 +600,122 @@ describe("playerAuth.playerHeartbeat", () => {
         status: "error",
         error: "TOKEN_NOT_ACTIVATED",
       });
+    });
+  });
+
+  describe("IP validation", () => {
+    it("returns INVALID_IP for empty string IP address", async () => {
+      const t = createTestContext();
+      const { token } =
+        await createSessionWithActivatedPlayer(t, "10.0.0.1");
+
+      const result = await t.mutation(internal.playerAuth.playerHeartbeat, {
+        token,
+        ipAddress: "",
+      });
+
+      expect(result).toEqual({
+        status: "error",
+        error: "INVALID_IP",
+      });
+    });
+
+    it("returns INVALID_IP for whitespace-only IP address", async () => {
+      const t = createTestContext();
+      const { token } =
+        await createSessionWithActivatedPlayer(t, "10.0.0.1");
+
+      const result = await t.mutation(internal.playerAuth.playerHeartbeat, {
+        token,
+        ipAddress: "   ",
+      });
+
+      expect(result).toEqual({
+        status: "error",
+        error: "INVALID_IP",
+      });
+    });
+  });
+
+  describe("heartbeat throttling", () => {
+    it("skips DB write when heartbeat is within HEARTBEAT_SKIP_MS threshold", async () => {
+      const t = createTestContext();
+      const { token, playerId } =
+        await createSessionWithActivatedPlayer(t, "10.0.0.1");
+
+      // Set a recent heartbeat (within threshold)
+      const recentTime = Date.now();
+      await t.run(async (ctx) =>
+        ctx.db.patch(playerId, {
+          isConnected: true,
+          lastHeartbeat: recentTime,
+        })
+      );
+
+      // Heartbeat should succeed but NOT update the DB
+      const result = await t.mutation(internal.playerAuth.playerHeartbeat, {
+        token,
+        ipAddress: "10.0.0.1",
+      });
+
+      expect(result).toEqual({ status: "ok" });
+
+      // lastHeartbeat should remain unchanged (skip write)
+      const player = await t.run(async (ctx) => ctx.db.get(playerId));
+      expect(player?.lastHeartbeat).toBe(recentTime);
+    });
+
+    it("updates DB when heartbeat exceeds HEARTBEAT_SKIP_MS threshold", async () => {
+      const t = createTestContext();
+      const { token, playerId } =
+        await createSessionWithActivatedPlayer(t, "10.0.0.1");
+
+      // Set an old heartbeat (beyond threshold)
+      const staleTime = Date.now() - HEARTBEAT_SKIP_MS - 1000;
+      await t.run(async (ctx) =>
+        ctx.db.patch(playerId, {
+          isConnected: true,
+          lastHeartbeat: staleTime,
+        })
+      );
+
+      const before = Date.now();
+      const result = await t.mutation(internal.playerAuth.playerHeartbeat, {
+        token,
+        ipAddress: "10.0.0.1",
+      });
+
+      expect(result).toEqual({ status: "ok" });
+
+      // lastHeartbeat should be updated
+      const player = await t.run(async (ctx) => ctx.db.get(playerId));
+      expect(player?.lastHeartbeat).toBeGreaterThanOrEqual(before);
+    });
+
+    it("writes heartbeat even within threshold if player was disconnected", async () => {
+      const t = createTestContext();
+      const { token, playerId } =
+        await createSessionWithActivatedPlayer(t, "10.0.0.1");
+
+      // Player is disconnected but has recent heartbeat
+      const recentTime = Date.now();
+      await t.run(async (ctx) =>
+        ctx.db.patch(playerId, {
+          isConnected: false,
+          lastHeartbeat: recentTime,
+        })
+      );
+
+      const result = await t.mutation(internal.playerAuth.playerHeartbeat, {
+        token,
+        ipAddress: "10.0.0.1",
+      });
+
+      expect(result).toEqual({ status: "ok" });
+
+      // Should have reconnected (isConnected should be true)
+      const player = await t.run(async (ctx) => ctx.db.get(playerId));
+      expect(player?.isConnected).toBe(true);
     });
   });
 });

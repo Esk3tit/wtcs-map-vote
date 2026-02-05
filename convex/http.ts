@@ -24,7 +24,7 @@ auth.addHttpRoutes(http);
  * Uses the rightmost IP in X-Forwarded-For (set by the edge proxy).
  * Falls back to X-Real-Ip, then "unknown".
  */
-function extractClientIp(req: Request): string {
+export function extractClientIp(req: Request): string {
   const forwarded = req.headers.get("X-Forwarded-For");
   if (forwarded) {
     const ips = forwarded.split(",").map((ip) => ip.trim());
@@ -40,7 +40,7 @@ function extractClientIp(req: Request): string {
  * Fails closed in Convex Cloud deployments if SITE_URL is missing.
  * Must be called inside handlers because env vars are only available at runtime.
  */
-function getCorsHeaders(): Record<string, string> {
+export function getCorsHeaders(): Record<string, string> {
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const env = (globalThis as any).process?.env as Record<string, string> | undefined;
   let origin: string;
