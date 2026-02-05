@@ -120,6 +120,7 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] Auth event logging — ADMIN_LOGIN, PLAYER_CONNECTED audit events (WAR-29, PR #49)
 - [x] Auth system tests (WAR-30, WAR-21, PR #50) — 64 new tests, 500 total
 - [x] 100% coverage on admins.ts, playerAuth.ts, lib/auth.ts
+- [x] Full lobby URLs in session detail page (WAR-31, PR #51)
 
 ---
 

@@ -135,7 +135,7 @@ function SessionDetailPage() {
   const { sessionId } = Route.useParams();
   const isValidId = isValidSessionId(sessionId);
   const typedSessionId = sessionId as Id<"sessions">;
-  const [copiedToken, setCopiedToken] = useState<string | null>(null);
+  const [lastCopied, setLastCopied] = useState<"all" | string | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -144,15 +144,27 @@ function SessionDetailPage() {
     };
   }, []);
 
-  const handleCopyToken = async (token: string) => {
+  const buildLobbyUrl = (token: string) =>
+    `${window.location.origin}/lobby/${token}`;
+
+  const handleCopy = async (text: string, id: "all" | string) => {
     try {
-      await navigator.clipboard.writeText(token);
-      setCopiedToken(token);
+      await navigator.clipboard.writeText(text);
+      setLastCopied(id);
       if (copyTimeoutRef.current) clearTimeout(copyTimeoutRef.current);
-      copyTimeoutRef.current = setTimeout(() => setCopiedToken(null), 2000);
+      copyTimeoutRef.current = setTimeout(() => setLastCopied(null), 2000);
     } catch (err) {
-      console.error("Failed to copy token:", err);
+      console.error("Failed to copy:", err);
     }
+  };
+
+  const handleCopyAllLinks = async (
+    players: { teamName: string; token: string }[]
+  ) => {
+    const text = players
+      .map((p) => `${p.teamName}: ${buildLobbyUrl(p.token)}`)
+      .join("\n");
+    await handleCopy(text, "all");
   };
 
   const session = useQuery(
@@ -297,14 +309,33 @@ function SessionDetailPage() {
 
       {/* Main Content */}
       <main className="flex-1 px-4 py-6 md:px-8 md:py-8 space-y-6">
-        {/* Player Access Codes Card */}
+        {/* Player Lobby Links Card */}
         <Card className="border-border/50 bg-card/50 backdrop-blur-sm">
           <CardHeader>
-            <CardTitle>Player Access Codes</CardTitle>
-            <CardDescription>
-              Share these codes with each team. Codes lock to their IP on first
-              use.
-            </CardDescription>
+            <div className="flex items-start justify-between gap-4">
+              <div className="space-y-1.5">
+                <CardTitle>Player Lobby Links</CardTitle>
+                <CardDescription>
+                  Share these links with each team. Links lock to their IP on
+                  first use.
+                </CardDescription>
+              </div>
+              {session.players.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => handleCopyAllLinks(session.players)}
+                  className="shrink-0 gap-2"
+                >
+                  {lastCopied === "all" ? (
+                    <CheckCircle2 className="w-4 h-4 text-chart-4" />
+                  ) : (
+                    <Copy className="w-4 h-4" />
+                  )}
+                  {lastCopied === "all" ? "Copied!" : "Copy All Links"}
+                </Button>
+              )}
+            </div>
           </CardHeader>
           <CardContent className="space-y-3">
             {session.players.length === 0 ? (
@@ -315,70 +346,73 @@ function SessionDetailPage() {
                 </p>
               </div>
             ) : (
-              session.players.map((player) => (
-                <div
-                  key={player._id}
-                  className="flex flex-col gap-3 p-4 rounded-lg border border-border/50 bg-background/50 sm:flex-row sm:items-center sm:gap-4"
-                >
-                  <div className="flex-1 space-y-1 min-w-0">
-                    <p className="font-semibold text-foreground truncate">
-                      {player.teamName}
-                    </p>
-                    <p className="text-sm text-muted-foreground">
-                      {formatPlayerRole(player.role, session.format)}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-3 flex-wrap">
-                    <div className="flex items-center gap-2">
-                      <Input
-                        value={player.token}
-                        readOnly
-                        className="w-28 font-mono text-center text-sm bg-muted border-border/50"
-                      />
-                      <Button
-                        variant="outline"
-                        size="icon"
-                        onClick={() => handleCopyToken(player.token)}
-                        className="shrink-0"
-                        aria-label="Copy access code"
-                        title="Copy access code"
-                      >
-                        {copiedToken === player.token ? (
-                          <CheckCircle2 className="w-4 h-4 text-chart-4" />
-                        ) : (
-                          <Copy className="w-4 h-4" />
-                        )}
-                      </Button>
+              session.players.map((player) => {
+                const lobbyUrl = buildLobbyUrl(player.token);
+                return (
+                  <div
+                    key={player._id}
+                    className="flex flex-col gap-3 p-4 rounded-lg border border-border/50 bg-background/50 sm:flex-row sm:items-center sm:gap-4"
+                  >
+                    <div className="flex-1 space-y-1 min-w-0">
+                      <p className="font-semibold text-foreground truncate">
+                        {player.teamName}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {formatPlayerRole(player.role, session.format)}
+                      </p>
                     </div>
-                    {player.ipAddress ? (
-                      <Badge
-                        variant="outline"
-                        className="gap-1 bg-chart-4/20 text-chart-4 border-chart-4/30"
-                      >
-                        <Lock className="w-3 h-3" />
-                        <span className="hidden sm:inline">Locked to </span>
-                        {player.ipAddress}
-                      </Badge>
-                    ) : (
-                      <Badge
-                        variant="outline"
-                        className="bg-muted text-muted-foreground border-border"
-                      >
-                        Not activated
-                      </Badge>
-                    )}
-                    {player.isConnected && (
-                      <Badge
-                        variant="outline"
-                        className="gap-1 bg-green-500/20 text-green-600 border-green-500/30"
-                      >
-                        <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                        Connected
-                      </Badge>
-                    )}
+                    <div className="flex items-center gap-3 flex-wrap min-w-0">
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <Input
+                          value={lobbyUrl}
+                          readOnly
+                          className="min-w-0 flex-1 font-mono text-sm bg-muted border-border/50"
+                        />
+                        <Button
+                          variant="outline"
+                          size="icon"
+                          onClick={() => handleCopy(lobbyUrl, lobbyUrl)}
+                          className="shrink-0"
+                          aria-label="Copy lobby link"
+                          title="Copy lobby link"
+                        >
+                          {lastCopied === lobbyUrl ? (
+                            <CheckCircle2 className="w-4 h-4 text-chart-4" />
+                          ) : (
+                            <Copy className="w-4 h-4" />
+                          )}
+                        </Button>
+                      </div>
+                      {player.ipAddress ? (
+                        <Badge
+                          variant="outline"
+                          className="gap-1 bg-chart-4/20 text-chart-4 border-chart-4/30"
+                        >
+                          <Lock className="w-3 h-3" />
+                          <span className="hidden sm:inline">Locked to </span>
+                          {player.ipAddress}
+                        </Badge>
+                      ) : (
+                        <Badge
+                          variant="outline"
+                          className="bg-muted text-muted-foreground border-border"
+                        >
+                          Not activated
+                        </Badge>
+                      )}
+                      {player.isConnected && (
+                        <Badge
+                          variant="outline"
+                          className="gap-1 bg-green-500/20 text-green-600 border-green-500/30"
+                        >
+                          <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                          Connected
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-                </div>
-              ))
+                );
+              })
             )}
           </CardContent>
         </Card>
