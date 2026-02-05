@@ -231,7 +231,7 @@ function SessionDetailPage() {
     <div className="flex-1 flex flex-col">
       {/* Header */}
       <header className="border-b border-border/50 bg-card/30 backdrop-blur-sm">
-        <div className="px-4 py-4 pl-16 md:px-8 md:pl-8 space-y-4">
+        <div className="px-4 py-4 md:px-8 space-y-4">
           <Button
             variant="ghost"
             render={<Link to="/admin/dashboard" />}

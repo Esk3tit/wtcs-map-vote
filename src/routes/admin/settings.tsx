@@ -69,7 +69,7 @@ function AdminSettings() {
   // Loading state - wait for me query first
   if (me === undefined) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex-1 flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
       </div>
     )
@@ -78,8 +78,8 @@ function AdminSettings() {
   // Access denied for non-root admins (checked before admins query loads)
   if (!me?.isRootAdmin) {
     return (
-      <div className="p-6">
-        <Card className="p-6 max-w-md mx-auto text-center">
+      <div className="flex-1 flex items-center justify-center p-6">
+        <Card className="p-6 max-w-md text-center">
           <ShieldOff className="w-12 h-12 mx-auto mb-4 text-muted-foreground" />
           <h1 className="text-xl font-bold mb-2">Access Denied</h1>
           <p className="text-muted-foreground">
@@ -93,7 +93,7 @@ function AdminSettings() {
   // Loading admins list (only for root users)
   if (admins === undefined) {
     return (
-      <div className="flex items-center justify-center h-64">
+      <div className="flex-1 flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
       </div>
     )
@@ -147,169 +147,177 @@ function AdminSettings() {
   }
 
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-8">
-      <div>
-        <h1 className="text-2xl font-bold">Admin Management</h1>
-        <p className="text-muted-foreground">
-          Manage admin whitelist and permissions
-        </p>
-      </div>
+    <div className="flex-1 flex flex-col">
+      <header className="border-b border-border/50 bg-card/30 backdrop-blur-sm">
+        <div className="px-4 py-4 md:px-8">
+          <h1 className="text-2xl font-bold text-foreground">Admin Management</h1>
+          <p className="text-sm text-muted-foreground">
+            Manage admin whitelist and permissions
+          </p>
+        </div>
+      </header>
 
-      {/* Add Admin Form */}
-      <Card className="p-6">
-        <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
-          <UserPlus className="h-5 w-5" />
-          Add New Admin
-        </h2>
-        <form onSubmit={handleAddAdmin} className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            <div className="space-y-2">
-              <Label htmlFor="email">Email</Label>
-              <Input
-                id="email"
-                type="email"
-                value={newEmail}
-                onChange={(e) => setNewEmail(e.target.value)}
-                placeholder="admin@example.com"
-                required
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="name">Name</Label>
-              <Input
-                id="name"
-                value={newName}
-                onChange={(e) => setNewName(e.target.value)}
-                placeholder="John Doe"
-                required
-              />
-            </div>
-          </div>
-          <div className="flex items-center gap-2">
-            <Checkbox
-              id="makeRoot"
-              checked={makeRoot}
-              onCheckedChange={(checked) => setMakeRoot(checked === true)}
-            />
-            <Label htmlFor="makeRoot" className="cursor-pointer text-sm">
-              Grant root admin privileges
-            </Label>
-          </div>
-          <Button type="submit" disabled={isSubmitting}>
-            {isSubmitting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Adding...
-              </>
-            ) : (
-              'Add Admin'
-            )}
-          </Button>
-        </form>
-      </Card>
+      <main className="flex-1 px-4 py-6 md:px-8 md:py-8">
+        <div className="max-w-4xl mx-auto space-y-8">
+          {/* Add Admin Form */}
+          <Card className="p-6">
+            <h2 className="text-lg font-semibold mb-4 flex items-center gap-2">
+              <UserPlus className="h-5 w-5" />
+              Add New Admin
+            </h2>
+            <form onSubmit={handleAddAdmin} className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <Label htmlFor="email">Email</Label>
+                  <Input
+                    id="email"
+                    type="email"
+                    value={newEmail}
+                    onChange={(e) => setNewEmail(e.target.value)}
+                    placeholder="admin@example.com"
+                    required
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="name">Name</Label>
+                  <Input
+                    id="name"
+                    value={newName}
+                    onChange={(e) => setNewName(e.target.value)}
+                    placeholder="John Doe"
+                    required
+                  />
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <Checkbox
+                  id="makeRoot"
+                  checked={makeRoot}
+                  onCheckedChange={(checked) => setMakeRoot(checked === true)}
+                />
+                <Label htmlFor="makeRoot" className="cursor-pointer text-sm">
+                  Grant root admin privileges
+                </Label>
+              </div>
+              <Button type="submit" disabled={isSubmitting}>
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Adding...
+                  </>
+                ) : (
+                  'Add Admin'
+                )}
+              </Button>
+            </form>
+          </Card>
 
-      {/* Admin List */}
-      <Card>
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Admin</TableHead>
-              <TableHead>Role</TableHead>
-              <TableHead>Last Login</TableHead>
-              <TableHead className="text-right">Actions</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {admins.map((admin) => (
-              <TableRow
-                key={admin._id}
-                className={admin._id === me._id ? 'bg-muted/50' : ''}
-              >
-                <TableCell>
-                  <div className="flex items-center gap-3">
-                    <Avatar className="h-8 w-8">
-                      <AvatarImage src={admin.avatarUrl} alt={admin.name} />
-                      <AvatarFallback className="bg-primary/20 text-primary">
-                        <User className="h-4 w-4" />
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <div className="font-medium">
-                        {admin.name}
-                        {admin._id === me._id && (
-                          <span className="text-muted-foreground ml-2">(you)</span>
-                        )}
-                      </div>
-                      <div className="text-sm text-muted-foreground">
-                        {admin.email}
-                      </div>
-                    </div>
-                  </div>
-                </TableCell>
-                <TableCell>
-                  {admin.isRootAdmin ? (
-                    <Badge>Root Admin</Badge>
-                  ) : (
-                    <Badge variant="secondary">Admin</Badge>
-                  )}
-                </TableCell>
-                <TableCell>
-                  {admin.lastLoginAt > 0
-                    ? new Date(admin.lastLoginAt).toLocaleDateString()
-                    : 'Never'}
-                </TableCell>
-                <TableCell className="text-right">
-                  <DropdownMenu>
-                    <DropdownMenuTrigger
-                      render={<Button variant="ghost" size="sm" aria-label="Admin actions" />}
+          {/* Admin List */}
+          <Card>
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Admin</TableHead>
+                    <TableHead>Role</TableHead>
+                    <TableHead>Last Login</TableHead>
+                    <TableHead className="text-right">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {admins.map((admin) => (
+                    <TableRow
+                      key={admin._id}
+                      className={admin._id === me._id ? 'bg-muted/50' : ''}
                     >
-                      <MoreHorizontal className="h-4 w-4" />
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end">
-                      {/* Toggle Role */}
-                      <DropdownMenuItem
-                        onClick={() =>
-                          handleToggleRole(admin._id, admin.isRootAdmin, admin.email)
-                        }
-                      >
+                      <TableCell>
+                        <div className="flex items-center gap-3">
+                          <Avatar className="h-8 w-8">
+                            <AvatarImage src={admin.avatarUrl} alt={admin.name} />
+                            <AvatarFallback className="bg-primary/20 text-primary">
+                              <User className="h-4 w-4" />
+                            </AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <div className="font-medium">
+                              {admin.name}
+                              {admin._id === me._id && (
+                                <span className="text-muted-foreground ml-2">(you)</span>
+                              )}
+                            </div>
+                            <div className="text-sm text-muted-foreground">
+                              {admin.email}
+                            </div>
+                          </div>
+                        </div>
+                      </TableCell>
+                      <TableCell>
                         {admin.isRootAdmin ? (
-                          <>
-                            <ShieldOff className="mr-2 h-4 w-4" />
-                            Demote to Admin
-                          </>
+                          <Badge>Root Admin</Badge>
                         ) : (
-                          <>
-                            <ShieldCheck className="mr-2 h-4 w-4" />
-                            Promote to Root Admin
-                          </>
+                          <Badge variant="secondary">Admin</Badge>
                         )}
-                      </DropdownMenuItem>
+                      </TableCell>
+                      <TableCell>
+                        {admin.lastLoginAt > 0
+                          ? new Date(admin.lastLoginAt).toLocaleDateString()
+                          : 'Never'}
+                      </TableCell>
+                      <TableCell className="text-right">
+                        <DropdownMenu>
+                          <DropdownMenuTrigger
+                            render={<Button variant="ghost" size="sm" aria-label="Admin actions" />}
+                          >
+                            <MoreHorizontal className="h-4 w-4" />
+                          </DropdownMenuTrigger>
+                          <DropdownMenuContent align="end">
+                            {/* Toggle Role */}
+                            <DropdownMenuItem
+                              onClick={() =>
+                                handleToggleRole(admin._id, admin.isRootAdmin, admin.email)
+                              }
+                            >
+                              {admin.isRootAdmin ? (
+                                <>
+                                  <ShieldOff className="mr-2 h-4 w-4" />
+                                  Demote to Admin
+                                </>
+                              ) : (
+                                <>
+                                  <ShieldCheck className="mr-2 h-4 w-4" />
+                                  Promote to Root Admin
+                                </>
+                              )}
+                            </DropdownMenuItem>
 
-                      {/* Force Logout */}
-                      <DropdownMenuItem
-                        onClick={() => handleForceLogout(admin._id, admin.email)}
-                        disabled={admin._id === me._id}
-                      >
-                        <LogOut className="mr-2 h-4 w-4" />
-                        Force Logout
-                      </DropdownMenuItem>
+                            {/* Force Logout */}
+                            <DropdownMenuItem
+                              onClick={() => handleForceLogout(admin._id, admin.email)}
+                              disabled={admin._id === me._id}
+                            >
+                              <LogOut className="mr-2 h-4 w-4" />
+                              Force Logout
+                            </DropdownMenuItem>
 
-                      <DropdownMenuSeparator />
+                            <DropdownMenuSeparator />
 
-                      {/* Remove Admin */}
-                      <RemoveAdminDialog
-                        admin={admin}
-                        isCurrentUser={admin._id === me._id}
-                        onRemove={() => handleRemove(admin._id, admin.email)}
-                      />
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </Card>
+                            {/* Remove Admin */}
+                            <RemoveAdminDialog
+                              admin={admin}
+                              isCurrentUser={admin._id === me._id}
+                              onRemove={() => handleRemove(admin._id, admin.email)}
+                            />
+                          </DropdownMenuContent>
+                        </DropdownMenu>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </Card>
+        </div>
+      </main>
     </div>
   )
 }
