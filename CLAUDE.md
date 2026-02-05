@@ -205,6 +205,9 @@ bunx vitest                           # Watch mode
 - `convex/audit.test.ts` - Audit logging unit tests
 - `convex/playerAuth.test.ts` - Player token auth unit tests
 - `convex/admins.test.ts` - Admin CRUD unit tests
+- `convex/authCallback.test.ts` - OAuth callback logic tests
+- `convex/http.test.ts` - HTTP helper (CORS, IP extraction) tests
+- `convex/lib/auth.test.ts` - Auth helper function tests
 
 **Key patterns:**
 ```typescript
@@ -333,6 +336,7 @@ The schema is defined in `convex/schema.ts` with 8 tables:
 | `sessionMaps` | Maps assigned to session | `by_sessionId`, `by_sessionId_and_state` |
 | `votes` | Individual votes | `by_sessionId_and_round`, `by_playerId_and_round` |
 | `auditLogs` | Action history | `by_sessionId`, `by_timestamp` |
+| `adminAuditLogs` | Admin management audit trail | `by_timestamp` |
 
 **Important:** Convex indexes do not enforce uniqueness. Mutations must validate uniqueness for `token` and `email` fields before inserting.
 

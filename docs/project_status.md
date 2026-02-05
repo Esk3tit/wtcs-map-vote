@@ -100,7 +100,7 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] `TokenErrorPage` component for invalid/expired tokens
 - [x] Convex React helper (`src/lib/convex.ts`)
 
-### Phase 3: Authentication (IN PROGRESS)
+### Phase 3: Authentication (COMPLETE)
 - [x] Convex Auth infrastructure (WAR-23) - auth tables, providers, HTTP routes
 - [x] Google OAuth provider (WAR-24) - login UI, logout, real user display
 - [x] Admin whitelist system (WAR-25) - email-based access control, root admin protection
@@ -114,25 +114,29 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] `usePlayerAuth` hook with heartbeat and AbortController cleanup
 - [x] OAuth login fixes - JWT email claim, return validators, callback race condition
 - [x] Security hardening - requireAdmin on queries, Referrer-Policy, token invalidation
-- [x] 431 unit tests passing (22 new playerAuth tests)
+- [x] Protected routes & server-side createdBy derivation (WAR-27, PR #47)
+- [x] CORS restriction to SITE_URL in production with fail-closed behavior
+- [x] WTCS logo integration and mobile padding fixes (WAR-28, PR #48)
+- [x] Auth event logging — ADMIN_LOGIN, PLAYER_CONNECTED audit events (WAR-29, PR #49)
 - [x] Auth system tests (WAR-30, WAR-21, PR #50) — 64 new tests, 500 total
 - [x] 100% coverage on admins.ts, playerAuth.ts, lib/auth.ts
-- [x] Auth callback, HTTP helpers, and admin session management tests
 
 ---
 
 ## Next Steps
 
-### Phase 3: Authentication & Session Lifecycle (Priority: High)
+### Phase 3: Authentication (COMPLETE)
 
-1. **Authentication** (COMPLETE)
-   - [x] Set up Convex Auth infrastructure (WAR-23) - auth tables, providers, HTTP routes
-   - [x] Add Google OAuth provider (WAR-24) - login UI, logout, real user display
-   - [x] Admin whitelist system (WAR-25) - Complete with backend auth, route guards, UI
-   - [x] Create player token authentication flow (WAR-26) - HTTP actions, IP locking, heartbeat
-   - [x] OAuth login bug fixes - JWT claims, return validators, callback race condition
+- [x] Convex Auth infrastructure (WAR-23)
+- [x] Google OAuth provider (WAR-24)
+- [x] Admin whitelist system (WAR-25)
+- [x] Player token authentication (WAR-26)
+- [x] Protected routes & server-side auth (WAR-27)
+- [x] Branding & polish (WAR-28)
+- [x] Auth event logging (WAR-29)
+- [x] Auth system tests (WAR-30, WAR-21)
 
-2. **Session Lifecycle**
+### Session Lifecycle (Priority: High)
    - [ ] Session lifecycle mutations (finalize, start, pause, resume, end)
    - [ ] Voting mutations (submitBan, submitVote)
    - [ ] Timer expiration handling (scheduled functions)
