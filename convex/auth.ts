@@ -59,6 +59,7 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
           action: "ADMIN_LOGIN",
           actorId: existingAdmin._id,
           actorEmail: normalizedEmail,
+          targetId: existingAdmin._id,
           targetEmail: normalizedEmail,
           details: {
             targetName:
@@ -95,15 +96,11 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
         return;
       }
 
-      // Not whitelisted and not first user - log and throw to prevent sign-in
-      await logAdminAction(ctx, {
-        action: "ADMIN_LOGIN_DENIED",
-        targetEmail: normalizedEmail,
-        details: {
-          message: "Non-whitelisted email attempted login",
-        },
-      });
-
+      // Not whitelisted and not first user — throw to prevent sign-in.
+      // NOTE: Cannot audit log here because Convex mutations are transactional:
+      // the throw rolls back all writes including any audit log insert.
+      // ctx.scheduler.runAfter is also rolled back on throw.
+      // The ConvexError already surfaces as a 403 to the client.
       throw new ConvexError(
         "Your email is not authorized. Contact an administrator for access."
       );

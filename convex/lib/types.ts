@@ -85,7 +85,6 @@ export interface AuditDetails {
  */
 export type AdminAuditAction =
   | "ADMIN_LOGIN"
-  | "ADMIN_LOGIN_DENIED"
   | "ADMIN_ADDED"
   | "ADMIN_REMOVED"
   | "ADMIN_PROMOTED"

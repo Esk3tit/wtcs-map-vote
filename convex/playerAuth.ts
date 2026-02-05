@@ -111,18 +111,21 @@ export const validateAndLockToken = internalMutation({
       }
 
       // IP matches, update heartbeat
+      const wasDisconnected = !player.isConnected;
       await ctx.db.patch(player._id, {
         isConnected: true,
         lastHeartbeat: now,
       });
 
-      await logAction(ctx, {
-        sessionId: session._id,
-        action: "PLAYER_CONNECTED",
-        actorType: "PLAYER",
-        actorId: player._id,
-        details: { teamName: player.teamName },
-      });
+      if (wasDisconnected) {
+        await logAction(ctx, {
+          sessionId: session._id,
+          action: "PLAYER_CONNECTED",
+          actorType: "PLAYER",
+          actorId: player._id,
+          details: { teamName: player.teamName },
+        });
+      }
     } else {
       // First use: lock IP to token
       await ctx.db.patch(player._id, {

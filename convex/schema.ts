@@ -157,7 +157,6 @@ export default defineSchema({
   adminAuditLogs: defineTable({
     action: v.union(
       v.literal("ADMIN_LOGIN"),
-      v.literal("ADMIN_LOGIN_DENIED"),
       v.literal("ADMIN_ADDED"),
       v.literal("ADMIN_REMOVED"),
       v.literal("ADMIN_PROMOTED"),
