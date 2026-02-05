@@ -359,6 +359,21 @@ describe("playerAuth.validateAndLockToken", () => {
         error: "INVALID_IP",
       });
     });
+
+    it("returns INVALID_IP for 'unknown' IP address", async () => {
+      const t = createTestContext();
+      const { token } = await createSessionWithUnactivatedPlayer(t);
+
+      const result = await t.mutation(
+        internal.playerAuth.validateAndLockToken,
+        { token, ipAddress: "unknown" }
+      );
+
+      expect(result).toEqual({
+        status: "error",
+        error: "INVALID_IP",
+      });
+    });
   });
 
   describe("reconnection logging", () => {
@@ -628,6 +643,22 @@ describe("playerAuth.playerHeartbeat", () => {
       const result = await t.mutation(internal.playerAuth.playerHeartbeat, {
         token,
         ipAddress: "   ",
+      });
+
+      expect(result).toEqual({
+        status: "error",
+        error: "INVALID_IP",
+      });
+    });
+
+    it("returns INVALID_IP for 'unknown' IP address", async () => {
+      const t = createTestContext();
+      const { token } =
+        await createSessionWithActivatedPlayer(t, "10.0.0.1");
+
+      const result = await t.mutation(internal.playerAuth.playerHeartbeat, {
+        token,
+        ipAddress: "unknown",
       });
 
       expect(result).toEqual({

@@ -5,39 +5,13 @@
  */
 
 import { describe, it, expect } from "vitest";
-import { createTestContext, createAuthenticatedContext } from "./test.setup";
+import {
+  createTestContext,
+  createAuthenticatedContext,
+  createAuthenticatedAdmin,
+} from "./test.setup";
 import { adminFactory } from "./test.factories";
 import { api } from "./_generated/api";
-
-// ============================================================================
-// Test Helpers
-// ============================================================================
-
-/**
- * Creates an authenticated context with admin in whitelist.
- * Sets up auth user + admin records and uses "userId|sessionId" subject format.
- */
-async function createWhitelistedAdmin(
-  t: ReturnType<typeof createTestContext>,
-  overrides: Partial<Parameters<typeof adminFactory>[0]> = {}
-) {
-  const adminData = adminFactory(overrides);
-
-  // Insert auth user into users table (required for getAuthUserId lookup)
-  const authUserId = await t.run(async (ctx) =>
-    ctx.db.insert("users", { email: adminData.email, name: adminData.name })
-  );
-
-  const adminId = await t.run(async (ctx) =>
-    ctx.db.insert("admins", adminData)
-  );
-  const authT = t.withIdentity({
-    name: adminData.name,
-    subject: `${authUserId}|fake_session_id`,
-    issuer: "https://auth.example.com",
-  });
-  return { adminId, adminData, authT };
-}
 
 // ============================================================================
 // getMe Tests
@@ -56,8 +30,7 @@ describe("admins.getMe", () => {
 
   describe("authenticated", () => {
     it("returns admin info when whitelisted", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { authT } = await createAuthenticatedAdmin({
         email: "root@test.com",
         name: "Root Admin",
         isRootAdmin: true,
@@ -76,6 +49,25 @@ describe("admins.getMe", () => {
       const authT = await createAuthenticatedContext({
         name: "Unknown User",
         email: "unknown@test.com",
+      });
+
+      const result = await authT.query(api.admins.getMe, {});
+
+      expect(result).toBeNull();
+    });
+
+    it("returns null when user record has no email", async () => {
+      const t = createTestContext();
+
+      // Create auth user WITHOUT email (covers lib/auth.ts line 29 branch)
+      const authUserId = await t.run(async (ctx) =>
+        ctx.db.insert("users", { name: "No Email User" })
+      );
+
+      const authT = t.withIdentity({
+        name: "No Email User",
+        subject: `${authUserId}|fake_session_id`,
+        issuer: "https://auth.example.com",
       });
 
       const result = await authT.query(api.admins.getMe, {});
@@ -113,8 +105,7 @@ describe("admins.listAdmins", () => {
 
   describe("success cases", () => {
     it("returns all admins when authenticated as admin", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "admin@test.com",
         isRootAdmin: false,
       });
@@ -171,8 +162,7 @@ describe("admins.getAdmin", () => {
 
   describe("success cases", () => {
     it("returns admin by ID when authenticated", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "admin@test.com",
         isRootAdmin: false,
       });
@@ -201,8 +191,7 @@ describe("admins.getAdmin", () => {
     });
 
     it("returns null for non-existent admin", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "admin@test.com",
         isRootAdmin: false,
       });
@@ -253,8 +242,7 @@ describe("admins.getAdminByEmail", () => {
 
   describe("success cases", () => {
     it("returns admin by email when authenticated", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "admin@test.com",
         isRootAdmin: false,
       });
@@ -283,8 +271,7 @@ describe("admins.getAdminByEmail", () => {
     });
 
     it("normalizes email for lookup", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "admin@test.com",
         isRootAdmin: false,
       });
@@ -305,8 +292,7 @@ describe("admins.getAdminByEmail", () => {
     });
 
     it("returns null for non-existent email", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { authT } = await createAuthenticatedAdmin({
         email: "admin@test.com",
         isRootAdmin: false,
       });
@@ -338,8 +324,7 @@ describe("admins.addAdmin", () => {
     });
 
     it("throws when authenticated but not root admin", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { authT } = await createAuthenticatedAdmin({
         email: "regular@test.com",
         isRootAdmin: false,
       });
@@ -355,8 +340,7 @@ describe("admins.addAdmin", () => {
 
   describe("success cases", () => {
     it("adds new admin when called by root admin", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "root@test.com",
         isRootAdmin: true,
       });
@@ -378,8 +362,7 @@ describe("admins.addAdmin", () => {
     });
 
     it("adds admin with root privileges when specified", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "root@test.com",
         isRootAdmin: true,
       });
@@ -395,8 +378,7 @@ describe("admins.addAdmin", () => {
     });
 
     it("normalizes email to lowercase", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "root@test.com",
         isRootAdmin: true,
       });
@@ -411,8 +393,7 @@ describe("admins.addAdmin", () => {
     });
 
     it("trims whitespace from name", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "root@test.com",
         isRootAdmin: true,
       });
@@ -427,8 +408,7 @@ describe("admins.addAdmin", () => {
     });
 
     it("creates audit log entry", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "root@test.com",
         isRootAdmin: true,
       });
@@ -451,8 +431,7 @@ describe("admins.addAdmin", () => {
 
   describe("validation errors", () => {
     it("throws for invalid email format", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { authT } = await createAuthenticatedAdmin({
         email: "root@test.com",
         isRootAdmin: true,
       });
@@ -466,8 +445,7 @@ describe("admins.addAdmin", () => {
     });
 
     it("throws for empty name", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { authT } = await createAuthenticatedAdmin({
         email: "root@test.com",
         isRootAdmin: true,
       });
@@ -481,8 +459,7 @@ describe("admins.addAdmin", () => {
     });
 
     it("throws for duplicate email", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { authT } = await createAuthenticatedAdmin({
         email: "root@test.com",
         isRootAdmin: true,
       });
@@ -509,8 +486,7 @@ describe("admins.addAdmin", () => {
 describe("admins.removeAdmin", () => {
   describe("authorization", () => {
     it("throws when not root admin", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "regular@test.com",
         isRootAdmin: false,
       });
@@ -527,8 +503,7 @@ describe("admins.removeAdmin", () => {
 
   describe("success cases", () => {
     it("removes admin from whitelist", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "root@test.com",
         isRootAdmin: true,
       });
@@ -548,8 +523,7 @@ describe("admins.removeAdmin", () => {
     });
 
     it("creates audit log entry", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "root@test.com",
         isRootAdmin: true,
       });
@@ -573,8 +547,7 @@ describe("admins.removeAdmin", () => {
 
   describe("protection rules", () => {
     it("prevents removing last root admin", async () => {
-      const t = createTestContext();
-      const { authT, adminId } = await createWhitelistedAdmin(t, {
+      const { authT, adminId } = await createAuthenticatedAdmin({
         email: "root@test.com",
         isRootAdmin: true,
       });
@@ -585,8 +558,7 @@ describe("admins.removeAdmin", () => {
     });
 
     it("allows removing self if not last root admin", async () => {
-      const t = createTestContext();
-      const { authT, adminId } = await createWhitelistedAdmin(t, {
+      const { t, authT, adminId } = await createAuthenticatedAdmin({
         email: "root1@test.com",
         isRootAdmin: true,
       });
@@ -607,8 +579,7 @@ describe("admins.removeAdmin", () => {
 
   describe("not found", () => {
     it("throws for non-existent admin", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "root@test.com",
         isRootAdmin: true,
       });
@@ -636,8 +607,7 @@ describe("admins.removeAdmin", () => {
 describe("admins.updateAdminRole", () => {
   describe("authorization", () => {
     it("throws when not root admin", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "regular@test.com",
         isRootAdmin: false,
       });
@@ -657,8 +627,7 @@ describe("admins.updateAdminRole", () => {
 
   describe("success cases", () => {
     it("promotes admin to root", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "root@test.com",
         isRootAdmin: true,
       });
@@ -682,8 +651,7 @@ describe("admins.updateAdminRole", () => {
     });
 
     it("demotes root admin", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "root@test.com",
         isRootAdmin: true,
       });
@@ -707,8 +675,7 @@ describe("admins.updateAdminRole", () => {
     });
 
     it("no-op when already at target state", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "root@test.com",
         isRootAdmin: true,
       });
@@ -735,8 +702,7 @@ describe("admins.updateAdminRole", () => {
     });
 
     it("creates audit log entry for promotion", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "root@test.com",
         isRootAdmin: true,
       });
@@ -763,8 +729,7 @@ describe("admins.updateAdminRole", () => {
     });
 
     it("creates audit log entry for demotion", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "root@test.com",
         isRootAdmin: true,
       });
@@ -793,8 +758,7 @@ describe("admins.updateAdminRole", () => {
 
   describe("protection rules", () => {
     it("prevents demoting last root admin", async () => {
-      const t = createTestContext();
-      const { authT, adminId } = await createWhitelistedAdmin(t, {
+      const { authT, adminId } = await createAuthenticatedAdmin({
         email: "root@test.com",
         isRootAdmin: true,
       });
@@ -808,8 +772,7 @@ describe("admins.updateAdminRole", () => {
     });
 
     it("allows demoting self if not last root admin", async () => {
-      const t = createTestContext();
-      const { authT, adminId } = await createWhitelistedAdmin(t, {
+      const { t, authT, adminId } = await createAuthenticatedAdmin({
         email: "root1@test.com",
         isRootAdmin: true,
       });
@@ -881,8 +844,7 @@ describe("admins.isEmailWhitelisted", () => {
 describe("admins.invalidateAdminSessions", () => {
   describe("authorization", () => {
     it("throws when not root admin", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "regular@test.com",
         isRootAdmin: false,
       });
@@ -900,14 +862,10 @@ describe("admins.invalidateAdminSessions", () => {
   });
 
   describe("success cases", () => {
-    it("deletes all auth sessions for target admin", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
-        email: "root@test.com",
-        isRootAdmin: true,
-      });
-
-      // Create target admin with auth user and auth sessions
+    /** Creates a target admin with auth user and auth sessions for invalidation tests. */
+    async function createTargetWithSessions(
+      t: ReturnType<typeof createTestContext>
+    ) {
       const targetAuthUserId = await t.run(async (ctx) =>
         ctx.db.insert("users", {
           email: "target@test.com",
@@ -920,8 +878,6 @@ describe("admins.invalidateAdminSessions", () => {
           adminFactory({ email: "target@test.com", name: "Target Admin" })
         )
       );
-
-      // Create auth sessions for the target user
       await t.run(async (ctx) => {
         await ctx.db.insert("authSessions", {
           userId: targetAuthUserId,
@@ -932,6 +888,15 @@ describe("admins.invalidateAdminSessions", () => {
           expirationTime: Date.now() + 86400000,
         });
       });
+      return { targetId, targetAuthUserId };
+    }
+
+    it("deletes all auth sessions for target admin", async () => {
+      const { t, authT } = await createAuthenticatedAdmin({
+        email: "root@test.com",
+        isRootAdmin: true,
+      });
+      const { targetId, targetAuthUserId } = await createTargetWithSessions(t);
 
       // Verify sessions exist before
       const sessionsBefore = await t.run(async (ctx) =>
@@ -960,30 +925,11 @@ describe("admins.invalidateAdminSessions", () => {
     });
 
     it("creates ADMIN_SESSIONS_INVALIDATED audit log", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "root@test.com",
         isRootAdmin: true,
       });
-
-      const targetAuthUserId = await t.run(async (ctx) =>
-        ctx.db.insert("users", {
-          email: "target@test.com",
-          name: "Target Admin",
-        })
-      );
-      const targetId = await t.run(async (ctx) =>
-        ctx.db.insert(
-          "admins",
-          adminFactory({ email: "target@test.com", name: "Target Admin" })
-        )
-      );
-      await t.run(async (ctx) => {
-        await ctx.db.insert("authSessions", {
-          userId: targetAuthUserId,
-          expirationTime: Date.now() + 86400000,
-        });
-      });
+      const { targetId } = await createTargetWithSessions(t);
 
       await authT.mutation(api.admins.invalidateAdminSessions, {
         adminId: targetId,
@@ -1008,30 +954,11 @@ describe("admins.invalidateAdminSessions", () => {
     });
 
     it("target admin remains in whitelist after invalidation", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "root@test.com",
         isRootAdmin: true,
       });
-
-      const targetAuthUserId = await t.run(async (ctx) =>
-        ctx.db.insert("users", {
-          email: "target@test.com",
-          name: "Target Admin",
-        })
-      );
-      const targetId = await t.run(async (ctx) =>
-        ctx.db.insert(
-          "admins",
-          adminFactory({ email: "target@test.com", name: "Target Admin" })
-        )
-      );
-      await t.run(async (ctx) => {
-        await ctx.db.insert("authSessions", {
-          userId: targetAuthUserId,
-          expirationTime: Date.now() + 86400000,
-        });
-      });
+      const { targetId } = await createTargetWithSessions(t);
 
       await authT.mutation(api.admins.invalidateAdminSessions, {
         adminId: targetId,
@@ -1046,8 +973,7 @@ describe("admins.invalidateAdminSessions", () => {
 
   describe("not found", () => {
     it("throws for non-existent admin", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "root@test.com",
         isRootAdmin: true,
       });
@@ -1069,8 +995,7 @@ describe("admins.invalidateAdminSessions", () => {
     });
 
     it("throws when admin has no auth user", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "root@test.com",
         isRootAdmin: true,
       });
@@ -1096,8 +1021,7 @@ describe("admins.invalidateAdminSessions", () => {
 describe("admins.getAdminAuditLogs", () => {
   describe("authorization", () => {
     it("throws when not root admin", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { authT } = await createAuthenticatedAdmin({
         email: "regular@test.com",
         isRootAdmin: false,
       });
@@ -1112,8 +1036,7 @@ describe("admins.getAdminAuditLogs", () => {
 
   describe("success cases", () => {
     it("returns audit logs sorted by timestamp descending", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "root@test.com",
         isRootAdmin: true,
       });
@@ -1142,8 +1065,7 @@ describe("admins.getAdminAuditLogs", () => {
     });
 
     it("returns empty page when no audit logs exist", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { authT } = await createAuthenticatedAdmin({
         email: "root@test.com",
         isRootAdmin: true,
       });
@@ -1157,8 +1079,7 @@ describe("admins.getAdminAuditLogs", () => {
     });
 
     it("paginates correctly across multiple pages", async () => {
-      const t = createTestContext();
-      const { authT } = await createWhitelistedAdmin(t, {
+      const { t, authT } = await createAuthenticatedAdmin({
         email: "root@test.com",
         isRootAdmin: true,
       });

@@ -207,7 +207,6 @@ bunx vitest                           # Watch mode
 - `convex/admins.test.ts` - Admin CRUD unit tests
 - `convex/authCallback.test.ts` - OAuth callback logic tests
 - `convex/http.test.ts` - HTTP helper (CORS, IP extraction) tests
-- `convex/lib/auth.test.ts` - Auth helper function tests
 
 **Key patterns:**
 ```typescript

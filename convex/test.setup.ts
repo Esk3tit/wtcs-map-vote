@@ -9,6 +9,7 @@
 import { convexTest } from "convex-test";
 
 import schema from "./schema";
+import { adminFactory } from "./test.factories";
 
 // ============================================================================
 // Module Configuration
@@ -90,30 +91,40 @@ export const TEST_ADMIN_DATA = {
  * Sets up auth user + admin records in the database and returns an authenticated context.
  * The identity subject matches the format used by @convex-dev/auth: "userId|sessionId".
  *
- * @returns Object containing authT (authenticated context) and adminId
+ * @param overrides - Optional overrides for admin data fields
+ * @returns Object containing t (test context), authT (authenticated context), adminId, and adminData
  */
-export async function createAuthenticatedAdmin() {
+export async function createAuthenticatedAdmin(
+  overrides: Partial<{
+    email: string;
+    name: string;
+    avatarUrl: string;
+    isRootAdmin: boolean;
+    lastLoginAt: number;
+  }> = {}
+) {
   const t = createTestContext();
+  const adminData = adminFactory(overrides);
 
   // Insert auth user into users table (required for getAuthUserId lookup)
   const authUserId = await t.run(async (ctx) =>
-    ctx.db.insert("users", { email: TEST_ADMIN_DATA.email, name: TEST_ADMIN_DATA.name })
+    ctx.db.insert("users", { email: adminData.email, name: adminData.name })
   );
 
   // Insert admin into whitelist
   const adminId = await t.run(async (ctx) =>
-    ctx.db.insert("admins", TEST_ADMIN_DATA)
+    ctx.db.insert("admins", adminData)
   );
 
   // Create authenticated context with subject in "userId|sessionId" format
   // matching what @convex-dev/auth generates (parsed by getAuthUserId)
   const authT = t.withIdentity({
-    name: TEST_ADMIN_DATA.name,
+    name: adminData.name,
     subject: `${authUserId}|fake_session_id`,
     issuer: "https://auth.example.com",
   });
 
-  return { t, authT, adminId };
+  return { t, authT, adminId, adminData };
 }
 
 // Re-export for convenience

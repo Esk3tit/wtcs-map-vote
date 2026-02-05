@@ -64,6 +64,63 @@ describe("extractClientIp", () => {
 
     expect(extractClientIp(req)).toBe("203.0.113.1");
   });
+
+  it("falls through to X-Real-Ip when X-Forwarded-For is empty string", () => {
+    const req = new Request("https://example.com", {
+      headers: {
+        "X-Forwarded-For": "",
+        "X-Real-Ip": "10.0.0.1",
+      },
+    });
+
+    // Empty string is falsy, so extractClientIp skips it
+    expect(extractClientIp(req)).toBe("10.0.0.1");
+  });
+
+  it("returns 'unknown' when X-Forwarded-For is empty and no X-Real-Ip", () => {
+    const req = new Request("https://example.com", {
+      headers: { "X-Forwarded-For": "" },
+    });
+
+    expect(extractClientIp(req)).toBe("unknown");
+  });
+
+  it("returns IPv6 loopback address from X-Forwarded-For", () => {
+    const req = new Request("https://example.com", {
+      headers: { "X-Forwarded-For": "::1" },
+    });
+
+    // extractClientIp does not validate format, returns as-is
+    expect(extractClientIp(req)).toBe("::1");
+  });
+
+  it("returns full IPv6 address from X-Forwarded-For", () => {
+    const req = new Request("https://example.com", {
+      headers: { "X-Forwarded-For": "203.0.113.1, 2001:db8::1" },
+    });
+
+    // Rightmost entry is IPv6 — returned without validation
+    expect(extractClientIp(req)).toBe("2001:db8::1");
+  });
+
+  it("returns non-IP value from X-Forwarded-For as-is", () => {
+    const req = new Request("https://example.com", {
+      headers: { "X-Forwarded-For": "not-an-ip" },
+    });
+
+    // extractClientIp is a pass-through; validation happens downstream
+    expect(extractClientIp(req)).toBe("not-an-ip");
+  });
+
+  it("falls through when X-Forwarded-For contains only whitespace", () => {
+    const req = new Request("https://example.com", {
+      headers: { "X-Forwarded-For": "  " },
+    });
+
+    // The Request API normalizes whitespace-only values to "", which is
+    // falsy, so extractClientIp falls through to "unknown"
+    expect(extractClientIp(req)).toBe("unknown");
+  });
 });
 
 // ============================================================================
@@ -74,6 +131,12 @@ describe("getCorsHeaders", () => {
   // Save and restore original process.env
   let originalEnv: Record<string, string> | undefined;
 
+  /** Set process.env for testing getCorsHeaders. */
+  function setEnv(env: Record<string, string>): void {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).process = { env };
+  }
+
   beforeEach(() => {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     originalEnv = (globalThis as any).process?.env;
@@ -82,8 +145,7 @@ describe("getCorsHeaders", () => {
   afterEach(() => {
     // Restore original env
     if (originalEnv !== undefined) {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      (globalThis as any).process = { env: originalEnv };
+      setEnv(originalEnv);
     } else {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       delete (globalThis as any).process;
@@ -91,8 +153,7 @@ describe("getCorsHeaders", () => {
   });
 
   it("uses SITE_URL when set", () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).process = { env: { SITE_URL: "https://mysite.com" } };
+    setEnv({ SITE_URL: "https://mysite.com" });
 
     const headers = getCorsHeaders();
 
@@ -100,8 +161,7 @@ describe("getCorsHeaders", () => {
   });
 
   it("strips trailing slash from SITE_URL", () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).process = { env: { SITE_URL: "https://mysite.com/" } };
+    setEnv({ SITE_URL: "https://mysite.com/" });
 
     const headers = getCorsHeaders();
 
@@ -109,8 +169,7 @@ describe("getCorsHeaders", () => {
   });
 
   it("strips multiple trailing slashes from SITE_URL", () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).process = { env: { SITE_URL: "https://mysite.com///" } };
+    setEnv({ SITE_URL: "https://mysite.com///" });
 
     const headers = getCorsHeaders();
 
@@ -118,10 +177,7 @@ describe("getCorsHeaders", () => {
   });
 
   it("blocks origin in Convex Cloud when SITE_URL missing", () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).process = {
-      env: { CONVEX_CLOUD_URL: "https://my-deployment.convex.cloud" },
-    };
+    setEnv({ CONVEX_CLOUD_URL: "https://my-deployment.convex.cloud" });
 
     const headers = getCorsHeaders();
 
@@ -131,8 +187,7 @@ describe("getCorsHeaders", () => {
   });
 
   it("allows all origins in local dev (no env vars)", () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).process = { env: {} };
+    setEnv({});
 
     const headers = getCorsHeaders();
 
@@ -140,8 +195,7 @@ describe("getCorsHeaders", () => {
   });
 
   it("includes Vary: Origin when specific origin set", () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).process = { env: { SITE_URL: "https://mysite.com" } };
+    setEnv({ SITE_URL: "https://mysite.com" });
 
     const headers = getCorsHeaders();
 
@@ -149,8 +203,7 @@ describe("getCorsHeaders", () => {
   });
 
   it("omits Vary header when allowing all origins", () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).process = { env: {} };
+    setEnv({});
 
     const headers = getCorsHeaders();
 
@@ -158,8 +211,7 @@ describe("getCorsHeaders", () => {
   });
 
   it("always includes standard CORS method and header fields", () => {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (globalThis as any).process = { env: {} };
+    setEnv({});
 
     const headers = getCorsHeaders();
 
