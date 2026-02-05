@@ -48,10 +48,14 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
 
       if (existingAdmin) {
         // Update profile data and lastLoginAt
+        const updatedName =
+          extractProfileString(args.profile.name) ?? existingAdmin.name;
+        const updatedAvatar =
+          extractProfileString(args.profile.image) ?? existingAdmin.avatarUrl;
+
         await db.patch(existingAdmin._id, {
-          name: extractProfileString(args.profile.name) ?? existingAdmin.name,
-          avatarUrl:
-            extractProfileString(args.profile.image) ?? existingAdmin.avatarUrl,
+          name: updatedName,
+          avatarUrl: updatedAvatar,
           lastLoginAt: Date.now(),
         });
 
@@ -61,10 +65,7 @@ export const { auth, signIn, signOut, store, isAuthenticated } = convexAuth({
           actorEmail: normalizedEmail,
           targetId: existingAdmin._id,
           targetEmail: normalizedEmail,
-          details: {
-            targetName:
-              extractProfileString(args.profile.name) ?? existingAdmin.name,
-          },
+          details: { targetName: updatedName },
         });
 
         return;
