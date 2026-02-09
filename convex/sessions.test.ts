@@ -4303,3 +4303,741 @@ describe("sessions.getSessionResultsByToken", () => {
     });
   });
 });
+
+// ============================================================================
+// WAR-35: Voting Query Enhancements
+// ============================================================================
+
+describe("WAR-35: getSessionByToken enhancements", () => {
+  describe("roundHistory", () => {
+    it("returns empty roundHistory when no maps are banned", async () => {
+      const t = createTestContext();
+      const token = "round-history-empty";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { status: "IN_PROGRESS" })
+        );
+        const mapId = await ctx.db.insert("maps", mapFactory());
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapId, { state: "AVAILABLE" })
+        );
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, { token, teamName: "Team A" })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, { token });
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.roundHistory).toEqual([]);
+      }
+    });
+
+    it("returns ABBA round history organized by turn", async () => {
+      const t = createTestContext();
+      const token = "abba-history-token";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            status: "IN_PROGRESS",
+            format: "ABBA",
+            currentTurn: 3,
+          })
+        );
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+
+        const playerA = await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token,
+            teamName: "Team A",
+            role: "PLAYER_A",
+          })
+        );
+        const playerB = await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: "other-player",
+            teamName: "Team B",
+            role: "PLAYER_B",
+          })
+        );
+
+        const mapIds = await Promise.all(
+          ["Dust2", "Mirage", "Inferno", "Nuke", "Overpass"].map((name) =>
+            ctx.db.insert("maps", mapFactory({ name }))
+          )
+        );
+
+        // Map 0 banned by player A at turn 0
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapIds[0], {
+            name: "Dust2",
+            state: "BANNED",
+            bannedByPlayerId: playerA,
+            bannedAtTurn: 0,
+          })
+        );
+        // Map 1 banned by player B at turn 1
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapIds[1], {
+            name: "Mirage",
+            state: "BANNED",
+            bannedByPlayerId: playerB,
+            bannedAtTurn: 1,
+          })
+        );
+        // Map 2 banned by player B at turn 2
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapIds[2], {
+            name: "Inferno",
+            state: "BANNED",
+            bannedByPlayerId: playerB,
+            bannedAtTurn: 2,
+          })
+        );
+        // Remaining maps still available
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapIds[3], { name: "Nuke" })
+        );
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapIds[4], { name: "Overpass" })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, { token });
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.roundHistory).toHaveLength(3);
+        // Turn 0 → round 1
+        expect(result.roundHistory[0].round).toBe(1);
+        expect(result.roundHistory[0].bans[0].mapName).toBe("Dust2");
+        expect(result.roundHistory[0].bans[0].bannedByTeam).toBe("Team A");
+        // Turn 1 → round 2
+        expect(result.roundHistory[1].round).toBe(2);
+        expect(result.roundHistory[1].bans[0].mapName).toBe("Mirage");
+        expect(result.roundHistory[1].bans[0].bannedByTeam).toBe("Team B");
+        // Turn 2 → round 3
+        expect(result.roundHistory[2].round).toBe(3);
+        expect(result.roundHistory[2].bans[0].mapName).toBe("Inferno");
+        expect(result.roundHistory[2].bans[0].bannedByTeam).toBe("Team B");
+      }
+    });
+
+    it("returns MULTIPLAYER round history with multiple bans per round", async () => {
+      const t = createTestContext();
+      const token = "multi-history-token";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            status: "IN_PROGRESS",
+            format: "MULTIPLAYER",
+            playerCount: 4,
+            currentRound: 2,
+          })
+        );
+
+        await Promise.all(
+          ["Team A", "Team B", "Team C", "Team D"].map((name, i) =>
+            ctx.db.insert(
+              "sessionPlayers",
+              sessionPlayerFactory(sessionId, {
+                token: i === 0 ? token : `other-${i}`,
+                teamName: name,
+                role: `PLAYER_${i + 1}`,
+              })
+            )
+          )
+        );
+
+        const mapIds = await Promise.all(
+          ["Map1", "Map2", "Map3", "Map4", "Map5"].map((name) =>
+            ctx.db.insert("maps", mapFactory({ name }))
+          )
+        );
+
+        // Round 1: Maps 0 and 1 banned (MULTIPLAYER bans don't set bannedByPlayerId)
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapIds[0], {
+            name: "Map1",
+            state: "BANNED",
+            bannedAtRound: 1,
+          })
+        );
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapIds[1], {
+            name: "Map2",
+            state: "BANNED",
+            bannedAtRound: 1,
+          })
+        );
+        // Remaining maps still available
+        for (let i = 2; i < 5; i++) {
+          await ctx.db.insert(
+            "sessionMaps",
+            sessionMapFactory(sessionId, mapIds[i], {
+              name: `Map${i + 1}`,
+            })
+          );
+        }
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, { token });
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.roundHistory).toHaveLength(1);
+        expect(result.roundHistory[0].round).toBe(1);
+        expect(result.roundHistory[0].bans).toHaveLength(2);
+        expect(result.roundHistory[0].bans.map((b) => b.mapName)).toContain(
+          "Map1"
+        );
+        expect(result.roundHistory[0].bans.map((b) => b.mapName)).toContain(
+          "Map2"
+        );
+      }
+    });
+  });
+
+  describe("voteProgress", () => {
+    it("returns voteProgress for MULTIPLAYER IN_PROGRESS sessions", async () => {
+      const t = createTestContext();
+      const token = "vote-progress-token";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            status: "IN_PROGRESS",
+            format: "MULTIPLAYER",
+            playerCount: 4,
+          })
+        );
+        const mapId = await ctx.db.insert("maps", mapFactory());
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapId)
+        );
+
+        // Create 4 players, 2 have voted
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token,
+            teamName: "Team A",
+            hasVotedThisRound: true,
+          })
+        );
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: "other-1",
+            teamName: "Team B",
+            hasVotedThisRound: true,
+          })
+        );
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: "other-2",
+            teamName: "Team C",
+            hasVotedThisRound: false,
+          })
+        );
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: "other-3",
+            teamName: "Team D",
+            hasVotedThisRound: false,
+          })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, { token });
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.voteProgress).toBeDefined();
+        expect(result.voteProgress!.totalPlayers).toBe(4);
+        expect(result.voteProgress!.votedCount).toBe(2);
+        expect(result.voteProgress!.allVoted).toBe(false);
+      }
+    });
+
+    it("returns allVoted true when all players have voted", async () => {
+      const t = createTestContext();
+      const token = "all-voted-token";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            status: "IN_PROGRESS",
+            format: "MULTIPLAYER",
+            playerCount: 2,
+          })
+        );
+        const mapId = await ctx.db.insert("maps", mapFactory());
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapId)
+        );
+
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token,
+            teamName: "Team A",
+            hasVotedThisRound: true,
+          })
+        );
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: "other-voted",
+            teamName: "Team B",
+            hasVotedThisRound: true,
+          })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, { token });
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.voteProgress!.allVoted).toBe(true);
+        expect(result.voteProgress!.votedCount).toBe(2);
+      }
+    });
+
+    it("does not include voteProgress for ABBA format", async () => {
+      const t = createTestContext();
+      const token = "abba-no-progress";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            status: "IN_PROGRESS",
+            format: "ABBA",
+          })
+        );
+        const mapId = await ctx.db.insert("maps", mapFactory());
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapId)
+        );
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, { token, teamName: "Team A" })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, { token });
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.voteProgress).toBeUndefined();
+      }
+    });
+
+    it("does not include voteProgress for non-IN_PROGRESS MULTIPLAYER sessions", async () => {
+      const t = createTestContext();
+      const token = "waiting-no-progress";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            status: "WAITING",
+            format: "MULTIPLAYER",
+            playerCount: 4,
+          })
+        );
+        const mapId = await ctx.db.insert("maps", mapFactory());
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapId)
+        );
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, { token, teamName: "Team A" })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, { token });
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.voteProgress).toBeUndefined();
+      }
+    });
+  });
+
+  describe("isRevoteRound", () => {
+    it("returns false when isRevoteRound is not set", async () => {
+      const t = createTestContext();
+      const token = "no-revote";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { status: "IN_PROGRESS" })
+        );
+        const mapId = await ctx.db.insert("maps", mapFactory());
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapId)
+        );
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, { token, teamName: "Team A" })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, { token });
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.session.isRevoteRound).toBe(false);
+      }
+    });
+
+    it("returns true during deadlock revote", async () => {
+      const t = createTestContext();
+      const token = "revote-active";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            status: "IN_PROGRESS",
+            format: "MULTIPLAYER",
+            isRevoteRound: true,
+          })
+        );
+        const mapId = await ctx.db.insert("maps", mapFactory());
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapId)
+        );
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, { token, teamName: "Team A" })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, { token });
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.session.isRevoteRound).toBe(true);
+      }
+    });
+  });
+
+  describe("completedRounds", () => {
+    it("returns 0 at the start of an ABBA session", async () => {
+      const t = createTestContext();
+      const token = "abba-start";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            status: "IN_PROGRESS",
+            format: "ABBA",
+            currentTurn: 0,
+          })
+        );
+        const mapId = await ctx.db.insert("maps", mapFactory());
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapId)
+        );
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, { token, teamName: "Team A" })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, { token });
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.session.completedRounds).toBe(0);
+      }
+    });
+
+    it("counts banned maps for ABBA completedRounds", async () => {
+      const t = createTestContext();
+      const token = "abba-mid";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            status: "IN_PROGRESS",
+            format: "ABBA",
+            currentTurn: 2,
+          })
+        );
+
+        const player = await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, { token, teamName: "Team A" })
+        );
+
+        const mapIds = await Promise.all(
+          ["A", "B", "C"].map((n) =>
+            ctx.db.insert("maps", mapFactory({ name: `Map ${n}` }))
+          )
+        );
+
+        // 2 maps banned
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapIds[0], {
+            state: "BANNED",
+            bannedByPlayerId: player,
+            bannedAtTurn: 0,
+          })
+        );
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapIds[1], {
+            state: "BANNED",
+            bannedByPlayerId: player,
+            bannedAtTurn: 1,
+          })
+        );
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapIds[2], { state: "AVAILABLE" })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, { token });
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.session.completedRounds).toBe(2);
+      }
+    });
+
+    it("returns 0 at the start of a MULTIPLAYER session", async () => {
+      const t = createTestContext();
+      const token = "multi-start";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            status: "IN_PROGRESS",
+            format: "MULTIPLAYER",
+            currentRound: 1,
+          })
+        );
+        const mapId = await ctx.db.insert("maps", mapFactory());
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapId)
+        );
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, { token, teamName: "Team A" })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, { token });
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.session.completedRounds).toBe(0);
+      }
+    });
+
+    it("derives completedRounds from currentRound for MULTIPLAYER", async () => {
+      const t = createTestContext();
+      const token = "multi-round3";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            status: "IN_PROGRESS",
+            format: "MULTIPLAYER",
+            currentRound: 3,
+          })
+        );
+        const mapId = await ctx.db.insert("maps", mapFactory());
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapId)
+        );
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, { token, teamName: "Team A" })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, { token });
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        expect(result.session.completedRounds).toBe(2);
+      }
+    });
+  });
+
+  describe("privacy enforcement", () => {
+    it("does not expose tokens in otherPlayers", async () => {
+      const t = createTestContext();
+      const token = "privacy-token";
+
+      await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { status: "IN_PROGRESS" })
+        );
+        const mapId = await ctx.db.insert("maps", mapFactory());
+        await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapId)
+        );
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token,
+            teamName: "Team A",
+          })
+        );
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: "secret-other-token",
+            teamName: "Team B",
+            ipAddress: "10.0.0.1",
+          })
+        );
+      });
+
+      const result = await t.query(api.sessions.getSessionByToken, { token });
+      expect(result.status).toBe("valid");
+      if (result.status === "valid") {
+        const otherPlayer = result.otherPlayers[0];
+        // Token should not be in the response
+        expect("token" in otherPlayer).toBe(false);
+        // IP address should not be in the response
+        expect("ipAddress" in otherPlayer).toBe(false);
+        // Only expected fields present
+        expect(Object.keys(otherPlayer).sort()).toEqual(
+          ["_id", "hasVotedThisRound", "isConnected", "role", "teamName"].sort()
+        );
+      }
+    });
+  });
+});
+
+// ============================================================================
+// WAR-35: GDPR — IP Address Redaction in Admin Queries
+// ============================================================================
+
+describe("WAR-35: GDPR IP redaction in getSession", () => {
+  it("returns isIpLocked true when player has IP set", async () => {
+    const { t, authT } = await createAuthenticatedAdmin();
+
+    const { sessionId } = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert("admins", adminFactory());
+      const sessionId = await ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, { status: "IN_PROGRESS" })
+      );
+      await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+      await ctx.db.insert(
+        "sessionPlayers",
+        sessionPlayerFactory(sessionId, {
+          teamName: "Team A",
+          ipAddress: "192.168.1.1",
+        })
+      );
+      return { sessionId };
+    });
+
+    const session = await authT.query(api.sessions.getSession, { sessionId });
+    expect(session).not.toBeNull();
+    expect(session!.players[0].isIpLocked).toBe(true);
+  });
+
+  it("returns isIpLocked false when player has no IP", async () => {
+    const { t, authT } = await createAuthenticatedAdmin();
+
+    const { sessionId } = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert("admins", adminFactory());
+      const sessionId = await ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, { status: "DRAFT" })
+      );
+      await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+      await ctx.db.insert(
+        "sessionPlayers",
+        sessionPlayerFactory(sessionId, {
+          teamName: "Team A",
+          ipAddress: undefined,
+        })
+      );
+      return { sessionId };
+    });
+
+    const session = await authT.query(api.sessions.getSession, { sessionId });
+    expect(session).not.toBeNull();
+    expect(session!.players[0].isIpLocked).toBe(false);
+  });
+
+  it("does not expose ipAddress field in admin response", async () => {
+    const { t, authT } = await createAuthenticatedAdmin();
+
+    const { sessionId } = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert("admins", adminFactory());
+      const sessionId = await ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, { status: "IN_PROGRESS" })
+      );
+      await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+      await ctx.db.insert(
+        "sessionPlayers",
+        sessionPlayerFactory(sessionId, {
+          teamName: "Team A",
+          ipAddress: "10.0.0.5",
+        })
+      );
+      return { sessionId };
+    });
+
+    const session = await authT.query(api.sessions.getSession, { sessionId });
+    expect(session).not.toBeNull();
+    const player = session!.players[0];
+    expect("ipAddress" in player).toBe(false);
+    expect("isIpLocked" in player).toBe(true);
+  });
+});

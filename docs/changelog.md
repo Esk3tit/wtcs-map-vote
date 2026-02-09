@@ -10,6 +10,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+#### Voting Query Enhancements (WAR-35)
+- **`roundHistory`** — Structured round-by-round ban history in `getSessionByToken` response, derived from existing sessionMaps data
+- **`buildRoundHistory` helper** — Groups banned maps by turn (ABBA) or round (MULTIPLAYER), works for both active and completed sessions
+- **`voteProgress`** — Aggregate vote count for MULTIPLAYER IN_PROGRESS sessions (`totalPlayers`, `votedCount`, `allVoted`) without revealing individual choices
+- **`isRevoteRound`** — Exposed in session data for deadlock revote UI state
+- **`completedRounds`** — Derived completed rounds count for progress tracking
+- **Refactored `buildSessionResults`** — Now delegates to `buildRoundHistory` internally, eliminating code duplication
+- **17 new unit tests** across 5 groups: roundHistory, voteProgress, isRevoteRound, completedRounds, privacy enforcement, GDPR
+
+### Changed
+
+#### GDPR: IP Address Redaction (WAR-35)
+- **Admin session detail** — `ipAddress` field removed from `getSession` query response, replaced with boolean `isIpLocked`
+- **Frontend** — Orange IP badge now shows "IP Locked" instead of actual IP address
+- **Validator** — `sessionPlayerObjectValidator` renamed to `adminPlayerObjectValidator` with `isIpLocked` replacing `ipAddress`
+
 #### Round Resolution & Deadlock Handling (WAR-34, PR #54)
 - **`resolveRound` helper** — Auto-triggers inside `submitVote` when all players have voted in a multiplayer round
 - **Vote tallying** — Counts votes per map, bans maps with ≥1 vote, advances game state

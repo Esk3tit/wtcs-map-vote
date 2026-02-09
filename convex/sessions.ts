@@ -7,7 +7,7 @@
 
 import { query, mutation } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 
 import { paginationOptsValidator } from "convex/server";
 import { v, ConvexError } from "convex/values";
@@ -42,9 +42,11 @@ const validateMatchName = (name: string) => validateName(name, "Match");
 // ============================================================================
 
 /**
- * Validator for session player objects.
+ * Validator for admin-facing session player objects.
+ * Exposes tokens for lobby link generation but redacts ipAddress
+ * to a boolean isIpLocked flag for GDPR compliance.
  */
-const sessionPlayerObjectValidator = v.object({
+const adminPlayerObjectValidator = v.object({
   _id: v.id("sessionPlayers"),
   _creationTime: v.number(),
   sessionId: v.id("sessions"),
@@ -52,7 +54,7 @@ const sessionPlayerObjectValidator = v.object({
   teamName: v.string(),
   token: v.string(),
   tokenExpiresAt: v.number(),
-  ipAddress: v.optional(v.string()),
+  isIpLocked: v.boolean(),
   isConnected: v.boolean(),
   lastHeartbeat: v.optional(v.number()),
   hasVotedThisRound: v.boolean(),
@@ -60,6 +62,7 @@ const sessionPlayerObjectValidator = v.object({
 
 /**
  * Validator for session map objects.
+ * Used by both admin and player-facing queries.
  */
 const sessionMapObjectValidator = v.object({
   _id: v.id("sessionMaps"),
@@ -77,6 +80,7 @@ const sessionMapObjectValidator = v.object({
 
 /**
  * Validator for session with related players and maps.
+ * Uses admin player validator (redacted IPs).
  */
 const sessionWithRelationsValidator = v.object({
   _id: v.id("sessions"),
@@ -92,18 +96,42 @@ const sessionWithRelationsValidator = v.object({
   timerStartedAt: v.optional(v.number()),
   timerPausedAt: v.optional(v.number()),
   winnerMapId: v.optional(v.id("sessionMaps")),
+  isRevoteRound: v.optional(v.boolean()),
   createdBy: v.id("admins"),
   updatedAt: v.number(),
   startedAt: v.optional(v.number()),
   completedAt: v.optional(v.number()),
   expiresAt: v.number(),
-  players: v.array(sessionPlayerObjectValidator),
+  players: v.array(adminPlayerObjectValidator),
   maps: v.array(sessionMapObjectValidator),
 });
 
 // ============================================================================
 // Private Helpers
 // ============================================================================
+
+/**
+ * Transform a player document for admin-facing queries.
+ * Strips ipAddress (GDPR) and replaces with isIpLocked boolean.
+ */
+function toAdminPlayer(player: Doc<"sessionPlayers">) {
+  const { ipAddress, ...rest } = player;
+  return { ...rest, isIpLocked: !!ipAddress };
+}
+
+/**
+ * Transform a player document for player-facing queries.
+ * Allowlist pattern — only includes safe, non-sensitive fields.
+ */
+function toSanitizedPlayer(player: Doc<"sessionPlayers">) {
+  return {
+    _id: player._id,
+    role: player.role,
+    teamName: player.teamName,
+    isConnected: player.isConnected,
+    hasVotedThisRound: player.hasVotedThisRound,
+  };
+}
 
 /**
  * Compute whether it's the given player's turn to act.
@@ -131,6 +159,72 @@ function computeIsYourTurn(
 }
 
 /**
+ * Build structured round history from session maps.
+ * Groups banned maps by round (MULTIPLAYER) or turn (ABBA).
+ * Works for both active and completed sessions.
+ *
+ * @param sessionMaps - All maps in the session
+ * @param players - All players in the session
+ * @param format - Session format (ABBA or MULTIPLAYER)
+ */
+function buildRoundHistory(
+  sessionMaps: Doc<"sessionMaps">[],
+  players: Doc<"sessionPlayers">[],
+  format: "ABBA" | "MULTIPLAYER"
+): Array<{
+  round: number;
+  bans: Array<{
+    mapId: Id<"sessionMaps">;
+    mapName: string;
+    bannedByTeam: string;
+  }>;
+}> {
+  const playerMap = new Map(players.map((p) => [p._id.toString(), p]));
+
+  const bannedMaps = sessionMaps
+    .filter((m) => m.state === "BANNED")
+    .sort((a, b) => {
+      if (format === "ABBA") {
+        return (a.bannedAtTurn ?? 0) - (b.bannedAtTurn ?? 0);
+      }
+      const roundDiff = (a.bannedAtRound ?? 0) - (b.bannedAtRound ?? 0);
+      if (roundDiff !== 0) return roundDiff;
+      return a._creationTime - b._creationTime;
+    });
+
+  const result: Array<{
+    round: number;
+    bans: Array<{
+      mapId: Id<"sessionMaps">;
+      mapName: string;
+      bannedByTeam: string;
+    }>;
+  }> = [];
+
+  for (const m of bannedMaps) {
+    const round =
+      format === "ABBA" ? (m.bannedAtTurn ?? 0) + 1 : (m.bannedAtRound ?? 1);
+    const bannedBy = m.bannedByPlayerId
+      ? playerMap.get(m.bannedByPlayerId.toString())
+      : undefined;
+    const entry = {
+      mapId: m._id,
+      mapName: m.name,
+      bannedByTeam: bannedBy?.teamName ?? "Unknown",
+    };
+
+    const last = result[result.length - 1];
+    if (last?.round === round) {
+      last.bans.push(entry);
+    } else {
+      result.push({ round, bans: [entry] });
+    }
+  }
+
+  return result;
+}
+
+/**
  * Private helper to build session results data.
  * Used by both getSessionResultsByToken and getSessionResults queries.
  *
@@ -149,26 +243,23 @@ async function buildSessionResults(ctx: QueryCtx, session: Doc<"sessions">) {
       .collect(),
   ]);
 
-  const playerMap = new Map(players.map((p) => [p._id.toString(), p]));
   const teams = [...new Set(players.map((p) => p.teamName))];
   const winnerMap = maps.find((m) => m.state === "WINNER");
 
-  const banHistory = maps
-    .filter((m) => m.state === "BANNED" && m.bannedByPlayerId)
-    .sort((a, b) => (a.bannedAtTurn ?? 0) - (b.bannedAtTurn ?? 0))
-    .map((m, index) => {
-      const bannedBy = m.bannedByPlayerId
-        ? playerMap.get(m.bannedByPlayerId.toString())
-        : undefined;
-      return {
-        order: index + 1,
-        teamName: bannedBy?.teamName ?? "Unknown",
-        mapName: m.name,
-        mapImage: m.imageUrl,
-      };
-    });
+  // Derive flat banHistory from roundHistory for backwards compatibility
+  const roundHistory = buildRoundHistory(maps, players, session.format);
+  const mapImageLookup = new Map(maps.map((m) => [m._id.toString(), m.imageUrl]));
+  let order = 0;
+  const banHistory = roundHistory.flatMap((entry) =>
+    entry.bans.map((ban) => ({
+      order: ++order,
+      teamName: ban.bannedByTeam,
+      mapName: ban.mapName,
+      mapImage: mapImageLookup.get(ban.mapId.toString()) ?? "",
+    }))
+  );
 
-  return { players, maps, teams, winnerMap, banHistory };
+  return { maps, teams, winnerMap, banHistory };
 }
 
 // ============================================================================
@@ -233,7 +324,7 @@ export const getSession = query({
     if (!session) return null;
 
     // Fetch related data in parallel for performance
-    const [players, maps] = await Promise.all([
+    const [rawPlayers, maps] = await Promise.all([
       ctx.db
         .query("sessionPlayers")
         .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
@@ -243,6 +334,9 @@ export const getSession = query({
         .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
         .collect(),
     ]);
+
+    // Redact ipAddress → isIpLocked for GDPR compliance
+    const players = rawPlayers.map(toAdminPlayer);
 
     return {
       ...session,
@@ -998,8 +1092,37 @@ const sanitizedPlayerValidator = v.object({
 });
 
 /**
+ * Validator for round history entries returned by player queries.
+ */
+const roundHistoryEntryValidator = v.object({
+  round: v.number(),
+  bans: v.array(
+    v.object({
+      mapId: v.id("sessionMaps"),
+      mapName: v.string(),
+      bannedByTeam: v.string(),
+    })
+  ),
+});
+
+/**
+ * Validator for MULTIPLAYER vote progress.
+ */
+const voteProgressValidator = v.object({
+  totalPlayers: v.number(),
+  votedCount: v.number(),
+  allVoted: v.boolean(),
+});
+
+/**
  * Get session data for player-facing pages by access token.
- * Returns sanitized data (no other players' tokens exposed).
+ * Returns sanitized data with voting context for the UI.
+ *
+ * Includes:
+ * - Round history (completed bans organized by round)
+ * - Vote progress for MULTIPLAYER (aggregate count, no individual choices)
+ * - isRevoteRound flag for deadlock revote state
+ * - completedRounds count for progress tracking
  *
  * @param token - Player access token from URL
  */
@@ -1019,6 +1142,8 @@ export const getSessionByToken = query({
         turnTimerSeconds: v.number(),
         currentTurn: v.number(),
         currentRound: v.number(),
+        isRevoteRound: v.boolean(),
+        completedRounds: v.number(),
         timerStartedAt: v.optional(v.number()),
         timerPausedAt: v.optional(v.number()),
         winnerMapId: v.optional(v.id("sessionMaps")),
@@ -1026,6 +1151,8 @@ export const getSessionByToken = query({
       maps: v.array(sessionMapObjectValidator),
       otherPlayers: v.array(sanitizedPlayerValidator),
       isYourTurn: v.boolean(),
+      roundHistory: v.array(roundHistoryEntryValidator),
+      voteProgress: v.optional(voteProgressValidator),
     }),
     v.object({
       status: v.literal("error"),
@@ -1079,18 +1206,10 @@ export const getSessionByToken = query({
         .collect(),
     ]);
 
-    // Sanitize player data (exclude tokens)
-    const sanitizePlayer = (p: typeof player) => ({
-      _id: p._id,
-      role: p.role,
-      teamName: p.teamName,
-      isConnected: p.isConnected,
-      hasVotedThisRound: p.hasVotedThisRound,
-    });
-
+    // Sanitize player data (exclude tokens, IPs)
     const otherPlayers = allPlayers
       .filter((p) => p._id !== player._id)
-      .map(sanitizePlayer);
+      .map(toSanitizedPlayer);
 
     // Sort players by creation time to get consistent ordering for turn calculation
     const sortedPlayers = [...allPlayers].sort(
@@ -1104,9 +1223,35 @@ export const getSessionByToken = query({
       playerIndex
     );
 
+    // Build round history from completed bans
+    const roundHistory = buildRoundHistory(maps, allPlayers, session.format);
+
+    // completedRounds semantics differ by format:
+    // - ABBA: count of banned maps (each ban = 1 round)
+    // - MULTIPLAYER: number of resolved voting rounds (currentRound - 1)
+    const completedRounds =
+      session.format === "ABBA"
+        ? maps.filter((m) => m.state === "BANNED").length
+        : Math.max(0, session.currentRound - 1);
+
+    // Compute vote progress for MULTIPLAYER IN_PROGRESS sessions
+    // Derive allVoted from votedCount to avoid redundant iteration
+    const activePlayers = allPlayers;
+    const votedCount = activePlayers.filter(
+      (p) => p.hasVotedThisRound
+    ).length;
+    const voteProgress =
+      session.format === "MULTIPLAYER" && session.status === "IN_PROGRESS"
+        ? {
+            totalPlayers: activePlayers.length,
+            votedCount,
+            allVoted: votedCount === activePlayers.length,
+          }
+        : undefined;
+
     return {
       status: "valid" as const,
-      player: sanitizePlayer(player),
+      player: toSanitizedPlayer(player),
       session: {
         _id: session._id,
         matchName: session.matchName,
@@ -1115,6 +1260,8 @@ export const getSessionByToken = query({
         turnTimerSeconds: session.turnTimerSeconds,
         currentTurn: session.currentTurn,
         currentRound: session.currentRound,
+        isRevoteRound: session.isRevoteRound ?? false,
+        completedRounds,
         timerStartedAt: session.timerStartedAt,
         timerPausedAt: session.timerPausedAt,
         winnerMapId: session.winnerMapId,
@@ -1122,6 +1269,8 @@ export const getSessionByToken = query({
       maps,
       otherPlayers,
       isYourTurn,
+      roundHistory,
+      voteProgress,
     };
   },
 });

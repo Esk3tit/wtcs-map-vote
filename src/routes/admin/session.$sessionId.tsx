@@ -383,14 +383,13 @@ function SessionDetailPage() {
                           )}
                         </Button>
                       </div>
-                      {player.ipAddress ? (
+                      {player.isIpLocked ? (
                         <Badge
                           variant="outline"
                           className="gap-1 bg-chart-4/20 text-chart-4 border-chart-4/30"
                         >
                           <Lock className="w-3 h-3" />
-                          <span className="hidden sm:inline">Locked to </span>
-                          {player.ipAddress}
+                          IP Locked
                         </Badge>
                       ) : (
                         <Badge
