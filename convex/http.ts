@@ -227,4 +227,81 @@ http.route({
   handler: corsPreflightHandler,
 });
 
+/**
+ * Submit a vote during MULTIPLAYER voting.
+ * Called by the frontend when a player clicks a map to vote to eliminate.
+ */
+http.route({
+  path: "/api/player/submit-vote",
+  method: "POST",
+  handler: httpAction(async (ctx, req) => {
+    const corsHeaders = getCorsHeaders();
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ status: "error", error: "INVALID_REQUEST" }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    const token =
+      typeof body === "object" && body !== null && "token" in body
+        ? (body as { token: unknown }).token
+        : undefined;
+    const mapId =
+      typeof body === "object" && body !== null && "mapId" in body
+        ? (body as { mapId: unknown }).mapId
+        : undefined;
+
+    if (typeof token !== "string" || token.length === 0) {
+      return new Response(
+        JSON.stringify({ status: "error", error: "INVALID_TOKEN" }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    if (typeof mapId !== "string" || mapId.length === 0) {
+      return new Response(
+        JSON.stringify({ status: "error", error: "INVALID_REQUEST" }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    const ipAddress = extractClientIp(req);
+    // Cast to Id — wrap in try/catch to surface invalid ID format as 400
+    try {
+      const result = await ctx.runMutation(internal.voting.submitVote, {
+        token,
+        mapId: mapId as Id<"sessionMaps">,
+        ipAddress,
+      });
+      const statusCode = result.status === "ok" ? 200 : 403;
+      return new Response(JSON.stringify(result), {
+        status: statusCode,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // Invalid Convex ID format surfaces as an argument validation error
+      if (message.includes("is not a valid ID")) {
+        return new Response(
+          JSON.stringify({ status: "error", error: "INVALID_REQUEST" }),
+          { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+      // Re-throw unexpected errors so Convex logs them properly
+      throw error;
+    }
+  }),
+});
+
+/** Handle CORS preflight for submit-vote endpoint. */
+http.route({
+  path: "/api/player/submit-vote",
+  method: "OPTIONS",
+  handler: corsPreflightHandler,
+});
+
 export default http;

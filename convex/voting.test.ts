@@ -1,8 +1,8 @@
 /**
  * Voting Module Tests
  *
- * Tests for ABBA ban submission: validation errors, happy path,
- * completion logic, and audit logging.
+ * Tests for ABBA ban submission and MULTIPLAYER vote submission:
+ * validation errors, happy path, completion logic, and audit logging.
  */
 
 import { describe, it, expect } from "vitest";
@@ -733,6 +733,597 @@ describe("voting.submitBan", () => {
       expect(map1?.bannedAtTurn).toBe(0);
       expect(map2?.bannedByPlayerId).toBe(playerB.id);
       expect(map2?.bannedAtTurn).toBe(1);
+    });
+  });
+});
+
+// ============================================================================
+// submitVote - Test Helpers
+// ============================================================================
+
+interface MultiplayerSessionData {
+  sessionId: Id<"sessions">;
+  adminId: Id<"admins">;
+  players: Array<{ id: Id<"sessionPlayers">; token: string; ip: string }>;
+  mapIds: Id<"sessionMaps">[];
+}
+
+/**
+ * Creates a MULTIPLAYER session in IN_PROGRESS state with N players and maps.
+ * Players are created in order with unique tokens and IPs.
+ */
+async function createMultiplayerSession(
+  t: TestContext,
+  overrides: {
+    sessionStatus?: "DRAFT" | "WAITING" | "IN_PROGRESS" | "PAUSED" | "COMPLETE" | "EXPIRED";
+    format?: "ABBA" | "MULTIPLAYER";
+    mapPoolSize?: number;
+    playerCount?: number;
+    currentRound?: number;
+    tokenExpiresAt?: number;
+    playerOverrides?: Array<{ ip?: string }>;
+  } = {}
+): Promise<MultiplayerSessionData> {
+  return await t.run(async (ctx) => {
+    const adminId = await ctx.db.insert("admins", adminFactory());
+    const playerCount = overrides.playerCount ?? 3;
+    const mapPoolSize = overrides.mapPoolSize ?? 5;
+    const sessionId = await ctx.db.insert(
+      "sessions",
+      sessionFactory(adminId, {
+        format: overrides.format ?? "MULTIPLAYER",
+        status: overrides.sessionStatus ?? "IN_PROGRESS",
+        mapPoolSize,
+        playerCount,
+        currentRound: overrides.currentRound ?? 1,
+      })
+    );
+
+    // Create master maps
+    const masterMapIds = await Promise.all(
+      Array.from({ length: mapPoolSize }, (_, i) =>
+        ctx.db.insert("maps", mapFactory({ name: `Map ${i + 1}` }))
+      )
+    );
+
+    // Create session maps
+    const mapIds = await Promise.all(
+      masterMapIds.map((masterMapId, i) =>
+        ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, masterMapId, {
+            name: `Map ${i + 1}`,
+            state: "AVAILABLE",
+          })
+        )
+      )
+    );
+
+    // Create players with unique tokens and IPs
+    const players: MultiplayerSessionData["players"] = [];
+    for (let i = 0; i < playerCount; i++) {
+      const token = crypto.randomUUID();
+      const ip = overrides.playerOverrides?.[i]?.ip ?? `10.0.0.${i + 1}`;
+      const playerId = await ctx.db.insert(
+        "sessionPlayers",
+        sessionPlayerFactory(sessionId, {
+          token,
+          role: `PLAYER_${i + 1}`,
+          teamName: `Team ${String.fromCharCode(65 + i)}`,
+          ipAddress: ip,
+          isConnected: true,
+          tokenExpiresAt: overrides.tokenExpiresAt,
+        })
+      );
+      players.push({ id: playerId, token, ip });
+    }
+
+    return { sessionId, adminId, players, mapIds };
+  });
+}
+
+// ============================================================================
+// submitVote - Validation Errors
+// ============================================================================
+
+describe("voting.submitVote", () => {
+  describe("validation errors", () => {
+    it("rejects invalid token", async () => {
+      const t = createTestContext();
+      const { mapIds } = await createMultiplayerSession(t);
+
+      const result = await t.mutation(internal.voting.submitVote, {
+        token: "nonexistent-token",
+        mapId: mapIds[0],
+        ipAddress: "10.0.0.1",
+      });
+
+      expect(result).toEqual({ status: "error", error: "INVALID_TOKEN" });
+    });
+
+    it("rejects empty IP address", async () => {
+      const t = createTestContext();
+      const { players, mapIds } = await createMultiplayerSession(t);
+
+      const result = await t.mutation(internal.voting.submitVote, {
+        token: players[0].token,
+        mapId: mapIds[0],
+        ipAddress: "",
+      });
+
+      expect(result).toEqual({ status: "error", error: "INVALID_IP" });
+    });
+
+    it("rejects unknown IP address", async () => {
+      const t = createTestContext();
+      const { players, mapIds } = await createMultiplayerSession(t);
+
+      const result = await t.mutation(internal.voting.submitVote, {
+        token: players[0].token,
+        mapId: mapIds[0],
+        ipAddress: "unknown",
+      });
+
+      expect(result).toEqual({ status: "error", error: "INVALID_IP" });
+    });
+
+    it("rejects expired token", async () => {
+      const t = createTestContext();
+      const { players, mapIds } = await createMultiplayerSession(t, {
+        tokenExpiresAt: Date.now() - 1000,
+      });
+
+      const result = await t.mutation(internal.voting.submitVote, {
+        token: players[0].token,
+        mapId: mapIds[0],
+        ipAddress: "10.0.0.1",
+      });
+
+      expect(result).toEqual({ status: "error", error: "TOKEN_EXPIRED" });
+    });
+
+    it("rejects IP mismatch", async () => {
+      const t = createTestContext();
+      const { players, mapIds } = await createMultiplayerSession(t);
+
+      const result = await t.mutation(internal.voting.submitVote, {
+        token: players[0].token,
+        mapId: mapIds[0],
+        ipAddress: "99.99.99.99",
+      });
+
+      expect(result).toEqual({ status: "error", error: "IP_MISMATCH" });
+    });
+
+    it.each(["DRAFT", "WAITING", "PAUSED", "COMPLETE", "EXPIRED"] as const)(
+      "rejects when session is not IN_PROGRESS (%s)",
+      async (sessionStatus) => {
+        const t = createTestContext();
+        const { players, mapIds } = await createMultiplayerSession(t, {
+          sessionStatus,
+        });
+
+        const result = await t.mutation(internal.voting.submitVote, {
+          token: players[0].token,
+          mapId: mapIds[0],
+          ipAddress: "10.0.0.1",
+        });
+
+        expect(result).toEqual({ status: "error", error: "SESSION_NOT_IN_PROGRESS" });
+      }
+    );
+
+    it("rejects when format is ABBA (not MULTIPLAYER)", async () => {
+      const t = createTestContext();
+      const { players, mapIds } = await createMultiplayerSession(t, {
+        format: "ABBA",
+      });
+
+      const result = await t.mutation(internal.voting.submitVote, {
+        token: players[0].token,
+        mapId: mapIds[0],
+        ipAddress: "10.0.0.1",
+      });
+
+      expect(result).toEqual({ status: "error", error: "NOT_MULTIPLAYER" });
+    });
+
+    it("rejects when player has already voted this round", async () => {
+      const t = createTestContext();
+      const { players, mapIds } = await createMultiplayerSession(t);
+
+      // First vote succeeds
+      await t.mutation(internal.voting.submitVote, {
+        token: players[0].token,
+        mapId: mapIds[0],
+        ipAddress: "10.0.0.1",
+      });
+
+      // Second vote from same player is rejected
+      const result = await t.mutation(internal.voting.submitVote, {
+        token: players[0].token,
+        mapId: mapIds[1],
+        ipAddress: "10.0.0.1",
+      });
+
+      expect(result).toEqual({ status: "error", error: "ALREADY_VOTED" });
+    });
+
+    it("rejects when target map is already BANNED", async () => {
+      const t = createTestContext();
+      const { players, mapIds } = await createMultiplayerSession(t);
+
+      await t.run(async (ctx) => {
+        await ctx.db.patch(mapIds[0], { state: "BANNED" });
+      });
+
+      const result = await t.mutation(internal.voting.submitVote, {
+        token: players[0].token,
+        mapId: mapIds[0],
+        ipAddress: "10.0.0.1",
+      });
+
+      expect(result).toEqual({ status: "error", error: "MAP_UNAVAILABLE" });
+    });
+
+    it("rejects when target map belongs to a different session", async () => {
+      const t = createTestContext();
+      const session1 = await createMultiplayerSession(t);
+
+      // Create a map in a different session
+      const otherMapId = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory({ email: "other@test.com" }));
+        const otherSessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            format: "MULTIPLAYER",
+            status: "IN_PROGRESS",
+            mapPoolSize: 5,
+            playerCount: 3,
+          })
+        );
+        const masterMapId = await ctx.db.insert("maps", mapFactory({ name: "Other Map" }));
+        return await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(otherSessionId, masterMapId, {
+            name: "Other Map",
+            state: "AVAILABLE",
+          })
+        );
+      });
+
+      const result = await t.mutation(internal.voting.submitVote, {
+        token: session1.players[0].token,
+        mapId: otherMapId,
+        ipAddress: "10.0.0.1",
+      });
+
+      expect(result).toEqual({ status: "error", error: "MAP_UNAVAILABLE" });
+    });
+
+    it("rejects when target map state is WINNER", async () => {
+      const t = createTestContext();
+      const { players, mapIds } = await createMultiplayerSession(t);
+
+      await t.run(async (ctx) => {
+        await ctx.db.patch(mapIds[0], { state: "WINNER" });
+      });
+
+      const result = await t.mutation(internal.voting.submitVote, {
+        token: players[0].token,
+        mapId: mapIds[0],
+        ipAddress: "10.0.0.1",
+      });
+
+      expect(result).toEqual({ status: "error", error: "MAP_UNAVAILABLE" });
+    });
+  });
+
+  // ============================================================================
+  // submitVote - Happy Path
+  // ============================================================================
+
+  describe("happy path", () => {
+    it("first player votes successfully", async () => {
+      const t = createTestContext();
+      const { players, mapIds } = await createMultiplayerSession(t);
+
+      const result = await t.mutation(internal.voting.submitVote, {
+        token: players[0].token,
+        mapId: mapIds[0],
+        ipAddress: "10.0.0.1",
+      });
+
+      expect(result.status).toBe("ok");
+      if (result.status !== "ok") throw new Error("Expected ok");
+      expect(result.vote.mapId).toBe(mapIds[0]);
+      expect(result.vote.mapName).toBe("Map 1");
+      expect(result.vote.round).toBe(1);
+    });
+
+    it("returns allVotesSubmitted: false when not all voted", async () => {
+      const t = createTestContext();
+      const { players, mapIds } = await createMultiplayerSession(t);
+
+      const result = await t.mutation(internal.voting.submitVote, {
+        token: players[0].token,
+        mapId: mapIds[0],
+        ipAddress: "10.0.0.1",
+      });
+
+      expect(result.status).toBe("ok");
+      if (result.status !== "ok") throw new Error("Expected ok");
+      expect(result.allVotesSubmitted).toBe(false);
+    });
+
+    it("returns allVotesSubmitted: true when last player votes", async () => {
+      const t = createTestContext();
+      const { players, mapIds } = await createMultiplayerSession(t);
+
+      // All 3 players vote
+      await t.mutation(internal.voting.submitVote, {
+        token: players[0].token, mapId: mapIds[0], ipAddress: "10.0.0.1",
+      });
+      await t.mutation(internal.voting.submitVote, {
+        token: players[1].token, mapId: mapIds[1], ipAddress: "10.0.0.2",
+      });
+      const result = await t.mutation(internal.voting.submitVote, {
+        token: players[2].token, mapId: mapIds[2], ipAddress: "10.0.0.3",
+      });
+
+      expect(result.status).toBe("ok");
+      if (result.status !== "ok") throw new Error("Expected ok");
+      expect(result.allVotesSubmitted).toBe(true);
+    });
+
+    it("inserts vote record with correct fields", async () => {
+      const t = createTestContext();
+      const { sessionId, players, mapIds } = await createMultiplayerSession(t);
+
+      const beforeVote = Date.now();
+      await t.mutation(internal.voting.submitVote, {
+        token: players[0].token,
+        mapId: mapIds[0],
+        ipAddress: "10.0.0.1",
+      });
+
+      const votes = await t.run(async (ctx) =>
+        ctx.db
+          .query("votes")
+          .withIndex("by_sessionId_and_round", (q) =>
+            q.eq("sessionId", sessionId).eq("round", 1)
+          )
+          .collect()
+      );
+
+      expect(votes).toHaveLength(1);
+      expect(votes[0].sessionId).toBe(sessionId);
+      expect(votes[0].round).toBe(1);
+      expect(votes[0].playerId).toBe(players[0].id);
+      expect(votes[0].mapId).toBe(mapIds[0]);
+      expect(votes[0].submittedByAdmin).toBe(false);
+      expect(votes[0].submittedAt).toBeGreaterThanOrEqual(beforeVote);
+    });
+
+    it("sets hasVotedThisRound to true after voting", async () => {
+      const t = createTestContext();
+      const { players, mapIds } = await createMultiplayerSession(t);
+
+      await t.mutation(internal.voting.submitVote, {
+        token: players[0].token,
+        mapId: mapIds[0],
+        ipAddress: "10.0.0.1",
+      });
+
+      const player = await t.run(async (ctx) => ctx.db.get(players[0].id));
+      expect(player?.hasVotedThisRound).toBe(true);
+    });
+
+    it("multiple players can vote for the same map", async () => {
+      const t = createTestContext();
+      const { sessionId, players, mapIds } = await createMultiplayerSession(t);
+
+      // All 3 players vote for the same map
+      await t.mutation(internal.voting.submitVote, {
+        token: players[0].token, mapId: mapIds[0], ipAddress: "10.0.0.1",
+      });
+      await t.mutation(internal.voting.submitVote, {
+        token: players[1].token, mapId: mapIds[0], ipAddress: "10.0.0.2",
+      });
+      const result = await t.mutation(internal.voting.submitVote, {
+        token: players[2].token, mapId: mapIds[0], ipAddress: "10.0.0.3",
+      });
+
+      expect(result.status).toBe("ok");
+      if (result.status !== "ok") throw new Error("Expected ok");
+      expect(result.allVotesSubmitted).toBe(true);
+
+      // All 3 votes should be recorded
+      const votes = await t.run(async (ctx) =>
+        ctx.db
+          .query("votes")
+          .withIndex("by_sessionId_and_round", (q) =>
+            q.eq("sessionId", sessionId).eq("round", 1)
+          )
+          .collect()
+      );
+      expect(votes).toHaveLength(3);
+      expect(votes.every((v) => v.mapId === mapIds[0])).toBe(true);
+    });
+  });
+
+  // ============================================================================
+  // submitVote - Audit Logging
+  // ============================================================================
+
+  describe("audit logging", () => {
+    it("logs VOTE_SUBMITTED with correct details", async () => {
+      const t = createTestContext();
+      const { sessionId, players, mapIds } = await createMultiplayerSession(t);
+
+      await t.mutation(internal.voting.submitVote, {
+        token: players[0].token,
+        mapId: mapIds[0],
+        ipAddress: "10.0.0.1",
+      });
+
+      const logs = await t.run(async (ctx) =>
+        ctx.db
+          .query("auditLogs")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+          .collect()
+      );
+
+      const voteLog = logs.find((l) => l.action === "VOTE_SUBMITTED");
+      expect(voteLog).toBeDefined();
+      expect(voteLog?.actorType).toBe("PLAYER");
+      expect(voteLog?.actorId).toBe(players[0].id);
+      expect(voteLog?.details.mapId).toBe(mapIds[0]);
+      expect(voteLog?.details.mapName).toBe("Map 1");
+      expect(voteLog?.details.teamName).toBe("Team A");
+      expect(voteLog?.details.round).toBe(1);
+    });
+
+    it("logs one VOTE_SUBMITTED per player vote", async () => {
+      const t = createTestContext();
+      const { sessionId, players, mapIds } = await createMultiplayerSession(t);
+
+      await t.mutation(internal.voting.submitVote, {
+        token: players[0].token, mapId: mapIds[0], ipAddress: "10.0.0.1",
+      });
+      await t.mutation(internal.voting.submitVote, {
+        token: players[1].token, mapId: mapIds[1], ipAddress: "10.0.0.2",
+      });
+      await t.mutation(internal.voting.submitVote, {
+        token: players[2].token, mapId: mapIds[2], ipAddress: "10.0.0.3",
+      });
+
+      const logs = await t.run(async (ctx) =>
+        ctx.db
+          .query("auditLogs")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+          .collect()
+      );
+
+      const voteLogs = logs.filter((l) => l.action === "VOTE_SUBMITTED");
+      expect(voteLogs).toHaveLength(3);
+    });
+  });
+
+  // ============================================================================
+  // submitVote - Edge Cases
+  // ============================================================================
+
+  describe("edge cases", () => {
+    it("allows same IP for multiple players (LAN scenario)", async () => {
+      const t = createTestContext();
+      const { players, mapIds } = await createMultiplayerSession(t, {
+        playerOverrides: [
+          { ip: "192.168.1.1" },
+          { ip: "192.168.1.1" },
+          { ip: "192.168.1.1" },
+        ],
+      });
+
+      const r1 = await t.mutation(internal.voting.submitVote, {
+        token: players[0].token, mapId: mapIds[0], ipAddress: "192.168.1.1",
+      });
+      expect(r1.status).toBe("ok");
+
+      const r2 = await t.mutation(internal.voting.submitVote, {
+        token: players[1].token, mapId: mapIds[1], ipAddress: "192.168.1.1",
+      });
+      expect(r2.status).toBe("ok");
+
+      const r3 = await t.mutation(internal.voting.submitVote, {
+        token: players[2].token, mapId: mapIds[2], ipAddress: "192.168.1.1",
+      });
+      expect(r3.status).toBe("ok");
+    });
+
+    it("trims whitespace from IP address before validation", async () => {
+      const t = createTestContext();
+      const { players, mapIds } = await createMultiplayerSession(t);
+
+      const result = await t.mutation(internal.voting.submitVote, {
+        token: players[0].token,
+        mapId: mapIds[0],
+        ipAddress: "  10.0.0.1  ",
+      });
+
+      expect(result.status).toBe("ok");
+    });
+
+    it("player cannot vote when token has no IP locked (unactivated)", async () => {
+      const t = createTestContext();
+      const { mapIds, sessionId } = await createMultiplayerSession(t);
+
+      // Create a player with no IP address (unactivated token)
+      const unactivatedToken = crypto.randomUUID();
+      await t.run(async (ctx) => {
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: unactivatedToken,
+            ipAddress: undefined,
+            isConnected: false,
+          })
+        );
+      });
+
+      const result = await t.mutation(internal.voting.submitVote, {
+        token: unactivatedToken,
+        mapId: mapIds[0],
+        ipAddress: "10.0.0.1",
+      });
+
+      expect(result).toEqual({ status: "error", error: "IP_MISMATCH" });
+    });
+
+    it("uses session currentRound for vote record", async () => {
+      const t = createTestContext();
+      const { sessionId, players, mapIds } = await createMultiplayerSession(t, {
+        currentRound: 3,
+      });
+
+      await t.mutation(internal.voting.submitVote, {
+        token: players[0].token,
+        mapId: mapIds[0],
+        ipAddress: "10.0.0.1",
+      });
+
+      const votes = await t.run(async (ctx) =>
+        ctx.db
+          .query("votes")
+          .withIndex("by_sessionId_and_round", (q) =>
+            q.eq("sessionId", sessionId).eq("round", 3)
+          )
+          .collect()
+      );
+
+      expect(votes).toHaveLength(1);
+      expect(votes[0].round).toBe(3);
+    });
+
+    it("works with 2-player session", async () => {
+      const t = createTestContext();
+      const { players, mapIds } = await createMultiplayerSession(t, {
+        playerCount: 2,
+      });
+
+      const r1 = await t.mutation(internal.voting.submitVote, {
+        token: players[0].token, mapId: mapIds[0], ipAddress: "10.0.0.1",
+      });
+      expect(r1.status).toBe("ok");
+      if (r1.status !== "ok") throw new Error("Expected ok");
+      expect(r1.allVotesSubmitted).toBe(false);
+
+      const r2 = await t.mutation(internal.voting.submitVote, {
+        token: players[1].token, mapId: mapIds[1], ipAddress: "10.0.0.2",
+      });
+      expect(r2.status).toBe("ok");
+      if (r2.status !== "ok") throw new Error("Expected ok");
+      expect(r2.allVotesSubmitted).toBe(true);
     });
   });
 });
