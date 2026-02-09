@@ -1000,7 +1000,7 @@ scheduled: cleanupAuditLogs()
 |----------|----------|
 | Admin starts with player not connected | Block start, show "waiting for players" |
 | Admin edits during active voting | Block, only allowed in DRAFT/WAITING |
-| Session reset after completion | Clear votes, reset maps to AVAILABLE, go to WAITING |
+| Session reset after completion | Clear votes, reset maps to AVAILABLE, clear `isRevoteRound`, reset `currentRound`, go to WAITING |
 | Session cloned | Copy all config, generate new tokens, start as DRAFT |
 | 2-week expiration reached | Auto-transition to EXPIRED state |
 

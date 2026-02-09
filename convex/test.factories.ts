@@ -100,6 +100,7 @@ export const sessionFactory = (
     playerCount: number;
     currentTurn: number;
     currentRound: number;
+    isRevoteRound: boolean;
     updatedAt: number;
     expiresAt: number;
   }> = {}
@@ -113,7 +114,8 @@ export const sessionFactory = (
     mapPoolSize: overrides.mapPoolSize ?? 7,
     playerCount: overrides.playerCount ?? 2,
     currentTurn: overrides.currentTurn ?? 0,
-    currentRound: overrides.currentRound ?? 0,
+    currentRound: overrides.currentRound ?? 1,
+    isRevoteRound: overrides.isRevoteRound ?? false,
     createdBy,
     updatedAt: overrides.updatedAt ?? now,
     expiresAt: overrides.expiresAt ?? now + ONE_DAY_MS,

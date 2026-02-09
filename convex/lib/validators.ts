@@ -63,6 +63,8 @@ export const auditActionValidator = v.union(
   v.literal("VOTE_SUBMITTED"),
   // Round/Timer events
   v.literal("ROUND_RESOLVED"),
+  v.literal("ROUND_REVOTE_TRIGGERED"),
+  v.literal("REVOTE_DEADLOCK_RANDOM_SELECTION"),
   v.literal("TIMER_EXPIRED"),
   v.literal("RANDOM_SELECTION"),
   v.literal("WINNER_DECLARED")

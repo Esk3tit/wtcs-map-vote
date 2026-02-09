@@ -52,6 +52,8 @@ export type AuditAction =
   | "VOTE_SUBMITTED"
   // Round/Timer events
   | "ROUND_RESOLVED"
+  | "ROUND_REVOTE_TRIGGERED"
+  | "REVOTE_DEADLOCK_RANDOM_SELECTION"
   | "TIMER_EXPIRED"
   | "RANDOM_SELECTION"
   | "WINNER_DECLARED";
