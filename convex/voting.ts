@@ -130,15 +130,16 @@ async function banVotedMaps(
   tallies: Map<Id<"sessionMaps">, number>,
   round: number
 ): Promise<Id<"sessionMaps">[]> {
-  const bannedIds: Id<"sessionMaps">[] = [];
-  for (const [mapId, count] of tallies) {
-    await ctx.db.patch(mapId, {
-      state: "BANNED",
-      voteCount: count,
-      bannedAtRound: round,
-    });
-    bannedIds.push(mapId);
-  }
+  const bannedIds = Array.from(tallies.keys());
+  await Promise.all(
+    Array.from(tallies.entries()).map(([mapId, count]) =>
+      ctx.db.patch(mapId, {
+        state: "BANNED",
+        voteCount: count,
+        bannedAtRound: round,
+      })
+    )
+  );
   return bannedIds;
 }
 
@@ -154,11 +155,11 @@ async function resetVoteFlags(
     .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
     .collect();
 
-  for (const player of players) {
-    if (player.hasVotedThisRound) {
-      await ctx.db.patch(player._id, { hasVotedThisRound: false });
-    }
-  }
+  await Promise.all(
+    players
+      .filter((p) => p.hasVotedThisRound)
+      .map((p) => ctx.db.patch(p._id, { hasVotedThisRound: false }))
+  );
 }
 
 /**
@@ -271,25 +272,18 @@ async function resolveRound(
     // === REVOTE: first deadlock — reset maps and try again ===
 
     // Reset maps that were banned THIS round back to AVAILABLE
-    const currentRoundBans = await ctx.db
-      .query("sessionMaps")
-      .withIndex("by_sessionId_and_state", (q) =>
-        q.eq("sessionId", session._id).eq("state", "BANNED")
-      )
-      .collect();
-
-    const resetMapIds: Id<"sessionMaps">[] = [];
-    for (const map of currentRoundBans) {
-      if (map.bannedAtRound === currentRound) {
-        await ctx.db.patch(map._id, {
+    // bannedIds already contains exactly the maps banned this round
+    const resetMapIds = bannedIds;
+    await Promise.all(
+      resetMapIds.map((mapId) =>
+        ctx.db.patch(mapId, {
           state: "AVAILABLE",
           voteCount: undefined,
           bannedAtRound: undefined,
           bannedByPlayerId: undefined,
-        });
-        resetMapIds.push(map._id);
-      }
-    }
+        })
+      )
+    );
 
     await ctx.db.patch(session._id, {
       currentRound: currentRound + 1,
@@ -317,20 +311,14 @@ async function resolveRound(
 
   // === RANDOM_WINNER: double deadlock — random selection from revote pool ===
 
-  // The pool is the maps banned in THIS round (they were available at start of revote)
-  const revotePool = await ctx.db
-    .query("sessionMaps")
-    .withIndex("by_sessionId_and_state", (q) =>
-      q.eq("sessionId", session._id).eq("state", "BANNED")
-    )
-    .collect();
-
-  const currentRoundPool = revotePool.filter(
-    (m) => m.bannedAtRound === currentRound
+  // The pool is the maps banned in THIS round — reuse bannedIds to avoid re-querying
+  const poolDocs = await Promise.all(bannedIds.map((id) => ctx.db.get(id)));
+  const currentRoundPool = poolDocs.filter(
+    (m): m is Doc<"sessionMaps"> => m !== null
   );
 
   if (currentRoundPool.length === 0) {
-    console.error(
+    console.warn(
       `Data integrity error: double deadlock with no maps in revote pool for session ${session._id}`
     );
     throw new Error("Data integrity error: empty revote pool");
