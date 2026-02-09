@@ -2,7 +2,7 @@
 
 Current progress and next steps for the WTCS Map Vote project.
 
-**Last Updated:** February 5, 2026
+**Last Updated:** February 9, 2026
 
 ---
 
@@ -122,27 +122,23 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] 100% coverage on admins.ts, playerAuth.ts, lib/auth.ts
 - [x] Full lobby URLs in session detail page (WAR-31, PR #51)
 
+### Phase 4: Voting Module (IN PROGRESS)
+- [x] ABBA submitBan mutation with full validation chain (WAR-32, PR #52)
+- [x] Multiplayer submitVote mutation with vote tracking (WAR-33, PR #53)
+- [x] Round resolution & deadlock handling for multiplayer format (WAR-34, PR #54)
+- [x] Shared validation helpers (lookupAndValidatePlayer, requireAvailableSessionMap)
+- [x] HTTP endpoints for submit-ban and submit-vote with CORS
+- [x] 85+ voting tests (submitBan, submitVote, resolveRound)
+
 ---
 
 ## Next Steps
 
-### Phase 3: Authentication (COMPLETE)
-
-- [x] Convex Auth infrastructure (WAR-23)
-- [x] Google OAuth provider (WAR-24)
-- [x] Admin whitelist system (WAR-25)
-- [x] Player token authentication (WAR-26)
-- [x] Protected routes & server-side auth (WAR-27)
-- [x] Branding & polish (WAR-28)
-- [x] Auth event logging (WAR-29)
-- [x] Auth system tests (WAR-30, WAR-21)
-
 ### Session Lifecycle (Priority: High)
    - [ ] Session lifecycle mutations (finalize, start, pause, resume, end)
-   - [ ] Voting mutations (submitBan, submitVote)
    - [ ] Timer expiration handling (scheduled functions)
 
-3. **Real-Time Features**
+### Real-Time Features
    - [ ] Session state subscription
    - [ ] Map state updates during voting
    - [ ] Player connection status

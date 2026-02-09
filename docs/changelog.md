@@ -10,6 +10,23 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+#### Round Resolution & Deadlock Handling (WAR-34, PR #54)
+- **`resolveRound` helper** — Auto-triggers inside `submitVote` when all players have voted in a multiplayer round
+- **Vote tallying** — Counts votes per map, bans maps with ≥1 vote, advances game state
+- **Deadlock detection** — When all remaining maps are banned (tied votes), triggers a revote round with `isRevoteRound=true`
+- **Double deadlock → random selection** — If revote produces the same deadlock, randomly selects a winner from the pre-ban pool
+- **`isRevoteRound` schema field** — Optional boolean on sessions table to track deadlock state
+- **2 new audit actions** — `ROUND_REVOTE_TRIGGERED`, `REVOTE_DEADLOCK_RANDOM_SELECTION`
+- **28 unit tests** across 5 groups: normal resolution, deadlock→revote, double deadlock→random, audit logging, edge cases
+- **Stakeholder scenario covered** — 4 maps, 4 players, each votes different → deadlock → revote → same → random winner
+
+#### Multiplayer submitVote Mutation (WAR-33, PR #53)
+- **`submitVote` internalMutation** — Multiplayer voting with full validation chain (IP → token → session → format → round → duplicate vote)
+- **HTTP endpoint** `POST /api/player/submit-vote` with CORS preflight support
+- **Vote tracking** — Records individual votes in `votes` table, updates `voteCount` on session maps, tracks `hasVotedThisRound` per player
+- **Shared helpers** — Deduplicated `lookupAndValidatePlayer`, `requireAvailableSessionMap`, and HTTP handler patterns with ABBA module
+- **25 unit tests** across 5 groups: validation errors, happy path, duplicate/round tracking, audit logging, edge cases
+
 #### Voting Module & ABBA submitBan Mutation (WAR-32, PR #52)
 - **`convex/voting.ts`** — New voting module with `submitBan` internalMutation for ABBA map ban flow
 - **ABBA turn pattern** `[0, 1, 1, 0]` — Player 0 bans first, then Player 1 twice, then Player 0 again
