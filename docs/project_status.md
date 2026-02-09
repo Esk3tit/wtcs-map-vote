@@ -129,6 +129,8 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] Shared validation helpers (lookupAndValidatePlayer, requireAvailableSessionMap)
 - [x] HTTP endpoints for submit-ban and submit-vote with CORS
 - [x] 85+ voting tests (submitBan, submitVote, resolveRound)
+- [x] Voting query enhancements — roundHistory, voteProgress, isRevoteRound, completedRounds (WAR-35)
+- [x] GDPR IP address redaction in admin session detail (WAR-35)
 
 ---
 
