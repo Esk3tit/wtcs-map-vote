@@ -130,6 +130,13 @@ export const submitBan = internalMutation({
     );
 
     const playerIndex = sortedPlayers.findIndex((p) => p._id === player._id);
+    if (playerIndex === -1) {
+      console.error(
+        `Data integrity error: player ${player._id} not found in session ${session._id} player list`
+      );
+      throw new Error("Data integrity error: player not in session");
+    }
+
     const activePlayerIndex = getActivePlayerIndex(session.currentTurn);
 
     if (playerIndex !== activePlayerIndex) {
