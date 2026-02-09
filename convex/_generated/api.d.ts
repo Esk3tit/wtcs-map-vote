@@ -29,6 +29,7 @@ import type * as sessionCleanup from "../sessionCleanup.js";
 import type * as sessions from "../sessions.js";
 import type * as storage from "../storage.js";
 import type * as teams from "../teams.js";
+import type * as voting from "../voting.js";
 
 import type {
   ApiFromModules,
@@ -58,6 +59,7 @@ declare const fullApi: ApiFromModules<{
   sessions: typeof sessions;
   storage: typeof storage;
   teams: typeof teams;
+  voting: typeof voting;
 }>;
 
 /**

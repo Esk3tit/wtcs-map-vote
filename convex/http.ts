@@ -6,6 +6,7 @@
  */
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 
 import { httpRouter } from "convex/server";
 
@@ -141,6 +142,75 @@ http.route({
 /** Handle CORS preflight for heartbeat endpoint. */
 http.route({
   path: "/api/player/heartbeat",
+  method: "OPTIONS",
+  handler: corsPreflightHandler,
+});
+
+// ============================================================================
+// Voting Endpoints
+// ============================================================================
+
+/**
+ * Submit a map ban during ABBA voting.
+ * Called by the frontend when a player clicks a map to ban.
+ */
+http.route({
+  path: "/api/player/submit-ban",
+  method: "POST",
+  handler: httpAction(async (ctx, req) => {
+    const corsHeaders = getCorsHeaders();
+    let body: unknown;
+    try {
+      body = await req.json();
+    } catch {
+      return new Response(
+        JSON.stringify({ status: "error", error: "INVALID_REQUEST" }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    const token =
+      typeof body === "object" && body !== null && "token" in body
+        ? (body as { token: unknown }).token
+        : undefined;
+    const mapId =
+      typeof body === "object" && body !== null && "mapId" in body
+        ? (body as { mapId: unknown }).mapId
+        : undefined;
+
+    if (typeof token !== "string" || token.length === 0) {
+      return new Response(
+        JSON.stringify({ status: "error", error: "INVALID_TOKEN" }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    if (typeof mapId !== "string" || mapId.length === 0) {
+      return new Response(
+        JSON.stringify({ status: "error", error: "MAP_UNAVAILABLE" }),
+        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+      );
+    }
+
+    const ipAddress = extractClientIp(req);
+    // Cast to Id — Convex validates the ID format in the mutation
+    const result = await ctx.runMutation(internal.voting.submitBan, {
+      token,
+      mapId: mapId as Id<"sessionMaps">,
+      ipAddress,
+    });
+
+    const statusCode = result.status === "ok" ? 200 : 403;
+    return new Response(JSON.stringify(result), {
+      status: statusCode,
+      headers: { "Content-Type": "application/json", ...corsHeaders },
+    });
+  }),
+});
+
+/** Handle CORS preflight for submit-ban endpoint. */
+http.route({
+  path: "/api/player/submit-ban",
   method: "OPTIONS",
   handler: corsPreflightHandler,
 });
