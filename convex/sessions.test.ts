@@ -426,6 +426,18 @@ describe("sessions.createSession", () => {
       ).rejects.toThrow(/cannot exceed 8/i);
     });
 
+    it("throws for ABBA format with playerCount !== 2", async () => {
+      const { authT } = await createAuthenticatedAdmin();
+
+      await expect(
+        authT.mutation(api.sessions.createSession, {
+          matchName: "Test",
+          format: "ABBA",
+          playerCount: 4,
+        })
+      ).rejects.toThrow("ABBA format requires exactly 2 players");
+    });
+
     it("throws for turn timer below minimum (10 seconds)", async () => {
       const { authT } = await createAuthenticatedAdmin();
 

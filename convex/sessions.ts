@@ -357,6 +357,11 @@ export const createSession = mutation({
       "Player count"
     );
 
+    // Enforce format-specific player count
+    if (args.format === "ABBA" && args.playerCount !== 2) {
+      throw new ConvexError("ABBA format requires exactly 2 players");
+    }
+
     // Validate turn timer
     const turnTimerSeconds = args.turnTimerSeconds ?? DEFAULT_TURN_TIMER_SECONDS;
     validateRange(
