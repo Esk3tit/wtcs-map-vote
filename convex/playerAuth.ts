@@ -11,6 +11,7 @@ import { internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
 import { ACTIVE_SESSION_STATUSES, HEARTBEAT_SKIP_MS } from "./lib/constants";
+import { lookupAndValidatePlayer } from "./lib/auth";
 
 import { logAction } from "./audit";
 
@@ -58,32 +59,13 @@ export const validateAndLockToken = internalMutation({
     const ipAddress = args.ipAddress.trim();
     const now = Date.now();
 
-    // Reject empty, whitespace-only, or unresolved IP addresses
-    if (!ipAddress || ipAddress === "unknown") {
-      return { status: "error" as const, error: "INVALID_IP" as const };
+    // Shared read-only validation: IP check, token lookup, expiry, session
+    const result = await lookupAndValidatePlayer(ctx, token, ipAddress);
+    if (result.status === "error") {
+      return result;
     }
 
-    // Look up player by token
-    const player = await ctx.db
-      .query("sessionPlayers")
-      .withIndex("by_token", (q) => q.eq("token", token))
-      .first();
-
-    if (!player) {
-      // No session to log against for invalid tokens
-      return { status: "error" as const, error: "INVALID_TOKEN" as const };
-    }
-
-    // Check token expiration
-    if (player.tokenExpiresAt < now) {
-      return { status: "error" as const, error: "TOKEN_EXPIRED" as const };
-    }
-
-    // Get session
-    const session = await ctx.db.get(player.sessionId);
-    if (!session) {
-      return { status: "error" as const, error: "SESSION_NOT_FOUND" as const };
-    }
+    const { player, session } = result;
 
     // Check session is in an active state
     if (!ACTIVE_SESSION_STATUSES.has(session.status)) {

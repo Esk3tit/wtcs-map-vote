@@ -8,7 +8,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ## [Unreleased]
 
-*No unreleased changes.*
+### Added
+
+#### Voting Module & ABBA submitBan Mutation (WAR-32, PR #52)
+- **`convex/voting.ts`** — New voting module with `submitBan` internalMutation for ABBA map ban flow
+- **ABBA turn pattern** `[0, 1, 1, 0]` — Player 0 bans first, then Player 1 twice, then Player 0 again
+- **Full validation chain**: IP → token → expiry → IP match → session status → format → turn order → map availability (cross-session guard)
+- **Auto-winner declaration** when all bans complete (`mapPoolSize - 1` bans), marks last map as WINNER and session as COMPLETE
+- **Audit logging**: `MAP_BANNED` and `WINNER_DECLARED` events logged atomically within the same transaction
+- **HTTP endpoint** `POST /api/player/submit-ban` with CORS preflight support
+- **32 unit tests** across 5 groups: validation errors, happy path, completion logic, audit logging, edge cases
+- **Dynamic map pool support** — works with any pool size (3, 5, 7, etc.), not hardcoded to 5
+- **LAN-safe** — allows same IP for both players
 
 ---
 

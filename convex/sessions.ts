@@ -23,6 +23,7 @@ import {
   MAX_TURN_TIMER_SECONDS,
   MIN_MAP_POOL_SIZE,
   MAX_MAP_POOL_SIZE,
+  getActivePlayerIndex,
 } from "./lib/constants";
 import { validateName, validateRange } from "./lib/validation";
 import {
@@ -124,9 +125,7 @@ function computeIsYourTurn(
     return !hasVotedThisRound;
   }
   if (session.format === "ABBA") {
-    const abbaPattern = [0, 1, 1, 0];
-    const activeIndex = abbaPattern[session.currentTurn % abbaPattern.length];
-    return playerIndex === activeIndex;
+    return playerIndex === getActivePlayerIndex(session.currentTurn);
   }
   return false;
 }
@@ -357,6 +356,11 @@ export const createSession = mutation({
       MAX_PLAYER_COUNT,
       "Player count"
     );
+
+    // Enforce format-specific player count
+    if (args.format === "ABBA" && args.playerCount !== 2) {
+      throw new ConvexError("ABBA format requires exactly 2 players");
+    }
 
     // Validate turn timer
     const turnTimerSeconds = args.turnTimerSeconds ?? DEFAULT_TURN_TIMER_SECONDS;
@@ -1090,7 +1094,8 @@ export const getSessionByToken = query({
 
     // Sort players by creation time to get consistent ordering for turn calculation
     const sortedPlayers = [...allPlayers].sort(
-      (a, b) => a._creationTime - b._creationTime
+      (a, b) =>
+        a._creationTime - b._creationTime || a._id.localeCompare(b._id)
     );
     const playerIndex = sortedPlayers.findIndex((p) => p._id === player._id);
     const isYourTurn = computeIsYourTurn(
