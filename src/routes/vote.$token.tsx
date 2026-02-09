@@ -17,11 +17,37 @@ import {
 import { TokenErrorPage } from "@/components/session/TokenErrorPage";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
 import { Check, Lock, X, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import type { Id } from "../../convex/_generated/dataModel";
 
 export const Route = createFileRoute("/vote/$token")({
   component: PlayerVotingPage,
 });
+
+// Derive HTTP actions base URL from Convex deployment URL
+const CONVEX_URL = import.meta.env.VITE_CONVEX_URL as string;
+const SITE_URL = CONVEX_URL.replace(".cloud", ".site");
+
+// Map backend error codes to user-friendly messages
+function getVotingErrorMessage(error: string): string {
+  switch (error) {
+    case "NOT_YOUR_TURN":
+      return "It's not your turn";
+    case "MAP_UNAVAILABLE":
+      return "This map is no longer available";
+    case "SESSION_NOT_IN_PROGRESS":
+      return "Session is no longer active";
+    case "ALREADY_VOTED":
+      return "You already voted this round";
+    case "IP_MISMATCH":
+      return "Session is locked to another device";
+    case "INVALID_TOKEN":
+    case "TOKEN_EXPIRED":
+      return "Your session has expired. Please refresh.";
+    default:
+      return "Something went wrong. Please try again.";
+  }
+}
 
 // Helper function to calculate remaining time from server timestamp
 function calculateRemainingTime(
@@ -87,6 +113,11 @@ function PlayerVotingPage() {
     _id: Id<"sessionMaps">;
     name: string;
   } | null>(null);
+  const [confirmVoteMap, setConfirmVoteMap] = useState<{
+    _id: Id<"sessionMaps">;
+    name: string;
+  } | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Auto-redirect to results when session completes (hook before early returns)
   useEffect(() => {
@@ -163,18 +194,62 @@ function PlayerVotingPage() {
 
   const currentStep = banSteps.findIndex((step) => !step.completed);
 
-  const handleBanMap = (mapId: Id<"sessionMaps">, mapName: string) => {
-    if (!isYourTurn) return;
-    setConfirmBanMap({ _id: mapId, name: mapName });
+  const handleMapClick = (mapId: Id<"sessionMaps">, mapName: string) => {
+    if (!isYourTurn || isSubmitting) return;
+
+    if (session.format === "ABBA") {
+      setConfirmBanMap({ _id: mapId, name: mapName });
+    } else {
+      setConfirmVoteMap({ _id: mapId, name: mapName });
+    }
   };
 
-  const confirmBan = () => {
-    if (!confirmBanMap) return;
+  const confirmBan = async () => {
+    if (!confirmBanMap || isSubmitting) return;
 
-    // TODO: Call submitBan mutation (out of scope for WAR-11)
-    // For now, just close the dialog
-    console.log("Ban map:", confirmBanMap._id);
-    setConfirmBanMap(null);
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`${SITE_URL}/api/player/submit-ban`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, mapId: confirmBanMap._id }),
+      });
+      const result = await res.json();
+
+      if (result.status === "ok") {
+        setConfirmBanMap(null);
+      } else {
+        toast.error(getVotingErrorMessage(result.error));
+      }
+    } catch {
+      toast.error("Network error. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
+  const confirmVote = async () => {
+    if (!confirmVoteMap || isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`${SITE_URL}/api/player/submit-vote`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, mapId: confirmVoteMap._id }),
+      });
+      const result = await res.json();
+
+      if (result.status === "ok") {
+        setConfirmVoteMap(null);
+      } else {
+        toast.error(getVotingErrorMessage(result.error));
+      }
+    } catch {
+      toast.error("Network error. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Show paused state
@@ -270,13 +345,15 @@ function PlayerVotingPage() {
                 <Card
                   key={map._id}
                   className={`overflow-hidden transition-all duration-200 relative group ${
-                    map.state === "AVAILABLE" && isYourTurn
+                    map.state === "AVAILABLE" && isYourTurn && !isSubmitting
                       ? "cursor-pointer hover:ring-2 hover:ring-primary hover:shadow-lg hover:shadow-primary/20 active:ring-2 active:ring-primary"
                       : ""
-                  } ${map.state === "BANNED" ? "opacity-60" : ""}`}
+                  } ${map.state === "BANNED" ? "opacity-60" : ""} ${
+                    isSubmitting ? "pointer-events-none opacity-80" : ""
+                  }`}
                   onClick={() => {
-                    if (map.state === "AVAILABLE" && isYourTurn) {
-                      handleBanMap(map._id, map.name);
+                    if (map.state === "AVAILABLE" && isYourTurn && !isSubmitting) {
+                      handleMapClick(map._id, map.name);
                     }
                   }}
                 >
@@ -424,10 +501,10 @@ function PlayerVotingPage() {
         </div>
       </footer>
 
-      {/* Confirmation Dialog */}
+      {/* Ban Confirmation Dialog (ABBA) */}
       <AlertDialog
         open={!!confirmBanMap}
-        onOpenChange={(open) => !open && setConfirmBanMap(null)}
+        onOpenChange={(open) => !open && !isSubmitting && setConfirmBanMap(null)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -441,12 +518,62 @@ function PlayerVotingPage() {
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isSubmitting}>
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
               onClick={confirmBan}
+              disabled={isSubmitting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Confirm Ban
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Banning...
+                </>
+              ) : (
+                "Confirm Ban"
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Vote Confirmation Dialog (MULTIPLAYER) */}
+      <AlertDialog
+        open={!!confirmVoteMap}
+        onOpenChange={(open) =>
+          !open && !isSubmitting && setConfirmVoteMap(null)
+        }
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Confirm Vote</AlertDialogTitle>
+            <AlertDialogDescription>
+              Vote to eliminate{" "}
+              <span className="font-semibold text-foreground">
+                {confirmVoteMap?.name}
+              </span>
+              ? This cannot be changed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isSubmitting}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={confirmVote}
+              disabled={isSubmitting}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Voting...
+                </>
+              ) : (
+                "Confirm Vote"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
