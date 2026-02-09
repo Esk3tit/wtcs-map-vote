@@ -32,6 +32,33 @@ interface ABBASessionData {
 }
 
 /**
+ * Executes the full 4-ban ABBA sequence (A, B, B, A) using the first 4 map IDs.
+ * Returns the result of the final ban (which triggers completion).
+ */
+async function completeABBAFlow(t: TestContext, session: ABBASessionData) {
+  const { playerA, playerB, mapIds } = session;
+
+  // Turn 0: Player A bans Map 1
+  await t.mutation(internal.voting.submitBan, {
+    token: playerA.token, mapId: mapIds[0], ipAddress: "10.0.0.1",
+  });
+  // Turn 1: Player B bans Map 2
+  await t.mutation(internal.voting.submitBan, {
+    token: playerB.token, mapId: mapIds[1], ipAddress: "10.0.0.2",
+  });
+  // Turn 2: Player B bans Map 3
+  await t.mutation(internal.voting.submitBan, {
+    token: playerB.token, mapId: mapIds[2], ipAddress: "10.0.0.2",
+  });
+  // Turn 3: Player A bans Map 4 (triggers completion)
+  const result = await t.mutation(internal.voting.submitBan, {
+    token: playerA.token, mapId: mapIds[3], ipAddress: "10.0.0.1",
+  });
+
+  return result;
+}
+
+/**
  * Creates a full ABBA session in IN_PROGRESS state with 2 players and 5 maps.
  * Player A is created first for consistent _creationTime ordering.
  */
@@ -192,65 +219,23 @@ describe("voting.submitBan", () => {
       expect(result).toEqual({ status: "error", error: "IP_MISMATCH" });
     });
 
-    it("rejects when session is not IN_PROGRESS (DRAFT)", async () => {
-      const t = createTestContext();
-      const { playerA, mapIds } = await createABBASession(t, {
-        sessionStatus: "DRAFT",
-      });
+    it.each(["DRAFT", "WAITING", "PAUSED", "COMPLETE"] as const)(
+      "rejects when session is not IN_PROGRESS (%s)",
+      async (sessionStatus) => {
+        const t = createTestContext();
+        const { playerA, mapIds } = await createABBASession(t, {
+          sessionStatus,
+        });
 
-      const result = await t.mutation(internal.voting.submitBan, {
-        token: playerA.token,
-        mapId: mapIds[0],
-        ipAddress: "10.0.0.1",
-      });
+        const result = await t.mutation(internal.voting.submitBan, {
+          token: playerA.token,
+          mapId: mapIds[0],
+          ipAddress: "10.0.0.1",
+        });
 
-      expect(result).toEqual({ status: "error", error: "SESSION_NOT_IN_PROGRESS" });
-    });
-
-    it("rejects when session is not IN_PROGRESS (WAITING)", async () => {
-      const t = createTestContext();
-      const { playerA, mapIds } = await createABBASession(t, {
-        sessionStatus: "WAITING",
-      });
-
-      const result = await t.mutation(internal.voting.submitBan, {
-        token: playerA.token,
-        mapId: mapIds[0],
-        ipAddress: "10.0.0.1",
-      });
-
-      expect(result).toEqual({ status: "error", error: "SESSION_NOT_IN_PROGRESS" });
-    });
-
-    it("rejects when session is not IN_PROGRESS (PAUSED)", async () => {
-      const t = createTestContext();
-      const { playerA, mapIds } = await createABBASession(t, {
-        sessionStatus: "PAUSED",
-      });
-
-      const result = await t.mutation(internal.voting.submitBan, {
-        token: playerA.token,
-        mapId: mapIds[0],
-        ipAddress: "10.0.0.1",
-      });
-
-      expect(result).toEqual({ status: "error", error: "SESSION_NOT_IN_PROGRESS" });
-    });
-
-    it("rejects when session is not IN_PROGRESS (COMPLETE)", async () => {
-      const t = createTestContext();
-      const { playerA, mapIds } = await createABBASession(t, {
-        sessionStatus: "COMPLETE",
-      });
-
-      const result = await t.mutation(internal.voting.submitBan, {
-        token: playerA.token,
-        mapId: mapIds[0],
-        ipAddress: "10.0.0.1",
-      });
-
-      expect(result).toEqual({ status: "error", error: "SESSION_NOT_IN_PROGRESS" });
-    });
+        expect(result).toEqual({ status: "error", error: "SESSION_NOT_IN_PROGRESS" });
+      }
+    );
 
     it("rejects when format is MULTIPLAYER (not ABBA)", async () => {
       const t = createTestContext();
@@ -485,55 +470,21 @@ describe("voting.submitBan", () => {
   describe("completion logic", () => {
     it("completes full ABBA flow: 4 bans → winner declared", async () => {
       const t = createTestContext();
-      const { sessionId, playerA, playerB, mapIds } = await createABBASession(t);
+      const session = await createABBASession(t);
+      const { sessionId, mapIds } = session;
 
-      // Turn 0: Player A bans Map 1
-      const r1 = await t.mutation(internal.voting.submitBan, {
-        token: playerA.token,
-        mapId: mapIds[0],
-        ipAddress: "10.0.0.1",
-      });
-      expect(r1.status).toBe("ok");
-      if (r1.status !== "ok") throw new Error("Expected ok");
-      expect(r1.isComplete).toBe(false);
-
-      // Turn 1: Player B bans Map 2
-      const r2 = await t.mutation(internal.voting.submitBan, {
-        token: playerB.token,
-        mapId: mapIds[1],
-        ipAddress: "10.0.0.2",
-      });
-      expect(r2.status).toBe("ok");
-      if (r2.status !== "ok") throw new Error("Expected ok");
-      expect(r2.isComplete).toBe(false);
-
-      // Turn 2: Player B bans Map 3
-      const r3 = await t.mutation(internal.voting.submitBan, {
-        token: playerB.token,
-        mapId: mapIds[2],
-        ipAddress: "10.0.0.2",
-      });
-      expect(r3.status).toBe("ok");
-      if (r3.status !== "ok") throw new Error("Expected ok");
-      expect(r3.isComplete).toBe(false);
-
-      // Turn 3: Player A bans Map 4 → triggers completion
-      const r4 = await t.mutation(internal.voting.submitBan, {
-        token: playerA.token,
-        mapId: mapIds[3],
-        ipAddress: "10.0.0.1",
-      });
-      expect(r4.status).toBe("ok");
-      if (r4.status !== "ok") throw new Error("Expected ok");
-      expect(r4.isComplete).toBe(true);
-      expect(r4.winnerMapId).toBe(mapIds[4]);
+      const result = await completeABBAFlow(t, session);
+      expect(result.status).toBe("ok");
+      if (result.status !== "ok") throw new Error("Expected ok");
+      expect(result.isComplete).toBe(true);
+      expect(result.winnerMapId).toBe(mapIds[4]);
 
       // Verify session is COMPLETE
-      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
-      expect(session?.status).toBe("COMPLETE");
-      expect(session?.winnerMapId).toBe(mapIds[4]);
-      expect(session?.completedAt).toBeDefined();
-      expect(session?.currentTurn).toBe(4);
+      const dbSession = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(dbSession?.status).toBe("COMPLETE");
+      expect(dbSession?.winnerMapId).toBe(mapIds[4]);
+      expect(dbSession?.completedAt).toBeDefined();
+      expect(dbSession?.currentTurn).toBe(4);
 
       // Verify map states
       const maps = await t.run(async (ctx) =>
@@ -551,72 +502,37 @@ describe("voting.submitBan", () => {
 
     it("session transitions to COMPLETE with completedAt timestamp", async () => {
       const t = createTestContext();
-      const { sessionId, playerA, playerB, mapIds } = await createABBASession(t);
+      const session = await createABBASession(t);
       const beforeComplete = Date.now();
 
-      // Execute full ABBA flow
-      await t.mutation(internal.voting.submitBan, {
-        token: playerA.token, mapId: mapIds[0], ipAddress: "10.0.0.1",
-      });
-      await t.mutation(internal.voting.submitBan, {
-        token: playerB.token, mapId: mapIds[1], ipAddress: "10.0.0.2",
-      });
-      await t.mutation(internal.voting.submitBan, {
-        token: playerB.token, mapId: mapIds[2], ipAddress: "10.0.0.2",
-      });
-      await t.mutation(internal.voting.submitBan, {
-        token: playerA.token, mapId: mapIds[3], ipAddress: "10.0.0.1",
-      });
+      await completeABBAFlow(t, session);
 
-      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
-      expect(session?.status).toBe("COMPLETE");
-      expect(session?.completedAt).toBeGreaterThanOrEqual(beforeComplete);
+      const dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+      expect(dbSession?.status).toBe("COMPLETE");
+      expect(dbSession?.completedAt).toBeGreaterThanOrEqual(beforeComplete);
     });
 
     it("winning map is marked as WINNER state", async () => {
       const t = createTestContext();
-      const { playerA, playerB, mapIds } = await createABBASession(t);
+      const session = await createABBASession(t);
 
-      // Ban maps 0-3, map 4 should be winner
-      await t.mutation(internal.voting.submitBan, {
-        token: playerA.token, mapId: mapIds[0], ipAddress: "10.0.0.1",
-      });
-      await t.mutation(internal.voting.submitBan, {
-        token: playerB.token, mapId: mapIds[1], ipAddress: "10.0.0.2",
-      });
-      await t.mutation(internal.voting.submitBan, {
-        token: playerB.token, mapId: mapIds[2], ipAddress: "10.0.0.2",
-      });
-      await t.mutation(internal.voting.submitBan, {
-        token: playerA.token, mapId: mapIds[3], ipAddress: "10.0.0.1",
-      });
+      await completeABBAFlow(t, session);
 
-      const winnerMap = await t.run(async (ctx) => ctx.db.get(mapIds[4]));
+      const winnerMap = await t.run(async (ctx) => ctx.db.get(session.mapIds[4]));
       expect(winnerMap?.state).toBe("WINNER");
     });
 
     it("rejects ban after session is already COMPLETE", async () => {
       const t = createTestContext();
-      const { playerA, playerB, mapIds } = await createABBASession(t);
+      const session = await createABBASession(t);
 
       // Complete the session
-      await t.mutation(internal.voting.submitBan, {
-        token: playerA.token, mapId: mapIds[0], ipAddress: "10.0.0.1",
-      });
-      await t.mutation(internal.voting.submitBan, {
-        token: playerB.token, mapId: mapIds[1], ipAddress: "10.0.0.2",
-      });
-      await t.mutation(internal.voting.submitBan, {
-        token: playerB.token, mapId: mapIds[2], ipAddress: "10.0.0.2",
-      });
-      await t.mutation(internal.voting.submitBan, {
-        token: playerA.token, mapId: mapIds[3], ipAddress: "10.0.0.1",
-      });
+      await completeABBAFlow(t, session);
 
       // Try to ban after completion
       const result = await t.mutation(internal.voting.submitBan, {
-        token: playerA.token,
-        mapId: mapIds[4],
+        token: session.playerA.token,
+        mapId: session.mapIds[4],
         ipAddress: "10.0.0.1",
       });
 
@@ -691,58 +607,34 @@ describe("voting.submitBan", () => {
 
     it("logs WINNER_DECLARED on completion with map details", async () => {
       const t = createTestContext();
-      const { sessionId, playerA, playerB, mapIds } = await createABBASession(t);
+      const session = await createABBASession(t);
 
-      // Complete the session
-      await t.mutation(internal.voting.submitBan, {
-        token: playerA.token, mapId: mapIds[0], ipAddress: "10.0.0.1",
-      });
-      await t.mutation(internal.voting.submitBan, {
-        token: playerB.token, mapId: mapIds[1], ipAddress: "10.0.0.2",
-      });
-      await t.mutation(internal.voting.submitBan, {
-        token: playerB.token, mapId: mapIds[2], ipAddress: "10.0.0.2",
-      });
-      await t.mutation(internal.voting.submitBan, {
-        token: playerA.token, mapId: mapIds[3], ipAddress: "10.0.0.1",
-      });
+      await completeABBAFlow(t, session);
 
       const logs = await t.run(async (ctx) =>
         ctx.db
           .query("auditLogs")
-          .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", session.sessionId))
           .collect()
       );
 
       const winnerLog = logs.find((l) => l.action === "WINNER_DECLARED");
       expect(winnerLog).toBeDefined();
       expect(winnerLog?.actorType).toBe("SYSTEM");
-      expect(winnerLog?.details.mapId).toBe(mapIds[4]);
+      expect(winnerLog?.details.mapId).toBe(session.mapIds[4]);
       expect(winnerLog?.details.mapName).toBe("Map 5");
     });
 
     it("logs 4 MAP_BANNED and 1 WINNER_DECLARED for complete flow", async () => {
       const t = createTestContext();
-      const { sessionId, playerA, playerB, mapIds } = await createABBASession(t);
+      const session = await createABBASession(t);
 
-      // Complete the session
-      await t.mutation(internal.voting.submitBan, {
-        token: playerA.token, mapId: mapIds[0], ipAddress: "10.0.0.1",
-      });
-      await t.mutation(internal.voting.submitBan, {
-        token: playerB.token, mapId: mapIds[1], ipAddress: "10.0.0.2",
-      });
-      await t.mutation(internal.voting.submitBan, {
-        token: playerB.token, mapId: mapIds[2], ipAddress: "10.0.0.2",
-      });
-      await t.mutation(internal.voting.submitBan, {
-        token: playerA.token, mapId: mapIds[3], ipAddress: "10.0.0.1",
-      });
+      await completeABBAFlow(t, session);
 
       const logs = await t.run(async (ctx) =>
         ctx.db
           .query("auditLogs")
-          .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", session.sessionId))
           .collect()
       );
 

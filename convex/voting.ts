@@ -7,41 +7,13 @@
 
 import { internalMutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
-import type { Doc, Id } from "./_generated/dataModel";
+import type { Doc } from "./_generated/dataModel";
 
 import { v } from "convex/values";
 
 import { getActivePlayerIndex } from "./lib/constants";
+import { lookupAndValidatePlayer, type PlayerLookupError } from "./lib/auth";
 import { logAction } from "./audit";
-
-// ============================================================================
-// Types
-// ============================================================================
-
-type SubmitBanSuccess = {
-  status: "ok";
-  banned: {
-    mapId: Id<"sessionMaps">;
-    mapName: string;
-    turn: number;
-  };
-  isComplete: boolean;
-  winnerMapId?: Id<"sessionMaps">;
-};
-
-type SubmitBanError = {
-  status: "error";
-  error:
-    | "INVALID_TOKEN"
-    | "INVALID_IP"
-    | "TOKEN_EXPIRED"
-    | "SESSION_NOT_FOUND"
-    | "SESSION_NOT_IN_PROGRESS"
-    | "FORMAT_NOT_ABBA"
-    | "NOT_YOUR_TURN"
-    | "MAP_UNAVAILABLE"
-    | "IP_MISMATCH";
-};
 
 // ============================================================================
 // Private Helpers
@@ -49,8 +21,9 @@ type SubmitBanError = {
 
 /**
  * Validate a player token and IP for voting actions.
- * Similar to playerAuth.validateAndLockToken but does NOT lock IP
- * or update heartbeat — assumes token is already activated.
+ * Uses shared lookupAndValidatePlayer for common checks, then adds
+ * IP match verification. Does NOT lock IP or update heartbeat —
+ * assumes token is already activated.
  *
  * @param ctx - Mutation context
  * @param token - Player access token
@@ -62,37 +35,18 @@ async function validatePlayerForVoting(
   ipAddress: string
 ): Promise<
   | { status: "ok"; player: Doc<"sessionPlayers">; session: Doc<"sessions"> }
-  | SubmitBanError
+  | { status: "error"; error: PlayerLookupError | "IP_MISMATCH" }
 > {
-  // Reject empty or unresolved IP
-  if (!ipAddress || ipAddress === "unknown") {
-    return { status: "error", error: "INVALID_IP" };
+  const result = await lookupAndValidatePlayer(ctx, token, ipAddress);
+  if (result.status === "error") {
+    return result;
   }
 
-  // Look up player by token
-  const player = await ctx.db
-    .query("sessionPlayers")
-    .withIndex("by_token", (q) => q.eq("token", token))
-    .first();
-
-  if (!player) {
-    return { status: "error", error: "INVALID_TOKEN" };
-  }
-
-  // Check token expiration
-  if (player.tokenExpiresAt < Date.now()) {
-    return { status: "error", error: "TOKEN_EXPIRED" };
-  }
+  const { player, session } = result;
 
   // Verify IP matches (token must already be activated)
   if (!player.ipAddress || player.ipAddress !== ipAddress) {
     return { status: "error", error: "IP_MISMATCH" };
-  }
-
-  // Get session
-  const session = await ctx.db.get(player.sessionId);
-  if (!session) {
-    return { status: "error", error: "SESSION_NOT_FOUND" };
   }
 
   return { status: "ok", player, session };
@@ -147,28 +101,24 @@ export const submitBan = internalMutation({
       ),
     })
   ),
-  handler: async (ctx, args): Promise<SubmitBanSuccess | SubmitBanError> => {
+  handler: async (ctx, args) => {
     const { token, mapId } = args;
     const ipAddress = args.ipAddress.trim();
 
-    // Step 1-3: Validate token and IP
     const authResult = await validatePlayerForVoting(ctx, token, ipAddress);
     if (authResult.status === "error") {
       return authResult;
     }
     const { player, session } = authResult;
 
-    // Step 5: Check session is IN_PROGRESS
     if (session.status !== "IN_PROGRESS") {
-      return { status: "error", error: "SESSION_NOT_IN_PROGRESS" };
+      return { status: "error" as const, error: "SESSION_NOT_IN_PROGRESS" as const };
     }
 
-    // Step 6: Check session format is ABBA
     if (session.format !== "ABBA") {
-      return { status: "error", error: "FORMAT_NOT_ABBA" };
+      return { status: "error" as const, error: "FORMAT_NOT_ABBA" as const };
     }
 
-    // Step 7: Get all players, sort by creation time for consistent ordering
     const allPlayers = await ctx.db
       .query("sessionPlayers")
       .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
@@ -178,23 +128,20 @@ export const submitBan = internalMutation({
       (a, b) => a._creationTime - b._creationTime
     );
 
-    // Step 8: Find this player's index and compute active player
     const playerIndex = sortedPlayers.findIndex((p) => p._id === player._id);
     const activePlayerIndex = getActivePlayerIndex(session.currentTurn);
 
-    // Step 9: Check it's this player's turn
     if (playerIndex !== activePlayerIndex) {
-      return { status: "error", error: "NOT_YOUR_TURN" };
+      return { status: "error" as const, error: "NOT_YOUR_TURN" as const };
     }
 
-    // Step 10: Get target map, verify it belongs to this session and is AVAILABLE
     const targetMap = await ctx.db.get(mapId);
     if (
       !targetMap ||
       targetMap.sessionId !== player.sessionId ||
       targetMap.state !== "AVAILABLE"
     ) {
-      return { status: "error", error: "MAP_UNAVAILABLE" };
+      return { status: "error" as const, error: "MAP_UNAVAILABLE" as const };
     }
 
     // === Success: execute the ban ===
@@ -241,8 +188,11 @@ export const submitBan = internalMutation({
         .collect();
 
       if (remainingMaps.length !== 1) {
-        throw new Error(
+        console.error(
           `Data integrity error: expected 1 available map after ${bansNeeded} bans, found ${remainingMaps.length}`
+        );
+        throw new Error(
+          "Data integrity error: unexpected map count after voting"
         );
       }
 
@@ -271,7 +221,7 @@ export const submitBan = internalMutation({
       });
 
       return {
-        status: "ok",
+        status: "ok" as const,
         banned: { mapId, mapName: targetMap.name, turn: currentTurn },
         isComplete: true,
         winnerMapId: winnerMap._id,
@@ -279,7 +229,7 @@ export const submitBan = internalMutation({
     }
 
     return {
-      status: "ok",
+      status: "ok" as const,
       banned: { mapId, mapName: targetMap.name, turn: currentTurn },
       isComplete: false,
     };
