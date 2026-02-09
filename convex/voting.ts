@@ -3,7 +3,8 @@
  *
  * Handles map ban/vote submissions for active sessions.
  * ABBA format: alternating ban pattern [A, B, B, A] with auto-winner.
- * MULTIPLAYER format: simultaneous voting with per-round elimination.
+ * MULTIPLAYER format: simultaneous voting with per-round elimination
+ * and automatic round resolution (WAR-34).
  */
 
 import { internalMutation } from "./_generated/server";
@@ -15,6 +16,31 @@ import { v } from "convex/values";
 import { getActivePlayerIndex } from "./lib/constants";
 import { lookupAndValidatePlayer, type PlayerLookupError } from "./lib/auth";
 import { logAction } from "./audit";
+
+// ============================================================================
+// Types
+// ============================================================================
+
+/** Round resolution outcome returned by resolveRound. */
+type RoundResolution = {
+  outcome: "ROUND_ADVANCED" | "WINNER" | "REVOTE" | "RANDOM_WINNER";
+  eliminatedMapIds: Id<"sessionMaps">[];
+  remainingCount: number;
+  winnerMapId?: Id<"sessionMaps">;
+};
+
+/** Validator for round resolution object in submitVote return type. */
+const roundResolutionValidator = v.object({
+  outcome: v.union(
+    v.literal("ROUND_ADVANCED"),
+    v.literal("WINNER"),
+    v.literal("REVOTE"),
+    v.literal("RANDOM_WINNER")
+  ),
+  eliminatedMapIds: v.array(v.id("sessionMaps")),
+  remainingCount: v.number(),
+  winnerMapId: v.optional(v.id("sessionMaps")),
+});
 
 // ============================================================================
 // Private Helpers
@@ -67,6 +93,291 @@ async function validateTargetMap(
     return null;
   }
   return map;
+}
+
+// ============================================================================
+// Round Resolution Helpers (MULTIPLAYER)
+// ============================================================================
+
+/**
+ * Tally votes for the current round. Returns a map of sessionMapId → vote count.
+ */
+async function tallyVotes(
+  ctx: MutationCtx,
+  sessionId: Id<"sessions">,
+  round: number
+): Promise<Map<Id<"sessionMaps">, number>> {
+  const votes = await ctx.db
+    .query("votes")
+    .withIndex("by_sessionId_and_round", (q) =>
+      q.eq("sessionId", sessionId).eq("round", round)
+    )
+    .collect();
+
+  const tallies = new Map<Id<"sessionMaps">, number>();
+  for (const vote of votes) {
+    tallies.set(vote.mapId, (tallies.get(vote.mapId) ?? 0) + 1);
+  }
+  return tallies;
+}
+
+/**
+ * Ban all maps that received ≥1 vote. Sets state, voteCount, and bannedAtRound.
+ * Returns the IDs of banned maps.
+ */
+async function banVotedMaps(
+  ctx: MutationCtx,
+  tallies: Map<Id<"sessionMaps">, number>,
+  round: number
+): Promise<Id<"sessionMaps">[]> {
+  const bannedIds: Id<"sessionMaps">[] = [];
+  for (const [mapId, count] of tallies) {
+    await ctx.db.patch(mapId, {
+      state: "BANNED",
+      voteCount: count,
+      bannedAtRound: round,
+    });
+    bannedIds.push(mapId);
+  }
+  return bannedIds;
+}
+
+/**
+ * Reset hasVotedThisRound to false for all players in a session.
+ */
+async function resetVoteFlags(
+  ctx: MutationCtx,
+  sessionId: Id<"sessions">
+): Promise<void> {
+  const players = await ctx.db
+    .query("sessionPlayers")
+    .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+    .collect();
+
+  for (const player of players) {
+    if (player.hasVotedThisRound) {
+      await ctx.db.patch(player._id, { hasVotedThisRound: false });
+    }
+  }
+}
+
+/**
+ * Resolve the current round after all players have voted.
+ *
+ * Tallies votes, bans maps with ≥1 vote, then determines outcome:
+ * - 1 map left → WINNER
+ * - >1 maps left → ROUND_ADVANCED (next round)
+ * - 0 maps left, first deadlock → REVOTE (reset maps, try again)
+ * - 0 maps left, second deadlock → RANDOM_WINNER (random selection)
+ *
+ * All operations run in the same Convex mutation transaction for atomicity.
+ *
+ * @param ctx - Mutation context
+ * @param session - Current session document
+ */
+async function resolveRound(
+  ctx: MutationCtx,
+  session: Doc<"sessions">
+): Promise<RoundResolution> {
+  const currentRound = session.currentRound;
+  const isRevote = session.isRevoteRound ?? false;
+
+  // 1. Tally votes for the current round
+  const tallies = await tallyVotes(ctx, session._id, currentRound);
+
+  // 2. Ban all maps that received ≥1 vote
+  const bannedIds = await banVotedMaps(ctx, tallies, currentRound);
+
+  // 3. Count remaining AVAILABLE maps
+  const remainingMaps = await ctx.db
+    .query("sessionMaps")
+    .withIndex("by_sessionId_and_state", (q) =>
+      q.eq("sessionId", session._id).eq("state", "AVAILABLE")
+    )
+    .collect();
+
+  const remainingCount = remainingMaps.length;
+
+  // 4. Determine outcome
+  if (remainingCount === 1) {
+    // === WINNER: exactly one map left ===
+    const winnerMap = remainingMaps[0];
+    await ctx.db.patch(winnerMap._id, { state: "WINNER" });
+    await ctx.db.patch(session._id, {
+      winnerMapId: winnerMap._id,
+      status: "COMPLETE",
+      completedAt: Date.now(),
+      updatedAt: Date.now(),
+      isRevoteRound: false,
+    });
+
+    await logAction(ctx, {
+      sessionId: session._id,
+      action: "ROUND_RESOLVED",
+      actorType: "SYSTEM",
+      details: {
+        round: currentRound,
+        reason: `${bannedIds.length} maps banned, 1 remains`,
+      },
+    });
+    await logAction(ctx, {
+      sessionId: session._id,
+      action: "WINNER_DECLARED",
+      actorType: "SYSTEM",
+      details: {
+        mapId: winnerMap._id,
+        mapName: winnerMap.name,
+        round: currentRound,
+        reason: "Last map standing",
+      },
+    });
+
+    return {
+      outcome: "WINNER",
+      eliminatedMapIds: bannedIds,
+      remainingCount: 0,
+      winnerMapId: winnerMap._id,
+    };
+  }
+
+  if (remainingCount > 1) {
+    // === ROUND_ADVANCED: multiple maps still available ===
+    await ctx.db.patch(session._id, {
+      currentRound: currentRound + 1,
+      isRevoteRound: false,
+      updatedAt: Date.now(),
+    });
+    await resetVoteFlags(ctx, session._id);
+
+    await logAction(ctx, {
+      sessionId: session._id,
+      action: "ROUND_RESOLVED",
+      actorType: "SYSTEM",
+      details: {
+        round: currentRound,
+        reason: `${bannedIds.length} maps banned, ${remainingCount} remain`,
+      },
+    });
+
+    return {
+      outcome: "ROUND_ADVANCED",
+      eliminatedMapIds: bannedIds,
+      remainingCount,
+    };
+  }
+
+  // === 0 maps left: deadlock ===
+  if (!isRevote) {
+    // === REVOTE: first deadlock — reset maps and try again ===
+
+    // Reset maps that were banned THIS round back to AVAILABLE
+    const currentRoundBans = await ctx.db
+      .query("sessionMaps")
+      .withIndex("by_sessionId_and_state", (q) =>
+        q.eq("sessionId", session._id).eq("state", "BANNED")
+      )
+      .collect();
+
+    const resetMapIds: Id<"sessionMaps">[] = [];
+    for (const map of currentRoundBans) {
+      if (map.bannedAtRound === currentRound) {
+        await ctx.db.patch(map._id, {
+          state: "AVAILABLE",
+          voteCount: undefined,
+          bannedAtRound: undefined,
+          bannedByPlayerId: undefined,
+        });
+        resetMapIds.push(map._id);
+      }
+    }
+
+    await ctx.db.patch(session._id, {
+      currentRound: currentRound + 1,
+      isRevoteRound: true,
+      updatedAt: Date.now(),
+    });
+    await resetVoteFlags(ctx, session._id);
+
+    await logAction(ctx, {
+      sessionId: session._id,
+      action: "ROUND_REVOTE_TRIGGERED",
+      actorType: "SYSTEM",
+      details: {
+        round: currentRound,
+        reason: `All ${resetMapIds.length} maps eliminated (deadlock)`,
+      },
+    });
+
+    return {
+      outcome: "REVOTE",
+      eliminatedMapIds: bannedIds,
+      remainingCount: resetMapIds.length,
+    };
+  }
+
+  // === RANDOM_WINNER: double deadlock — random selection from revote pool ===
+
+  // The pool is the maps banned in THIS round (they were available at start of revote)
+  const revotePool = await ctx.db
+    .query("sessionMaps")
+    .withIndex("by_sessionId_and_state", (q) =>
+      q.eq("sessionId", session._id).eq("state", "BANNED")
+    )
+    .collect();
+
+  const currentRoundPool = revotePool.filter(
+    (m) => m.bannedAtRound === currentRound
+  );
+
+  if (currentRoundPool.length === 0) {
+    console.error(
+      `Data integrity error: double deadlock with no maps in revote pool for session ${session._id}`
+    );
+    throw new Error("Data integrity error: empty revote pool");
+  }
+
+  // Random selection
+  const randomIndex = Math.floor(Math.random() * currentRoundPool.length);
+  const winnerMap = currentRoundPool[randomIndex];
+
+  await ctx.db.patch(winnerMap._id, { state: "WINNER" });
+  await ctx.db.patch(session._id, {
+    winnerMapId: winnerMap._id,
+    status: "COMPLETE",
+    completedAt: Date.now(),
+    updatedAt: Date.now(),
+    isRevoteRound: false,
+  });
+
+  await logAction(ctx, {
+    sessionId: session._id,
+    action: "REVOTE_DEADLOCK_RANDOM_SELECTION",
+    actorType: "SYSTEM",
+    details: {
+      mapId: winnerMap._id,
+      mapName: winnerMap.name,
+      round: currentRound,
+      reason: `Random selection from ${currentRoundPool.length} maps`,
+    },
+  });
+  await logAction(ctx, {
+    sessionId: session._id,
+    action: "WINNER_DECLARED",
+    actorType: "SYSTEM",
+    details: {
+      mapId: winnerMap._id,
+      mapName: winnerMap.name,
+      round: currentRound,
+      reason: "Random selection after double deadlock",
+    },
+  });
+
+  return {
+    outcome: "RANDOM_WINNER",
+    eliminatedMapIds: bannedIds,
+    remainingCount: 0,
+    winnerMapId: winnerMap._id,
+  };
 }
 
 // ============================================================================
@@ -286,6 +597,7 @@ export const submitVote = internalMutation({
         round: v.number(),
       }),
       allVotesSubmitted: v.boolean(),
+      resolution: v.optional(roundResolutionValidator),
     }),
     v.object({
       status: v.literal("error"),
@@ -370,10 +682,21 @@ export const submitVote = internalMutation({
       .first();
     const allVotesSubmitted = unvotedPlayer === null;
 
+    // Auto-resolve round when all votes are in
+    if (allVotesSubmitted) {
+      const resolution = await resolveRound(ctx, session);
+      return {
+        status: "ok" as const,
+        vote: { mapId, mapName: targetMap.name, round: currentRound },
+        allVotesSubmitted: true,
+        resolution,
+      };
+    }
+
     return {
       status: "ok" as const,
       vote: { mapId, mapName: targetMap.name, round: currentRound },
-      allVotesSubmitted,
+      allVotesSubmitted: false,
     };
   },
 });

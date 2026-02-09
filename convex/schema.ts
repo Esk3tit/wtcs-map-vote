@@ -66,6 +66,7 @@ export default defineSchema({
     timerStartedAt: v.optional(v.number()),
     timerPausedAt: v.optional(v.number()),
     winnerMapId: v.optional(v.id("sessionMaps")),
+    isRevoteRound: v.optional(v.boolean()),
 
     // Metadata
     createdBy: v.id("admins"),
