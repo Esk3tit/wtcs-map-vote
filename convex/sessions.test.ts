@@ -4454,7 +4454,7 @@ describe("WAR-35: getSessionByToken enhancements", () => {
           })
         );
 
-        const players = await Promise.all(
+        await Promise.all(
           ["Team A", "Team B", "Team C", "Team D"].map((name, i) =>
             ctx.db.insert(
               "sessionPlayers",
@@ -4473,13 +4473,12 @@ describe("WAR-35: getSessionByToken enhancements", () => {
           )
         );
 
-        // Round 1: Maps 0 and 1 banned
+        // Round 1: Maps 0 and 1 banned (MULTIPLAYER bans don't set bannedByPlayerId)
         await ctx.db.insert(
           "sessionMaps",
           sessionMapFactory(sessionId, mapIds[0], {
             name: "Map1",
             state: "BANNED",
-            bannedByPlayerId: players[0],
             bannedAtRound: 1,
           })
         );
@@ -4488,7 +4487,6 @@ describe("WAR-35: getSessionByToken enhancements", () => {
           sessionMapFactory(sessionId, mapIds[1], {
             name: "Map2",
             state: "BANNED",
-            bannedByPlayerId: players[1],
             bannedAtRound: 1,
           })
         );
