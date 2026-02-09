@@ -219,7 +219,7 @@ describe("voting.submitBan", () => {
       expect(result).toEqual({ status: "error", error: "IP_MISMATCH" });
     });
 
-    it.each(["DRAFT", "WAITING", "PAUSED", "COMPLETE"] as const)(
+    it.each(["DRAFT", "WAITING", "PAUSED", "COMPLETE", "EXPIRED"] as const)(
       "rejects when session is not IN_PROGRESS (%s)",
       async (sessionStatus) => {
         const t = createTestContext();

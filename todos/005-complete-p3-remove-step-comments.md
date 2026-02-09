@@ -39,9 +39,9 @@ Option 1 — remove step comments.
 
 ## Acceptance Criteria
 
-- [ ] All "Step N" comments removed
-- [ ] Section dividers (`// === Success ===`, `// Check if all bans...`) retained
-- [ ] Typecheck passes
+- [x] All "Step N" comments removed
+- [x] Section dividers (`// === Success ===`, `// Check if all bans...`) retained
+- [x] Typecheck passes
 
 ## Work Log
 

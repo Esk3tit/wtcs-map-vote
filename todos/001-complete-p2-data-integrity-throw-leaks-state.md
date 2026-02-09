@@ -52,9 +52,9 @@ Option 2 — log details then throw generic message.
 
 ## Acceptance Criteria
 
-- [ ] Error message does not expose internal counts
-- [ ] Debug information is still available in Convex logs
-- [ ] Tests pass
+- [x] Error message does not expose internal counts
+- [x] Debug information is still available in Convex logs
+- [x] Tests pass
 
 ## Work Log
 

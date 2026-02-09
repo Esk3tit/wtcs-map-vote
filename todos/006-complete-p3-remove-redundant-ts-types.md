@@ -47,10 +47,10 @@ Option 1 — remove redundant types.
 
 ## Acceptance Criteria
 
-- [ ] TS type aliases removed
-- [ ] Handler return annotation removed
-- [ ] Typecheck passes
-- [ ] Tests pass
+- [x] TS type aliases removed
+- [x] Handler return annotation removed
+- [x] Typecheck passes
+- [x] Tests pass
 
 ## Work Log
 

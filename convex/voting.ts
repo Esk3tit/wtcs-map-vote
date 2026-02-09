@@ -125,7 +125,8 @@ export const submitBan = internalMutation({
       .collect();
 
     const sortedPlayers = [...allPlayers].sort(
-      (a, b) => a._creationTime - b._creationTime
+      (a, b) =>
+        a._creationTime - b._creationTime || a._id.localeCompare(b._id)
     );
 
     const playerIndex = sortedPlayers.findIndex((p) => p._id === player._id);

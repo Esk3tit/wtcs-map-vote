@@ -45,10 +45,10 @@ Option 1 — extract helpers and consolidate with `it.each`.
 
 ## Acceptance Criteria
 
-- [ ] `completeABBAFlow` helper extracted and used at all 6 sites
-- [ ] Session status rejection tests use `it.each`
-- [ ] No test coverage lost
-- [ ] All tests pass
+- [x] `completeABBAFlow` helper extracted and used at all 6 sites
+- [x] Session status rejection tests use `it.each`
+- [x] No test coverage lost
+- [x] All tests pass
 
 ## Work Log
 

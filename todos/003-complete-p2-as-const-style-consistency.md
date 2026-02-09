@@ -51,9 +51,9 @@ Option 1 — add `as const` to voting.ts to match existing convention.
 
 ## Acceptance Criteria
 
-- [ ] All return values in voting.ts use `as const` where playerAuth.ts does
-- [ ] Typecheck passes
-- [ ] Tests pass
+- [x] All return values in voting.ts use `as const` where playerAuth.ts does
+- [x] Typecheck passes
+- [x] Tests pass
 
 ## Work Log
 

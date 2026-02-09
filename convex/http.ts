@@ -193,12 +193,26 @@ http.route({
     }
 
     const ipAddress = extractClientIp(req);
-    // Cast to Id — Convex validates the ID format in the mutation
-    const result = await ctx.runMutation(internal.voting.submitBan, {
-      token,
-      mapId: mapId as Id<"sessionMaps">,
-      ipAddress,
-    });
+    // Cast to Id — wrap in try/catch to surface invalid ID format as 400
+    let result: { status: string; error?: string };
+    try {
+      result = await ctx.runMutation(internal.voting.submitBan, {
+        token,
+        mapId: mapId as Id<"sessionMaps">,
+        ipAddress,
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // Invalid Convex ID format surfaces as an argument validation error
+      if (message.includes("is not a valid ID")) {
+        return new Response(
+          JSON.stringify({ status: "error", error: "INVALID_REQUEST" }),
+          { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+      // Re-throw unexpected errors so Convex logs them properly
+      throw error;
+    }
 
     const statusCode = result.status === "ok" ? 200 : 403;
     return new Response(JSON.stringify(result), {

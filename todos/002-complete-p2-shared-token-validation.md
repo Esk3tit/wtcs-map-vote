@@ -22,7 +22,7 @@ dependencies: []
 
 ## Proposed Solutions
 
-### Option 1: Extract `lookupPlayerByToken` to `convex/lib/auth.ts`
+### Option 1: Extract `lookupAndValidatePlayer` to `convex/lib/auth.ts`
 - Create a shared function that handles steps 1-4 (IP check, token lookup, expiry, IP match)
 - Both callers import and use it, then layer on their own logic
 - **Pros**: Single source of truth for token validation, easy to maintain
@@ -47,11 +47,11 @@ Option 1 — extract shared helper to `convex/lib/auth.ts`.
 
 ## Acceptance Criteria
 
-- [ ] Shared `lookupPlayerByToken` helper exists in `convex/lib/auth.ts`
-- [ ] `validatePlayerForVoting` and `validateAndLockToken` both use the shared helper
-- [ ] No duplicated validation logic
-- [ ] All existing tests pass
-- [ ] Typecheck passes
+- [x] Shared `lookupAndValidatePlayer` helper exists in `convex/lib/auth.ts`
+- [x] `validatePlayerForVoting` and `validateAndLockToken` both use the shared helper
+- [x] No duplicated validation logic
+- [x] All existing tests pass
+- [x] Typecheck passes
 
 ## Work Log
 
