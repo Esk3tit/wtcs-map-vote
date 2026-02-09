@@ -16,6 +16,23 @@ export const MAX_TURN_TIMER_SECONDS = 300;
 export const MIN_MAP_POOL_SIZE = 3;
 export const MAX_MAP_POOL_SIZE = 15;
 
+// ABBA voting pattern
+/**
+ * ABBA turn pattern: maps turn index to player index.
+ * Turn 0 → Player 0 (A), Turn 1 → Player 1 (B),
+ * Turn 2 → Player 1 (B), Turn 3 → Player 0 (A).
+ */
+export const ABBA_TURN_PATTERN = [0, 1, 1, 0] as const;
+
+/**
+ * Compute which player index is active for the given ABBA turn.
+ *
+ * @param currentTurn - 0-indexed turn number
+ */
+export function getActivePlayerIndex(currentTurn: number): number {
+  return ABBA_TURN_PATTERN[currentTurn % ABBA_TURN_PATTERN.length];
+}
+
 // Player heartbeat constants
 export const HEARTBEAT_SKIP_MS = 15_000; // Skip DB write if heartbeat is still fresh
 

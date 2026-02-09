@@ -23,6 +23,7 @@ import {
   MAX_TURN_TIMER_SECONDS,
   MIN_MAP_POOL_SIZE,
   MAX_MAP_POOL_SIZE,
+  getActivePlayerIndex,
 } from "./lib/constants";
 import { validateName, validateRange } from "./lib/validation";
 import {
@@ -124,9 +125,7 @@ function computeIsYourTurn(
     return !hasVotedThisRound;
   }
   if (session.format === "ABBA") {
-    const abbaPattern = [0, 1, 1, 0];
-    const activeIndex = abbaPattern[session.currentTurn % abbaPattern.length];
-    return playerIndex === activeIndex;
+    return playerIndex === getActivePlayerIndex(session.currentTurn);
   }
   return false;
 }

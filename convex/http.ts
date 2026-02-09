@@ -187,7 +187,7 @@ http.route({
 
     if (typeof mapId !== "string" || mapId.length === 0) {
       return new Response(
-        JSON.stringify({ status: "error", error: "MAP_UNAVAILABLE" }),
+        JSON.stringify({ status: "error", error: "INVALID_REQUEST" }),
         { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
       );
     }

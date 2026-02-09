@@ -11,18 +11,8 @@ import type { Doc, Id } from "./_generated/dataModel";
 
 import { v } from "convex/values";
 
+import { getActivePlayerIndex } from "./lib/constants";
 import { logAction } from "./audit";
-
-// ============================================================================
-// Constants
-// ============================================================================
-
-/**
- * ABBA turn pattern: maps turn index to player index.
- * Turn 0 → Player 0 (A), Turn 1 → Player 1 (B),
- * Turn 2 → Player 1 (B), Turn 3 → Player 0 (A).
- */
-const ABBA_TURN_PATTERN = [0, 1, 1, 0] as const;
 
 // ============================================================================
 // Types
@@ -106,15 +96,6 @@ async function validatePlayerForVoting(
   }
 
   return { status: "ok", player, session };
-}
-
-/**
- * Compute which player index is active for the given ABBA turn.
- *
- * @param currentTurn - 0-indexed turn number
- */
-function getActivePlayerIndex(currentTurn: number): number {
-  return ABBA_TURN_PATTERN[currentTurn % ABBA_TURN_PATTERN.length];
 }
 
 // ============================================================================
