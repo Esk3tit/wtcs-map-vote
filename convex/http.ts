@@ -151,13 +151,16 @@ http.route({
 // ============================================================================
 
 /**
- * Submit a map ban during ABBA voting.
- * Called by the frontend when a player clicks a map to ban.
+ * Create a POST handler for voting endpoints that share the same structure:
+ * parse JSON body, validate token + mapId, call an internal mutation, return result.
+ * Wraps the mutation call in try/catch to surface invalid Convex ID formats as 400.
+ *
+ * @param mutationRef - The internal mutation to invoke with { token, mapId, ipAddress }
  */
-http.route({
-  path: "/api/player/submit-ban",
-  method: "POST",
-  handler: httpAction(async (ctx, req) => {
+function createVotingHandler(
+  mutationRef: typeof internal.voting.submitBan | typeof internal.voting.submitVote
+) {
+  return httpAction(async (ctx, req) => {
     const corsHeaders = getCorsHeaders();
     let body: unknown;
     try {
@@ -195,7 +198,7 @@ http.route({
     const ipAddress = extractClientIp(req);
     // Cast to Id — wrap in try/catch to surface invalid ID format as 400
     try {
-      const result = await ctx.runMutation(internal.voting.submitBan, {
+      const result = await ctx.runMutation(mutationRef, {
         token,
         mapId: mapId as Id<"sessionMaps">,
         ipAddress,
@@ -217,12 +220,39 @@ http.route({
       // Re-throw unexpected errors so Convex logs them properly
       throw error;
     }
-  }),
+  });
+}
+
+/**
+ * Submit a map ban during ABBA voting.
+ * Called by the frontend when a player clicks a map to ban.
+ */
+http.route({
+  path: "/api/player/submit-ban",
+  method: "POST",
+  handler: createVotingHandler(internal.voting.submitBan),
 });
 
 /** Handle CORS preflight for submit-ban endpoint. */
 http.route({
   path: "/api/player/submit-ban",
+  method: "OPTIONS",
+  handler: corsPreflightHandler,
+});
+
+/**
+ * Submit a vote during MULTIPLAYER voting.
+ * Called by the frontend when a player clicks a map to vote to eliminate.
+ */
+http.route({
+  path: "/api/player/submit-vote",
+  method: "POST",
+  handler: createVotingHandler(internal.voting.submitVote),
+});
+
+/** Handle CORS preflight for submit-vote endpoint. */
+http.route({
+  path: "/api/player/submit-vote",
   method: "OPTIONS",
   handler: corsPreflightHandler,
 });

@@ -3,11 +3,12 @@
  *
  * Handles map ban/vote submissions for active sessions.
  * ABBA format: alternating ban pattern [A, B, B, A] with auto-winner.
+ * MULTIPLAYER format: simultaneous voting with per-round elimination.
  */
 
 import { internalMutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 
 import { v } from "convex/values";
 
@@ -50,6 +51,22 @@ async function validatePlayerForVoting(
   }
 
   return { status: "ok", player, session };
+}
+
+/**
+ * Validate a target map for voting/banning.
+ * Checks the map exists, belongs to the session, and is available.
+ */
+async function validateTargetMap(
+  ctx: MutationCtx,
+  mapId: Id<"sessionMaps">,
+  sessionId: Id<"sessions">
+): Promise<Doc<"sessionMaps"> | null> {
+  const map = await ctx.db.get(mapId);
+  if (!map || map.sessionId !== sessionId || map.state !== "AVAILABLE") {
+    return null;
+  }
+  return map;
 }
 
 // ============================================================================
@@ -143,12 +160,8 @@ export const submitBan = internalMutation({
       return { status: "error" as const, error: "NOT_YOUR_TURN" as const };
     }
 
-    const targetMap = await ctx.db.get(mapId);
-    if (
-      !targetMap ||
-      targetMap.sessionId !== player.sessionId ||
-      targetMap.state !== "AVAILABLE"
-    ) {
+    const targetMap = await validateTargetMap(ctx, mapId, player.sessionId);
+    if (!targetMap) {
       return { status: "error" as const, error: "MAP_UNAVAILABLE" as const };
     }
 
@@ -240,6 +253,127 @@ export const submitBan = internalMutation({
       status: "ok" as const,
       banned: { mapId, mapName: targetMap.name, turn: currentTurn },
       isComplete: false,
+    };
+  },
+});
+
+/**
+ * Submit a vote during MULTIPLAYER voting.
+ *
+ * Validates the player's token/IP, checks the session is a multiplayer
+ * session in progress, ensures the player hasn't already voted this round,
+ * and that the target map is available. Inserts a vote record and signals
+ * whether all players have now voted (for round resolution by WAR-34).
+ *
+ * Called by the HTTP action POST /api/player/submit-vote.
+ *
+ * @param token - Player access token from URL
+ * @param mapId - Session map to vote to eliminate
+ * @param ipAddress - Client IP extracted from HTTP headers
+ */
+export const submitVote = internalMutation({
+  args: {
+    token: v.string(),
+    mapId: v.id("sessionMaps"),
+    ipAddress: v.string(),
+  },
+  returns: v.union(
+    v.object({
+      status: v.literal("ok"),
+      vote: v.object({
+        mapId: v.id("sessionMaps"),
+        mapName: v.string(),
+        round: v.number(),
+      }),
+      allVotesSubmitted: v.boolean(),
+    }),
+    v.object({
+      status: v.literal("error"),
+      error: v.union(
+        v.literal("INVALID_TOKEN"),
+        v.literal("INVALID_IP"),
+        v.literal("TOKEN_EXPIRED"),
+        v.literal("SESSION_NOT_FOUND"),
+        v.literal("SESSION_NOT_IN_PROGRESS"),
+        v.literal("FORMAT_NOT_MULTIPLAYER"),
+        v.literal("ALREADY_VOTED"),
+        v.literal("MAP_UNAVAILABLE"),
+        v.literal("IP_MISMATCH")
+      ),
+    })
+  ),
+  handler: async (ctx, args) => {
+    const { token, mapId } = args;
+    const ipAddress = args.ipAddress.trim();
+
+    const authResult = await validatePlayerForVoting(ctx, token, ipAddress);
+    if (authResult.status === "error") {
+      return authResult;
+    }
+    const { player, session } = authResult;
+
+    if (session.status !== "IN_PROGRESS") {
+      return { status: "error" as const, error: "SESSION_NOT_IN_PROGRESS" as const };
+    }
+
+    if (session.format !== "MULTIPLAYER") {
+      return { status: "error" as const, error: "FORMAT_NOT_MULTIPLAYER" as const };
+    }
+
+    if (player.hasVotedThisRound) {
+      return { status: "error" as const, error: "ALREADY_VOTED" as const };
+    }
+
+    const targetMap = await validateTargetMap(ctx, mapId, player.sessionId);
+    if (!targetMap) {
+      return { status: "error" as const, error: "MAP_UNAVAILABLE" as const };
+    }
+
+    // === Success: record the vote ===
+
+    const currentRound = session.currentRound;
+
+    // Insert vote record
+    await ctx.db.insert("votes", {
+      sessionId: session._id,
+      round: currentRound,
+      playerId: player._id,
+      mapId,
+      submittedAt: Date.now(),
+      submittedByAdmin: false,
+    });
+
+    // Mark player as voted this round
+    await ctx.db.patch(player._id, {
+      hasVotedThisRound: true,
+    });
+
+    // Audit log: VOTE_SUBMITTED
+    await logAction(ctx, {
+      sessionId: session._id,
+      action: "VOTE_SUBMITTED",
+      actorType: "PLAYER",
+      actorId: player._id,
+      details: {
+        mapId,
+        mapName: targetMap.name,
+        teamName: player.teamName,
+        round: currentRound,
+      },
+    });
+
+    // Check if all players have voted this round
+    const unvotedPlayer = await ctx.db
+      .query("sessionPlayers")
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+      .filter((q) => q.eq(q.field("hasVotedThisRound"), false))
+      .first();
+    const allVotesSubmitted = unvotedPlayer === null;
+
+    return {
+      status: "ok" as const,
+      vote: { mapId, mapName: targetMap.name, round: currentRound },
+      allVotesSubmitted,
     };
   },
 });
