@@ -194,12 +194,16 @@ http.route({
 
     const ipAddress = extractClientIp(req);
     // Cast to Id — wrap in try/catch to surface invalid ID format as 400
-    let result: { status: string; error?: string };
     try {
-      result = await ctx.runMutation(internal.voting.submitBan, {
+      const result = await ctx.runMutation(internal.voting.submitBan, {
         token,
         mapId: mapId as Id<"sessionMaps">,
         ipAddress,
+      });
+      const statusCode = result.status === "ok" ? 200 : 403;
+      return new Response(JSON.stringify(result), {
+        status: statusCode,
+        headers: { "Content-Type": "application/json", ...corsHeaders },
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -213,12 +217,6 @@ http.route({
       // Re-throw unexpected errors so Convex logs them properly
       throw error;
     }
-
-    const statusCode = result.status === "ok" ? 200 : 403;
-    return new Response(JSON.stringify(result), {
-      status: statusCode,
-      headers: { "Content-Type": "application/json", ...corsHeaders },
-    });
   }),
 });
 
