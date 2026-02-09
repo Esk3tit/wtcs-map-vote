@@ -114,7 +114,7 @@ export const sessionFactory = (
     mapPoolSize: overrides.mapPoolSize ?? 7,
     playerCount: overrides.playerCount ?? 2,
     currentTurn: overrides.currentTurn ?? 0,
-    currentRound: overrides.currentRound ?? 0,
+    currentRound: overrides.currentRound ?? 1,
     isRevoteRound: overrides.isRevoteRound ?? false,
     createdBy,
     updatedAt: overrides.updatedAt ?? now,

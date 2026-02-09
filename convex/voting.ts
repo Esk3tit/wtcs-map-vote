@@ -95,12 +95,51 @@ async function validateTargetMap(
   return map;
 }
 
+/**
+ * Declare a winner map and complete the session.
+ *
+ * Patches the winning map to WINNER state, updates the session to COMPLETE,
+ * and logs the WINNER_DECLARED audit action. Sets isRevoteRound: false for
+ * consistency (harmless for ABBA sessions that lack the field).
+ *
+ * @param ctx - Mutation context
+ * @param session - Current session document
+ * @param winnerMap - The session map to declare as winner
+ * @param auditDetails - Optional extra fields for the WINNER_DECLARED audit log
+ */
+async function completeSession(
+  ctx: MutationCtx,
+  session: Doc<"sessions">,
+  winnerMap: Doc<"sessionMaps">,
+  auditDetails?: Record<string, unknown>
+): Promise<void> {
+  await ctx.db.patch(winnerMap._id, { state: "WINNER" });
+  await ctx.db.patch(session._id, {
+    winnerMapId: winnerMap._id,
+    status: "COMPLETE",
+    completedAt: Date.now(),
+    updatedAt: Date.now(),
+    isRevoteRound: false,
+  });
+
+  await logAction(ctx, {
+    sessionId: session._id,
+    action: "WINNER_DECLARED",
+    actorType: "SYSTEM",
+    details: {
+      mapId: winnerMap._id,
+      mapName: winnerMap.name,
+      ...auditDetails,
+    },
+  });
+}
+
 // ============================================================================
 // Round Resolution Helpers (MULTIPLAYER)
 // ============================================================================
 
 /**
- * Tally votes for the current round. Returns a map of sessionMapId → vote count.
+ * Tally votes for the current round. Returns a map of sessionMapId -> vote count.
  */
 async function tallyVotes(
   ctx: MutationCtx,
@@ -122,7 +161,7 @@ async function tallyVotes(
 }
 
 /**
- * Ban all maps that received ≥1 vote. Sets state, voteCount, and bannedAtRound.
+ * Ban all maps that received >=1 vote. Sets state, voteCount, and bannedAtRound.
  * Returns the IDs of banned maps.
  */
 async function banVotedMaps(
@@ -165,11 +204,11 @@ async function resetVoteFlags(
 /**
  * Resolve the current round after all players have voted.
  *
- * Tallies votes, bans maps with ≥1 vote, then determines outcome:
- * - 1 map left → WINNER
- * - >1 maps left → ROUND_ADVANCED (next round)
- * - 0 maps left, first deadlock → REVOTE (reset maps, try again)
- * - 0 maps left, second deadlock → RANDOM_WINNER (random selection)
+ * Tallies votes, bans maps with >=1 vote, then determines outcome:
+ * - 1 map left -> WINNER
+ * - >1 maps left -> ROUND_ADVANCED (next round)
+ * - 0 maps left, first deadlock -> REVOTE (reset maps, try again)
+ * - 0 maps left, second deadlock -> RANDOM_WINNER (random selection)
  *
  * All operations run in the same Convex mutation transaction for atomicity.
  *
@@ -186,7 +225,7 @@ async function resolveRound(
   // 1. Tally votes for the current round
   const tallies = await tallyVotes(ctx, session._id, currentRound);
 
-  // 2. Ban all maps that received ≥1 vote
+  // 2. Ban all maps that received >=1 vote
   const bannedIds = await banVotedMaps(ctx, tallies, currentRound);
 
   // 3. Count remaining AVAILABLE maps
@@ -203,14 +242,6 @@ async function resolveRound(
   if (remainingCount === 1) {
     // === WINNER: exactly one map left ===
     const winnerMap = remainingMaps[0];
-    await ctx.db.patch(winnerMap._id, { state: "WINNER" });
-    await ctx.db.patch(session._id, {
-      winnerMapId: winnerMap._id,
-      status: "COMPLETE",
-      completedAt: Date.now(),
-      updatedAt: Date.now(),
-      isRevoteRound: false,
-    });
 
     await logAction(ctx, {
       sessionId: session._id,
@@ -221,16 +252,9 @@ async function resolveRound(
         reason: `${bannedIds.length} maps banned, 1 remains`,
       },
     });
-    await logAction(ctx, {
-      sessionId: session._id,
-      action: "WINNER_DECLARED",
-      actorType: "SYSTEM",
-      details: {
-        mapId: winnerMap._id,
-        mapName: winnerMap.name,
-        round: currentRound,
-        reason: "Last map standing",
-      },
+    await completeSession(ctx, session, winnerMap, {
+      round: currentRound,
+      reason: "Last map standing",
     });
 
     return {
@@ -269,13 +293,12 @@ async function resolveRound(
 
   // === 0 maps left: deadlock ===
   if (!isRevote) {
-    // === REVOTE: first deadlock — reset maps and try again ===
+    // === REVOTE: first deadlock -- reset maps and try again ===
 
     // Reset maps that were banned THIS round back to AVAILABLE
     // bannedIds already contains exactly the maps banned this round
-    const resetMapIds = bannedIds;
     await Promise.all(
-      resetMapIds.map((mapId) =>
+      bannedIds.map((mapId) =>
         ctx.db.patch(mapId, {
           state: "AVAILABLE",
           voteCount: undefined,
@@ -298,44 +321,37 @@ async function resolveRound(
       actorType: "SYSTEM",
       details: {
         round: currentRound,
-        reason: `All ${resetMapIds.length} maps eliminated (deadlock)`,
+        reason: `All ${bannedIds.length} maps eliminated (deadlock)`,
       },
     });
 
     return {
       outcome: "REVOTE",
       eliminatedMapIds: bannedIds,
-      remainingCount: resetMapIds.length,
+      remainingCount: bannedIds.length,
     };
   }
 
-  // === RANDOM_WINNER: double deadlock — random selection from revote pool ===
+  // === RANDOM_WINNER: double deadlock -- random selection from revote pool ===
 
-  // The pool is the maps banned in THIS round — reuse bannedIds to avoid re-querying
+  // The pool is the maps banned in THIS round -- reuse bannedIds to avoid re-querying
   const poolDocs = await Promise.all(bannedIds.map((id) => ctx.db.get(id)));
   const currentRoundPool = poolDocs.filter(
     (m): m is Doc<"sessionMaps"> => m !== null
   );
 
   if (currentRoundPool.length === 0) {
-    console.warn(
+    console.error(
       `Data integrity error: double deadlock with no maps in revote pool for session ${session._id}`
     );
     throw new Error("Data integrity error: empty revote pool");
   }
 
-  // Random selection
-  const randomIndex = Math.floor(Math.random() * currentRoundPool.length);
+  // Random selection (CSPRNG for competitive integrity)
+  const randomBuffer = new Uint32Array(1);
+  crypto.getRandomValues(randomBuffer);
+  const randomIndex = randomBuffer[0] % currentRoundPool.length;
   const winnerMap = currentRoundPool[randomIndex];
-
-  await ctx.db.patch(winnerMap._id, { state: "WINNER" });
-  await ctx.db.patch(session._id, {
-    winnerMapId: winnerMap._id,
-    status: "COMPLETE",
-    completedAt: Date.now(),
-    updatedAt: Date.now(),
-    isRevoteRound: false,
-  });
 
   await logAction(ctx, {
     sessionId: session._id,
@@ -348,16 +364,9 @@ async function resolveRound(
       reason: `Random selection from ${currentRoundPool.length} maps`,
     },
   });
-  await logAction(ctx, {
-    sessionId: session._id,
-    action: "WINNER_DECLARED",
-    actorType: "SYSTEM",
-    details: {
-      mapId: winnerMap._id,
-      mapName: winnerMap.name,
-      round: currentRound,
-      reason: "Random selection after double deadlock",
-    },
+  await completeSession(ctx, session, winnerMap, {
+    round: currentRound,
+    reason: "Random selection after double deadlock",
   });
 
   return {
@@ -518,27 +527,8 @@ export const submitBan = internalMutation({
 
       const winnerMap = remainingMaps[0];
 
-      // Mark winner
-      await ctx.db.patch(winnerMap._id, { state: "WINNER" });
-
-      // Complete session
-      await ctx.db.patch(session._id, {
-        winnerMapId: winnerMap._id,
-        status: "COMPLETE",
-        completedAt: Date.now(),
-        updatedAt: Date.now(),
-      });
-
-      // Audit log: WINNER_DECLARED
-      await logAction(ctx, {
-        sessionId: session._id,
-        action: "WINNER_DECLARED",
-        actorType: "SYSTEM",
-        details: {
-          mapId: winnerMap._id,
-          mapName: winnerMap.name,
-        },
-      });
+      // Declare winner and complete session
+      await completeSession(ctx, session, winnerMap);
 
       return {
         status: "ok" as const,
@@ -632,6 +622,17 @@ export const submitVote = internalMutation({
     // === Success: record the vote ===
 
     const currentRound = session.currentRound;
+
+    // Defense-in-depth: check DB for existing vote (supplements hasVotedThisRound flag)
+    const existingVote = await ctx.db
+      .query("votes")
+      .withIndex("by_playerId_and_round", (q) =>
+        q.eq("playerId", player._id).eq("round", currentRound)
+      )
+      .first();
+    if (existingVote) {
+      return { status: "error" as const, error: "ALREADY_VOTED" as const };
+    }
 
     // Insert vote record
     await ctx.db.insert("votes", {
