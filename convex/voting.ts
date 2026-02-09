@@ -363,11 +363,12 @@ export const submitVote = internalMutation({
     });
 
     // Check if all players have voted this round
-    const allPlayers = await ctx.db
+    const unvotedPlayer = await ctx.db
       .query("sessionPlayers")
       .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
-      .collect();
-    const allVotesSubmitted = allPlayers.every((p) => p.hasVotedThisRound);
+      .filter((q) => q.eq(q.field("hasVotedThisRound"), false))
+      .first();
+    const allVotesSubmitted = unvotedPlayer === null;
 
     return {
       status: "ok" as const,

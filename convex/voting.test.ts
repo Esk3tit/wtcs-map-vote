@@ -880,7 +880,7 @@ describe("voting.submitVote", () => {
       const result = await t.mutation(internal.voting.submitVote, {
         token: players[0].token,
         mapId: mapIds[0],
-        ipAddress: "10.0.0.1",
+        ipAddress: players[0].ip,
       });
 
       expect(result).toEqual({ status: "error", error: "TOKEN_EXPIRED" });
@@ -910,7 +910,7 @@ describe("voting.submitVote", () => {
         const result = await t.mutation(internal.voting.submitVote, {
           token: players[0].token,
           mapId: mapIds[0],
-          ipAddress: "10.0.0.1",
+          ipAddress: players[0].ip,
         });
 
         expect(result).toEqual({ status: "error", error: "SESSION_NOT_IN_PROGRESS" });
@@ -926,7 +926,7 @@ describe("voting.submitVote", () => {
       const result = await t.mutation(internal.voting.submitVote, {
         token: players[0].token,
         mapId: mapIds[0],
-        ipAddress: "10.0.0.1",
+        ipAddress: players[0].ip,
       });
 
       expect(result).toEqual({ status: "error", error: "FORMAT_NOT_MULTIPLAYER" });
@@ -940,14 +940,14 @@ describe("voting.submitVote", () => {
       await t.mutation(internal.voting.submitVote, {
         token: players[0].token,
         mapId: mapIds[0],
-        ipAddress: "10.0.0.1",
+        ipAddress: players[0].ip,
       });
 
       // Second vote from same player is rejected
       const result = await t.mutation(internal.voting.submitVote, {
         token: players[0].token,
         mapId: mapIds[1],
-        ipAddress: "10.0.0.1",
+        ipAddress: players[0].ip,
       });
 
       expect(result).toEqual({ status: "error", error: "ALREADY_VOTED" });
@@ -964,7 +964,7 @@ describe("voting.submitVote", () => {
       const result = await t.mutation(internal.voting.submitVote, {
         token: players[0].token,
         mapId: mapIds[0],
-        ipAddress: "10.0.0.1",
+        ipAddress: players[0].ip,
       });
 
       expect(result).toEqual({ status: "error", error: "MAP_UNAVAILABLE" });
@@ -999,7 +999,7 @@ describe("voting.submitVote", () => {
       const result = await t.mutation(internal.voting.submitVote, {
         token: session1.players[0].token,
         mapId: otherMapId,
-        ipAddress: "10.0.0.1",
+        ipAddress: session1.players[0].ip,
       });
 
       expect(result).toEqual({ status: "error", error: "MAP_UNAVAILABLE" });
@@ -1016,7 +1016,7 @@ describe("voting.submitVote", () => {
       const result = await t.mutation(internal.voting.submitVote, {
         token: players[0].token,
         mapId: mapIds[0],
-        ipAddress: "10.0.0.1",
+        ipAddress: players[0].ip,
       });
 
       expect(result).toEqual({ status: "error", error: "MAP_UNAVAILABLE" });
@@ -1035,7 +1035,7 @@ describe("voting.submitVote", () => {
       const result = await t.mutation(internal.voting.submitVote, {
         token: players[0].token,
         mapId: mapIds[0],
-        ipAddress: "10.0.0.1",
+        ipAddress: players[0].ip,
       });
 
       expect(result.status).toBe("ok");
@@ -1052,7 +1052,7 @@ describe("voting.submitVote", () => {
       const result = await t.mutation(internal.voting.submitVote, {
         token: players[0].token,
         mapId: mapIds[0],
-        ipAddress: "10.0.0.1",
+        ipAddress: players[0].ip,
       });
 
       expect(result.status).toBe("ok");
@@ -1066,13 +1066,13 @@ describe("voting.submitVote", () => {
 
       // All 3 players vote
       await t.mutation(internal.voting.submitVote, {
-        token: players[0].token, mapId: mapIds[0], ipAddress: "10.0.0.1",
+        token: players[0].token, mapId: mapIds[0], ipAddress: players[0].ip,
       });
       await t.mutation(internal.voting.submitVote, {
-        token: players[1].token, mapId: mapIds[1], ipAddress: "10.0.0.2",
+        token: players[1].token, mapId: mapIds[1], ipAddress: players[1].ip,
       });
       const result = await t.mutation(internal.voting.submitVote, {
-        token: players[2].token, mapId: mapIds[2], ipAddress: "10.0.0.3",
+        token: players[2].token, mapId: mapIds[2], ipAddress: players[2].ip,
       });
 
       expect(result.status).toBe("ok");
@@ -1088,7 +1088,7 @@ describe("voting.submitVote", () => {
       await t.mutation(internal.voting.submitVote, {
         token: players[0].token,
         mapId: mapIds[0],
-        ipAddress: "10.0.0.1",
+        ipAddress: players[0].ip,
       });
 
       const votes = await t.run(async (ctx) =>
@@ -1116,7 +1116,7 @@ describe("voting.submitVote", () => {
       await t.mutation(internal.voting.submitVote, {
         token: players[0].token,
         mapId: mapIds[0],
-        ipAddress: "10.0.0.1",
+        ipAddress: players[0].ip,
       });
 
       const player = await t.run(async (ctx) => ctx.db.get(players[0].id));
@@ -1129,13 +1129,13 @@ describe("voting.submitVote", () => {
 
       // All 3 players vote for the same map
       await t.mutation(internal.voting.submitVote, {
-        token: players[0].token, mapId: mapIds[0], ipAddress: "10.0.0.1",
+        token: players[0].token, mapId: mapIds[0], ipAddress: players[0].ip,
       });
       await t.mutation(internal.voting.submitVote, {
-        token: players[1].token, mapId: mapIds[0], ipAddress: "10.0.0.2",
+        token: players[1].token, mapId: mapIds[0], ipAddress: players[1].ip,
       });
       const result = await t.mutation(internal.voting.submitVote, {
-        token: players[2].token, mapId: mapIds[0], ipAddress: "10.0.0.3",
+        token: players[2].token, mapId: mapIds[0], ipAddress: players[2].ip,
       });
 
       expect(result.status).toBe("ok");
@@ -1168,7 +1168,7 @@ describe("voting.submitVote", () => {
       await t.mutation(internal.voting.submitVote, {
         token: players[0].token,
         mapId: mapIds[0],
-        ipAddress: "10.0.0.1",
+        ipAddress: players[0].ip,
       });
 
       const logs = await t.run(async (ctx) =>
@@ -1193,13 +1193,13 @@ describe("voting.submitVote", () => {
       const { sessionId, players, mapIds } = await createMultiplayerSession(t);
 
       await t.mutation(internal.voting.submitVote, {
-        token: players[0].token, mapId: mapIds[0], ipAddress: "10.0.0.1",
+        token: players[0].token, mapId: mapIds[0], ipAddress: players[0].ip,
       });
       await t.mutation(internal.voting.submitVote, {
-        token: players[1].token, mapId: mapIds[1], ipAddress: "10.0.0.2",
+        token: players[1].token, mapId: mapIds[1], ipAddress: players[1].ip,
       });
       await t.mutation(internal.voting.submitVote, {
-        token: players[2].token, mapId: mapIds[2], ipAddress: "10.0.0.3",
+        token: players[2].token, mapId: mapIds[2], ipAddress: players[2].ip,
       });
 
       const logs = await t.run(async (ctx) =>
@@ -1293,7 +1293,7 @@ describe("voting.submitVote", () => {
       await t.mutation(internal.voting.submitVote, {
         token: players[0].token,
         mapId: mapIds[0],
-        ipAddress: "10.0.0.1",
+        ipAddress: players[0].ip,
       });
 
       const votes = await t.run(async (ctx) =>
@@ -1316,14 +1316,14 @@ describe("voting.submitVote", () => {
       });
 
       const r1 = await t.mutation(internal.voting.submitVote, {
-        token: players[0].token, mapId: mapIds[0], ipAddress: "10.0.0.1",
+        token: players[0].token, mapId: mapIds[0], ipAddress: players[0].ip,
       });
       expect(r1.status).toBe("ok");
       if (r1.status !== "ok") throw new Error("Expected ok");
       expect(r1.allVotesSubmitted).toBe(false);
 
       const r2 = await t.mutation(internal.voting.submitVote, {
-        token: players[1].token, mapId: mapIds[1], ipAddress: "10.0.0.2",
+        token: players[1].token, mapId: mapIds[1], ipAddress: players[1].ip,
       });
       expect(r2.status).toBe("ok");
       if (r2.status !== "ok") throw new Error("Expected ok");
