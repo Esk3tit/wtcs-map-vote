@@ -151,13 +151,16 @@ http.route({
 // ============================================================================
 
 /**
- * Submit a map ban during ABBA voting.
- * Called by the frontend when a player clicks a map to ban.
+ * Create a POST handler for voting endpoints that share the same structure:
+ * parse JSON body, validate token + mapId, call an internal mutation, return result.
+ * Wraps the mutation call in try/catch to surface invalid Convex ID formats as 400.
+ *
+ * @param mutationRef - The internal mutation to invoke with { token, mapId, ipAddress }
  */
-http.route({
-  path: "/api/player/submit-ban",
-  method: "POST",
-  handler: httpAction(async (ctx, req) => {
+function createVotingHandler(
+  mutationRef: typeof internal.voting.submitBan | typeof internal.voting.submitVote
+) {
+  return httpAction(async (ctx, req) => {
     const corsHeaders = getCorsHeaders();
     let body: unknown;
     try {
@@ -195,7 +198,7 @@ http.route({
     const ipAddress = extractClientIp(req);
     // Cast to Id — wrap in try/catch to surface invalid ID format as 400
     try {
-      const result = await ctx.runMutation(internal.voting.submitBan, {
+      const result = await ctx.runMutation(mutationRef, {
         token,
         mapId: mapId as Id<"sessionMaps">,
         ipAddress,
@@ -217,7 +220,17 @@ http.route({
       // Re-throw unexpected errors so Convex logs them properly
       throw error;
     }
-  }),
+  });
+}
+
+/**
+ * Submit a map ban during ABBA voting.
+ * Called by the frontend when a player clicks a map to ban.
+ */
+http.route({
+  path: "/api/player/submit-ban",
+  method: "POST",
+  handler: createVotingHandler(internal.voting.submitBan),
 });
 
 /** Handle CORS preflight for submit-ban endpoint. */
@@ -234,67 +247,7 @@ http.route({
 http.route({
   path: "/api/player/submit-vote",
   method: "POST",
-  handler: httpAction(async (ctx, req) => {
-    const corsHeaders = getCorsHeaders();
-    let body: unknown;
-    try {
-      body = await req.json();
-    } catch {
-      return new Response(
-        JSON.stringify({ status: "error", error: "INVALID_REQUEST" }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
-
-    const token =
-      typeof body === "object" && body !== null && "token" in body
-        ? (body as { token: unknown }).token
-        : undefined;
-    const mapId =
-      typeof body === "object" && body !== null && "mapId" in body
-        ? (body as { mapId: unknown }).mapId
-        : undefined;
-
-    if (typeof token !== "string" || token.length === 0) {
-      return new Response(
-        JSON.stringify({ status: "error", error: "INVALID_TOKEN" }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
-
-    if (typeof mapId !== "string" || mapId.length === 0) {
-      return new Response(
-        JSON.stringify({ status: "error", error: "INVALID_REQUEST" }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
-
-    const ipAddress = extractClientIp(req);
-    // Cast to Id — wrap in try/catch to surface invalid ID format as 400
-    try {
-      const result = await ctx.runMutation(internal.voting.submitVote, {
-        token,
-        mapId: mapId as Id<"sessionMaps">,
-        ipAddress,
-      });
-      const statusCode = result.status === "ok" ? 200 : 403;
-      return new Response(JSON.stringify(result), {
-        status: statusCode,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      // Invalid Convex ID format surfaces as an argument validation error
-      if (message.includes("is not a valid ID")) {
-        return new Response(
-          JSON.stringify({ status: "error", error: "INVALID_REQUEST" }),
-          { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-        );
-      }
-      // Re-throw unexpected errors so Convex logs them properly
-      throw error;
-    }
-  }),
+  handler: createVotingHandler(internal.voting.submitVote),
 });
 
 /** Handle CORS preflight for submit-vote endpoint. */

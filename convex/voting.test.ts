@@ -827,6 +827,10 @@ async function createMultiplayerSession(
 // ============================================================================
 
 describe("voting.submitVote", () => {
+  // These validation tests exercise the full submitVote mutation path including
+  // the shared validatePlayerForVoting helper. While the helper is also tested
+  // via submitBan, these provide integration-level regression coverage in case
+  // the mutations diverge in the future.
   describe("validation errors", () => {
     it("rejects invalid token", async () => {
       const t = createTestContext();
@@ -925,7 +929,7 @@ describe("voting.submitVote", () => {
         ipAddress: "10.0.0.1",
       });
 
-      expect(result).toEqual({ status: "error", error: "NOT_MULTIPLAYER" });
+      expect(result).toEqual({ status: "error", error: "FORMAT_NOT_MULTIPLAYER" });
     });
 
     it("rejects when player has already voted this round", async () => {

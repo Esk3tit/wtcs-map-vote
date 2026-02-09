@@ -8,7 +8,7 @@
 
 import { internalMutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
-import type { Doc } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 
 import { v } from "convex/values";
 
@@ -51,6 +51,22 @@ async function validatePlayerForVoting(
   }
 
   return { status: "ok", player, session };
+}
+
+/**
+ * Validate a target map for voting/banning.
+ * Checks the map exists, belongs to the session, and is available.
+ */
+async function validateTargetMap(
+  ctx: MutationCtx,
+  mapId: Id<"sessionMaps">,
+  sessionId: Id<"sessions">
+): Promise<Doc<"sessionMaps"> | null> {
+  const map = await ctx.db.get(mapId);
+  if (!map || map.sessionId !== sessionId || map.state !== "AVAILABLE") {
+    return null;
+  }
+  return map;
 }
 
 // ============================================================================
@@ -144,12 +160,8 @@ export const submitBan = internalMutation({
       return { status: "error" as const, error: "NOT_YOUR_TURN" as const };
     }
 
-    const targetMap = await ctx.db.get(mapId);
-    if (
-      !targetMap ||
-      targetMap.sessionId !== player.sessionId ||
-      targetMap.state !== "AVAILABLE"
-    ) {
+    const targetMap = await validateTargetMap(ctx, mapId, player.sessionId);
+    if (!targetMap) {
       return { status: "error" as const, error: "MAP_UNAVAILABLE" as const };
     }
 
@@ -283,7 +295,7 @@ export const submitVote = internalMutation({
         v.literal("TOKEN_EXPIRED"),
         v.literal("SESSION_NOT_FOUND"),
         v.literal("SESSION_NOT_IN_PROGRESS"),
-        v.literal("NOT_MULTIPLAYER"),
+        v.literal("FORMAT_NOT_MULTIPLAYER"),
         v.literal("ALREADY_VOTED"),
         v.literal("MAP_UNAVAILABLE"),
         v.literal("IP_MISMATCH")
@@ -305,19 +317,15 @@ export const submitVote = internalMutation({
     }
 
     if (session.format !== "MULTIPLAYER") {
-      return { status: "error" as const, error: "NOT_MULTIPLAYER" as const };
+      return { status: "error" as const, error: "FORMAT_NOT_MULTIPLAYER" as const };
     }
 
     if (player.hasVotedThisRound) {
       return { status: "error" as const, error: "ALREADY_VOTED" as const };
     }
 
-    const targetMap = await ctx.db.get(mapId);
-    if (
-      !targetMap ||
-      targetMap.sessionId !== player.sessionId ||
-      targetMap.state !== "AVAILABLE"
-    ) {
+    const targetMap = await validateTargetMap(ctx, mapId, player.sessionId);
+    if (!targetMap) {
       return { status: "error" as const, error: "MAP_UNAVAILABLE" as const };
     }
 
