@@ -2184,3 +2184,338 @@ describe("voting.resolveRound", () => {
     });
   });
 });
+
+// ============================================================================
+// WAR-20: Additional Voting Coverage
+// ============================================================================
+
+describe("WAR-20: defense-in-depth duplicate vote check", () => {
+  it("rejects vote via DB check when hasVotedThisRound flag is desynchronized", async () => {
+    const t = createTestContext();
+    const session = await createMultiplayerSession(t, {
+      playerCount: 2,
+      mapPoolSize: 5,
+    });
+
+    // Manually insert a vote record but leave hasVotedThisRound = false
+    // (simulates a desync between the flag and actual vote records)
+    await t.run(async (ctx) => {
+      await ctx.db.insert("votes", {
+        sessionId: session.sessionId,
+        round: 1,
+        playerId: session.players[0].id,
+        mapId: session.mapIds[0],
+        submittedAt: Date.now(),
+        submittedByAdmin: false,
+      });
+    });
+
+    // The hasVotedThisRound flag is still false, but the DB vote record exists
+    const result = await t.mutation(internal.voting.submitVote, {
+      token: session.players[0].token,
+      mapId: session.mapIds[1],
+      ipAddress: session.players[0].ip,
+    });
+
+    expect(result).toEqual({ status: "error", error: "ALREADY_VOTED" });
+  });
+
+  it("DB duplicate check does not false-positive on votes from different rounds", async () => {
+    const t = createTestContext();
+    const session = await createMultiplayerSession(t, {
+      playerCount: 2,
+      mapPoolSize: 5,
+      currentRound: 2,
+    });
+
+    // Insert a vote record from round 1 (previous round)
+    await t.run(async (ctx) => {
+      await ctx.db.insert("votes", {
+        sessionId: session.sessionId,
+        round: 1,
+        playerId: session.players[0].id,
+        mapId: session.mapIds[0],
+        submittedAt: Date.now(),
+        submittedByAdmin: false,
+      });
+    });
+
+    // Vote in round 2 should succeed despite round 1 vote existing
+    const result = await t.mutation(internal.voting.submitVote, {
+      token: session.players[0].token,
+      mapId: session.mapIds[1],
+      ipAddress: session.players[0].ip,
+    });
+
+    expect(result.status).toBe("ok");
+  });
+});
+
+describe("WAR-20: multi-round voting flow", () => {
+  it("players can vote again after round advances", async () => {
+    const t = createTestContext();
+    // 3 players, 5 maps: round 1 bans 3 maps, 2 remain → advance
+    const session = await createMultiplayerSession(t, {
+      playerCount: 3,
+      mapPoolSize: 5,
+    });
+
+    // Round 1: each player votes a different map → 3 banned, 2 remain → ROUND_ADVANCED
+    const r1Result = await allPlayersVoteDifferent(t, session);
+    expect(r1Result.status).toBe("ok");
+    if (r1Result.status !== "ok") throw new Error("Expected ok");
+    expect(r1Result.resolution!.outcome).toBe("ROUND_ADVANCED");
+
+    // Verify all players can vote again in round 2
+    // Maps 4 and 5 (index 3, 4) are still available
+    const r2_p1 = await t.mutation(internal.voting.submitVote, {
+      token: session.players[0].token,
+      mapId: session.mapIds[3],
+      ipAddress: session.players[0].ip,
+    });
+    expect(r2_p1.status).toBe("ok");
+    if (r2_p1.status !== "ok") throw new Error("Expected ok");
+    expect(r2_p1.allVotesSubmitted).toBe(false);
+
+    const r2_p2 = await t.mutation(internal.voting.submitVote, {
+      token: session.players[1].token,
+      mapId: session.mapIds[4],
+      ipAddress: session.players[1].ip,
+    });
+    expect(r2_p2.status).toBe("ok");
+    if (r2_p2.status !== "ok") throw new Error("Expected ok");
+    expect(r2_p2.allVotesSubmitted).toBe(false);
+
+    const r2_p3 = await t.mutation(internal.voting.submitVote, {
+      token: session.players[2].token,
+      mapId: session.mapIds[3],
+      ipAddress: session.players[2].ip,
+    });
+    expect(r2_p3.status).toBe("ok");
+    if (r2_p3.status !== "ok") throw new Error("Expected ok");
+    expect(r2_p3.allVotesSubmitted).toBe(true);
+    // Map 4 (2 votes) and Map 5 (1 vote) both banned → only 1 map left? No:
+    // Both maps voted → both banned → 0 remain → deadlock/revote
+    // OR if maps 4 had 2 votes and map 5 had 1 vote, both banned → revote
+    // The outcome depends on resolution, but the key assertion is votes succeed
+  });
+
+  it("vote records use correct round number across rounds", async () => {
+    const t = createTestContext();
+    const session = await createMultiplayerSession(t, {
+      playerCount: 2,
+      mapPoolSize: 4,
+    });
+
+    // Round 1: both vote same map → 1 banned, 3 remain → ROUND_ADVANCED
+    await allPlayersVoteSame(t, session, 0);
+
+    // Round 2: both vote same map → 1 banned, 2 remain → ROUND_ADVANCED
+    await t.mutation(internal.voting.submitVote, {
+      token: session.players[0].token,
+      mapId: session.mapIds[1],
+      ipAddress: session.players[0].ip,
+    });
+    await t.mutation(internal.voting.submitVote, {
+      token: session.players[1].token,
+      mapId: session.mapIds[1],
+      ipAddress: session.players[1].ip,
+    });
+
+    // Verify vote records have correct round numbers
+    const allVotes = await t.run(async (ctx) =>
+      ctx.db
+        .query("votes")
+        .withIndex("by_sessionId_and_round", (q) =>
+          q.eq("sessionId", session.sessionId)
+        )
+        .collect()
+    );
+
+    const round1Votes = allVotes.filter((v) => v.round === 1);
+    const round2Votes = allVotes.filter((v) => v.round === 2);
+
+    expect(round1Votes).toHaveLength(2);
+    expect(round2Votes).toHaveLength(2);
+  });
+
+  it("hasVotedThisRound resets between rounds via the full mutation path", async () => {
+    const t = createTestContext();
+    const session = await createMultiplayerSession(t, {
+      playerCount: 2,
+      mapPoolSize: 4,
+    });
+
+    // Round 1: both vote → triggers resolve + advance
+    await allPlayersVoteSame(t, session, 0);
+
+    // Verify hasVotedThisRound was reset for all players
+    for (const player of session.players) {
+      const dbPlayer = await t.run(async (ctx) => ctx.db.get(player.id));
+      expect(dbPlayer?.hasVotedThisRound).toBe(false);
+    }
+
+    // Verify session round incremented
+    const dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+    expect(dbSession?.currentRound).toBe(2);
+  });
+});
+
+describe("WAR-20: revote allows re-voting on same maps", () => {
+  it("players can vote on the exact same maps after revote resets them", async () => {
+    const t = createTestContext();
+    // 2 players, 2 maps: deadlock → revote → vote on same maps again
+    const session = await createMultiplayerSession(t, {
+      playerCount: 2,
+      mapPoolSize: 2,
+    });
+
+    // Round 1: each votes different map → all eliminated → REVOTE
+    await t.mutation(internal.voting.submitVote, {
+      token: session.players[0].token,
+      mapId: session.mapIds[0],
+      ipAddress: session.players[0].ip,
+    });
+    const r1Result = await t.mutation(internal.voting.submitVote, {
+      token: session.players[1].token,
+      mapId: session.mapIds[1],
+      ipAddress: session.players[1].ip,
+    });
+    expect(r1Result.status).toBe("ok");
+    if (r1Result.status !== "ok") throw new Error("Expected ok");
+    expect(r1Result.resolution!.outcome).toBe("REVOTE");
+
+    // Round 2 (revote): both vote for the SAME map → 1 banned, 1 remains → WINNER
+    await t.mutation(internal.voting.submitVote, {
+      token: session.players[0].token,
+      mapId: session.mapIds[0], // Same map as round 1
+      ipAddress: session.players[0].ip,
+    });
+    const r2Result = await t.mutation(internal.voting.submitVote, {
+      token: session.players[1].token,
+      mapId: session.mapIds[0], // Both vote Map 1 → Map 1 banned → Map 2 wins
+      ipAddress: session.players[1].ip,
+    });
+
+    expect(r2Result.status).toBe("ok");
+    if (r2Result.status !== "ok") throw new Error("Expected ok");
+    expect(r2Result.resolution!.outcome).toBe("WINNER");
+    expect(r2Result.resolution!.winnerMapId).toBe(session.mapIds[1]);
+
+    // Verify session is complete
+    const dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+    expect(dbSession?.status).toBe("COMPLETE");
+  });
+});
+
+describe("WAR-20: large session", () => {
+  it("6-player 7-map session resolves correctly through multiple rounds", async () => {
+    const t = createTestContext();
+    const session = await createMultiplayerSession(t, {
+      playerCount: 6,
+      mapPoolSize: 7,
+    });
+
+    // Round 1: all 6 players vote for Map 1 → only Map 1 banned, 6 remain
+    for (const player of session.players) {
+      await t.mutation(internal.voting.submitVote, {
+        token: player.token,
+        mapId: session.mapIds[0],
+        ipAddress: player.ip,
+      });
+    }
+
+    let dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+    expect(dbSession?.status).toBe("IN_PROGRESS");
+    expect(dbSession?.currentRound).toBe(2);
+
+    // Round 2: players spread votes across maps 2-4 (3 maps banned, 3 remain)
+    await t.mutation(internal.voting.submitVote, {
+      token: session.players[0].token,
+      mapId: session.mapIds[1],
+      ipAddress: session.players[0].ip,
+    });
+    await t.mutation(internal.voting.submitVote, {
+      token: session.players[1].token,
+      mapId: session.mapIds[1],
+      ipAddress: session.players[1].ip,
+    });
+    await t.mutation(internal.voting.submitVote, {
+      token: session.players[2].token,
+      mapId: session.mapIds[2],
+      ipAddress: session.players[2].ip,
+    });
+    await t.mutation(internal.voting.submitVote, {
+      token: session.players[3].token,
+      mapId: session.mapIds[2],
+      ipAddress: session.players[3].ip,
+    });
+    await t.mutation(internal.voting.submitVote, {
+      token: session.players[4].token,
+      mapId: session.mapIds[3],
+      ipAddress: session.players[4].ip,
+    });
+    await t.mutation(internal.voting.submitVote, {
+      token: session.players[5].token,
+      mapId: session.mapIds[3],
+      ipAddress: session.players[5].ip,
+    });
+
+    dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+    expect(dbSession?.status).toBe("IN_PROGRESS");
+    expect(dbSession?.currentRound).toBe(3);
+
+    // 3 maps remain (indices 4, 5, 6). Round 3: all vote Map 5 → banned, 2 remain
+    await t.mutation(internal.voting.submitVote, {
+      token: session.players[0].token,
+      mapId: session.mapIds[4],
+      ipAddress: session.players[0].ip,
+    });
+    await t.mutation(internal.voting.submitVote, {
+      token: session.players[1].token,
+      mapId: session.mapIds[4],
+      ipAddress: session.players[1].ip,
+    });
+    await t.mutation(internal.voting.submitVote, {
+      token: session.players[2].token,
+      mapId: session.mapIds[4],
+      ipAddress: session.players[2].ip,
+    });
+    await t.mutation(internal.voting.submitVote, {
+      token: session.players[3].token,
+      mapId: session.mapIds[4],
+      ipAddress: session.players[3].ip,
+    });
+    await t.mutation(internal.voting.submitVote, {
+      token: session.players[4].token,
+      mapId: session.mapIds[4],
+      ipAddress: session.players[4].ip,
+    });
+    await t.mutation(internal.voting.submitVote, {
+      token: session.players[5].token,
+      mapId: session.mapIds[4],
+      ipAddress: session.players[5].ip,
+    });
+
+    dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+    expect(dbSession?.status).toBe("IN_PROGRESS");
+    expect(dbSession?.currentRound).toBe(4);
+
+    // 2 maps remain (indices 5, 6). Round 4: all vote Map 6 → banned → Map 7 wins
+    for (const player of session.players) {
+      await t.mutation(internal.voting.submitVote, {
+        token: player.token,
+        mapId: session.mapIds[5],
+        ipAddress: player.ip,
+      });
+    }
+
+    dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+    expect(dbSession?.status).toBe("COMPLETE");
+    expect(dbSession?.winnerMapId).toBe(session.mapIds[6]);
+
+    // Verify winner map state
+    const winnerMap = await t.run(async (ctx) => ctx.db.get(session.mapIds[6]));
+    expect(winnerMap?.state).toBe("WINNER");
+  });
+});

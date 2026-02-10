@@ -5041,3 +5041,170 @@ describe("WAR-35: GDPR IP redaction in getSession", () => {
     expect("isIpLocked" in player).toBe(true);
   });
 });
+
+// ============================================================================
+// WAR-20: playerVotedMapId Tests
+// ============================================================================
+
+describe("WAR-20: playerVotedMapId in getSessionByToken", () => {
+  it("returns undefined when player has not voted this round", async () => {
+    const t = createTestContext();
+    const token = "not-voted-yet";
+
+    await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert("admins", adminFactory());
+      const sessionId = await ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, {
+          status: "IN_PROGRESS",
+          format: "MULTIPLAYER",
+          currentRound: 1,
+        })
+      );
+      const mapId = await ctx.db.insert("maps", mapFactory());
+      await ctx.db.insert(
+        "sessionMaps",
+        sessionMapFactory(sessionId, mapId, { state: "AVAILABLE" })
+      );
+      await ctx.db.insert(
+        "sessionPlayers",
+        sessionPlayerFactory(sessionId, {
+          token,
+          teamName: "Team A",
+          ipAddress: "10.0.0.1",
+          hasVotedThisRound: false,
+        })
+      );
+    });
+
+    const result = await t.query(api.sessions.getSessionByToken, { token });
+    expect(result.status).toBe("valid");
+    if (result.status === "valid") {
+      expect(result.playerVotedMapId).toBeUndefined();
+    }
+  });
+
+  it("returns the voted map ID after player votes", async () => {
+    const t = createTestContext();
+    const token = "already-voted";
+
+    const { sessionMapId } = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert("admins", adminFactory());
+      const sessionId = await ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, {
+          status: "IN_PROGRESS",
+          format: "MULTIPLAYER",
+          currentRound: 1,
+        })
+      );
+      const mapId = await ctx.db.insert("maps", mapFactory());
+      const sessionMapId = await ctx.db.insert(
+        "sessionMaps",
+        sessionMapFactory(sessionId, mapId, { state: "AVAILABLE" })
+      );
+      const playerId = await ctx.db.insert(
+        "sessionPlayers",
+        sessionPlayerFactory(sessionId, {
+          token,
+          teamName: "Team A",
+          ipAddress: "10.0.0.1",
+          hasVotedThisRound: true,
+        })
+      );
+
+      // Insert a vote record for this player in the current round
+      await ctx.db.insert(
+        "votes",
+        voteFactory(sessionId, playerId, sessionMapId, { round: 1 })
+      );
+
+      return { sessionMapId };
+    });
+
+    const result = await t.query(api.sessions.getSessionByToken, { token });
+    expect(result.status).toBe("valid");
+    if (result.status === "valid") {
+      expect(result.playerVotedMapId).toBe(sessionMapId);
+    }
+  });
+
+  it("returns undefined for new round when vote exists only in previous round", async () => {
+    const t = createTestContext();
+    const token = "new-round-no-vote";
+
+    await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert("admins", adminFactory());
+      const sessionId = await ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, {
+          status: "IN_PROGRESS",
+          format: "MULTIPLAYER",
+          currentRound: 2, // Now in round 2
+        })
+      );
+      const mapId = await ctx.db.insert("maps", mapFactory());
+      const sessionMapId = await ctx.db.insert(
+        "sessionMaps",
+        sessionMapFactory(sessionId, mapId, { state: "AVAILABLE" })
+      );
+      const playerId = await ctx.db.insert(
+        "sessionPlayers",
+        sessionPlayerFactory(sessionId, {
+          token,
+          teamName: "Team A",
+          ipAddress: "10.0.0.1",
+          hasVotedThisRound: false, // Not voted in round 2
+        })
+      );
+
+      // Vote exists for round 1 only
+      await ctx.db.insert(
+        "votes",
+        voteFactory(sessionId, playerId, sessionMapId, { round: 1 })
+      );
+    });
+
+    const result = await t.query(api.sessions.getSessionByToken, { token });
+    expect(result.status).toBe("valid");
+    if (result.status === "valid") {
+      expect(result.playerVotedMapId).toBeUndefined();
+    }
+  });
+
+  it("returns undefined for ABBA format", async () => {
+    const t = createTestContext();
+    const token = "abba-no-voted-map";
+
+    await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert("admins", adminFactory());
+      const sessionId = await ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, {
+          status: "IN_PROGRESS",
+          format: "ABBA",
+          currentTurn: 0,
+        })
+      );
+      const mapId = await ctx.db.insert("maps", mapFactory());
+      await ctx.db.insert(
+        "sessionMaps",
+        sessionMapFactory(sessionId, mapId, { state: "AVAILABLE" })
+      );
+      await ctx.db.insert(
+        "sessionPlayers",
+        sessionPlayerFactory(sessionId, {
+          token,
+          teamName: "Team A",
+          ipAddress: "10.0.0.1",
+        })
+      );
+    });
+
+    const result = await t.query(api.sessions.getSessionByToken, { token });
+    expect(result.status).toBe("valid");
+    if (result.status === "valid") {
+      expect(result.playerVotedMapId).toBeUndefined();
+    }
+  });
+});
