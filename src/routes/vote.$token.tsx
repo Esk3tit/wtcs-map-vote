@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { TokenErrorPage } from "@/components/session/TokenErrorPage";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
+import { SITE_URL } from "@/lib/convexHttp";
 import { Check, Lock, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -23,10 +24,6 @@ import type { Id } from "../../convex/_generated/dataModel";
 export const Route = createFileRoute("/vote/$token")({
   component: PlayerVotingPage,
 });
-
-// Derive HTTP actions base URL from Convex deployment URL
-const CONVEX_URL = import.meta.env.VITE_CONVEX_URL as string;
-const SITE_URL = CONVEX_URL.replace(".cloud", ".site");
 
 // Map backend error codes to user-friendly messages
 function getVotingErrorMessage(error: string): string {
@@ -109,13 +106,10 @@ function PlayerVotingPage() {
     auth.status === "authenticated" ? { token } : "skip"
   );
 
-  const [confirmBanMap, setConfirmBanMap] = useState<{
+  const [pendingAction, setPendingAction] = useState<{
     _id: Id<"sessionMaps">;
     name: string;
-  } | null>(null);
-  const [confirmVoteMap, setConfirmVoteMap] = useState<{
-    _id: Id<"sessionMaps">;
-    name: string;
+    type: "ban" | "vote";
   } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
@@ -197,53 +191,41 @@ function PlayerVotingPage() {
   const handleMapClick = (mapId: Id<"sessionMaps">, mapName: string) => {
     if (!isYourTurn || isSubmitting) return;
 
-    if (session.format === "ABBA") {
-      setConfirmBanMap({ _id: mapId, name: mapName });
-    } else {
-      setConfirmVoteMap({ _id: mapId, name: mapName });
-    }
+    setPendingAction({
+      _id: mapId,
+      name: mapName,
+      type: session.format === "ABBA" ? "ban" : "vote",
+    });
   };
 
-  const confirmBan = async () => {
-    if (!confirmBanMap || isSubmitting) return;
+  const submitAction = async () => {
+    if (!pendingAction || isSubmitting) return;
+
+    const endpoint =
+      pendingAction.type === "ban"
+        ? "/api/player/submit-ban"
+        : "/api/player/submit-vote";
 
     setIsSubmitting(true);
     try {
-      const res = await fetch(`${SITE_URL}/api/player/submit-ban`, {
+      const res = await fetch(`${SITE_URL}${endpoint}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, mapId: confirmBanMap._id }),
+        body: JSON.stringify({ token, mapId: pendingAction._id }),
+        signal: AbortSignal.timeout(10_000),
       });
-      const result = await res.json();
 
-      if (result.status === "ok") {
-        setConfirmBanMap(null);
-      } else {
-        toast.error(getVotingErrorMessage(result.error));
+      if (!res.ok) {
+        toast.error("Server error. Please try again.");
+        return;
       }
-    } catch {
-      toast.error("Network error. Please try again.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
 
-  const confirmVote = async () => {
-    if (!confirmVoteMap || isSubmitting) return;
-
-    setIsSubmitting(true);
-    try {
-      const res = await fetch(`${SITE_URL}/api/player/submit-vote`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ token, mapId: confirmVoteMap._id }),
-      });
-      const result = await res.json();
+      const result: { status: string; error?: string } = await res.json();
 
       if (result.status === "ok") {
-        setConfirmVoteMap(null);
+        setPendingAction(null);
       } else {
-        toast.error(getVotingErrorMessage(result.error));
+        toast.error(getVotingErrorMessage(result.error ?? ""));
       }
     } catch {
       toast.error("Network error. Please try again.");
@@ -501,60 +483,28 @@ function PlayerVotingPage() {
         </div>
       </footer>
 
-      {/* Ban Confirmation Dialog (ABBA) */}
+      {/* Confirmation Dialog (Ban / Vote) */}
       <AlertDialog
-        open={!!confirmBanMap}
-        onOpenChange={(open) => !open && !isSubmitting && setConfirmBanMap(null)}
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Confirm Ban</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to ban{" "}
-              <span className="font-semibold text-foreground">
-                {confirmBanMap?.name}
-              </span>
-              ? This action cannot be undone.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isSubmitting}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={confirmBan}
-              disabled={isSubmitting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Banning...
-                </>
-              ) : (
-                "Confirm Ban"
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
-
-      {/* Vote Confirmation Dialog (MULTIPLAYER) */}
-      <AlertDialog
-        open={!!confirmVoteMap}
+        open={!!pendingAction}
         onOpenChange={(open) =>
-          !open && !isSubmitting && setConfirmVoteMap(null)
+          !open && !isSubmitting && setPendingAction(null)
         }
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirm Vote</AlertDialogTitle>
+            <AlertDialogTitle>
+              {pendingAction?.type === "ban" ? "Confirm Ban" : "Confirm Vote"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Vote to eliminate{" "}
+              {pendingAction?.type === "ban"
+                ? "Are you sure you want to ban "
+                : "Vote to eliminate "}
               <span className="font-semibold text-foreground">
-                {confirmVoteMap?.name}
+                {pendingAction?.name}
               </span>
-              ? This cannot be changed.
+              {pendingAction?.type === "ban"
+                ? "? This action cannot be undone."
+                : "? This cannot be changed."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
@@ -562,15 +512,17 @@ function PlayerVotingPage() {
               Cancel
             </AlertDialogCancel>
             <AlertDialogAction
-              onClick={confirmVote}
+              onClick={submitAction}
               disabled={isSubmitting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
               {isSubmitting ? (
                 <>
                   <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Voting...
+                  {pendingAction?.type === "ban" ? "Banning..." : "Voting..."}
                 </>
+              ) : pendingAction?.type === "ban" ? (
+                "Confirm Ban"
               ) : (
                 "Confirm Vote"
               )}
