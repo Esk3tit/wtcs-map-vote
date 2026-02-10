@@ -169,9 +169,13 @@ function PlayerVotingPage() {
     }
   }, [data, pendingAction]);
 
-  // Clear optimistic vote indicator once server state catches up
+  // Clear optimistic vote indicator once server state confirms the same vote
   useEffect(() => {
-    if (data?.status === "valid" && data.playerVotedMapId && optimisticVotedMapId) {
+    if (
+      data?.status === "valid" &&
+      optimisticVotedMapId &&
+      data.playerVotedMapId === optimisticVotedMapId
+    ) {
       setOptimisticVotedMapId(null);
     }
   }, [data, optimisticVotedMapId]);

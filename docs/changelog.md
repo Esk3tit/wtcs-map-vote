@@ -14,7 +14,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Golden border indicator** — After confirming a vote in MULTIPLAYER mode, the voted map shows a golden amber ring (`ring-2 ring-amber-400`) while waiting for other players
 - **"Your vote" text label** — Accessibility-compliant non-color indicator below the voted map name (WCAG 1.4.1)
 - **`playerVotedMapId` in `getSessionByToken`** — Backend returns the current player's voted map ID using the existing `by_playerId_and_round` index; auto-clears on round transition
-- **Server-derived state** — Persists across page refresh, syncs across tabs; no frontend `useState` needed
+- **Server-derived state with optimistic UI** — Persists across page refresh, syncs across tabs; optimistic `useState` bridges the gap between HTTP response and Convex subscription update
 
 #### Frontend Vote Submission Wiring (WAR-36, PR #56)
 - **Vote submission fetch calls** — Replaced console.log stubs with actual `fetch()` calls to `/api/player/submit-ban` and `/api/player/submit-vote` HTTP endpoints
