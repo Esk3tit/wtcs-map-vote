@@ -25,8 +25,23 @@ export const Route = createFileRoute("/vote/$token")({
   component: PlayerVotingPage,
 });
 
+// Union type for all known voting error codes
+type VotingErrorCode =
+  | "NOT_YOUR_TURN"
+  | "MAP_UNAVAILABLE"
+  | "SESSION_NOT_IN_PROGRESS"
+  | "ALREADY_VOTED"
+  | "IP_MISMATCH"
+  | "INVALID_TOKEN"
+  | "TOKEN_EXPIRED"
+  | "SESSION_NOT_FOUND"
+  | "FORMAT_NOT_ABBA"
+  | "FORMAT_NOT_MULTIPLAYER"
+  | "INVALID_REQUEST"
+  | "INVALID_IP";
+
 // Map backend error codes to user-friendly messages
-function getVotingErrorMessage(error: string): string {
+function getVotingErrorMessage(error: VotingErrorCode): string {
   switch (error) {
     case "NOT_YOUR_TURN":
       return "It's not your turn";
@@ -41,6 +56,15 @@ function getVotingErrorMessage(error: string): string {
     case "INVALID_TOKEN":
     case "TOKEN_EXPIRED":
       return "Your session has expired. Please refresh.";
+    case "SESSION_NOT_FOUND":
+      return "Session not found. It may have been deleted.";
+    case "FORMAT_NOT_ABBA":
+    case "FORMAT_NOT_MULTIPLAYER":
+      return "Invalid action for this session format";
+    case "INVALID_REQUEST":
+      return "Invalid request. Please refresh and try again.";
+    case "INVALID_IP":
+      return "Session is locked to another device";
     default:
       return "Something went wrong. Please try again.";
   }
@@ -241,9 +265,10 @@ function PlayerVotingPage() {
       if (result.status === "ok") {
         setPendingAction(null);
       } else {
-        toast.error(getVotingErrorMessage(result.error ?? ""));
+        toast.error(getVotingErrorMessage((result.error ?? "") as VotingErrorCode));
       }
-    } catch {
+    } catch (error) {
+      console.error("Vote submission failed:", error);
       toast.error("Network error. Please try again.");
     } finally {
       setIsSubmitting(false);
