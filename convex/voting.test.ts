@@ -238,6 +238,68 @@ describe("voting.submitBan", () => {
       }
     );
 
+    it("rejects ban when session has passed expiresAt even if status is still IN_PROGRESS", async () => {
+      const t = createTestContext();
+      // Create an ABBA session with expiresAt in the past but status still IN_PROGRESS
+      const session = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            format: "ABBA",
+            status: "IN_PROGRESS",
+            mapPoolSize: 5,
+            playerCount: 2,
+            currentTurn: 0,
+            expiresAt: Date.now() - 1000, // 1 second in the past
+          })
+        );
+
+        const masterMapIds = await Promise.all(
+          Array.from({ length: 5 }, (_, i) =>
+            ctx.db.insert("maps", mapFactory({ name: `Map ${i + 1}` }))
+          )
+        );
+        const mapIds = await Promise.all(
+          masterMapIds.map((masterMapId, i) =>
+            ctx.db.insert(
+              "sessionMaps",
+              sessionMapFactory(sessionId, masterMapId, {
+                name: `Map ${i + 1}`,
+                state: "AVAILABLE",
+              })
+            )
+          )
+        );
+
+        const tokenA = crypto.randomUUID();
+        const playerAId = await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token: tokenA,
+            role: "PLAYER_1",
+            teamName: "Team A",
+            ipAddress: "10.0.0.1",
+            isConnected: true,
+          })
+        );
+
+        return {
+          sessionId,
+          playerA: { id: playerAId, token: tokenA },
+          mapIds,
+        };
+      });
+
+      const result = await t.mutation(internal.voting.submitBan, {
+        token: session.playerA.token,
+        mapId: session.mapIds[0],
+        ipAddress: "10.0.0.1",
+      });
+
+      expect(result).toEqual({ status: "error", error: "SESSION_NOT_IN_PROGRESS" });
+    });
+
     it("rejects when format is MULTIPLAYER (not ABBA)", async () => {
       const t = createTestContext();
       const { playerA, mapIds } = await createABBASession(t, {
@@ -919,6 +981,68 @@ describe("voting.submitVote", () => {
         expect(result).toEqual({ status: "error", error: "SESSION_NOT_IN_PROGRESS" });
       }
     );
+
+    it("rejects vote when session has passed expiresAt even if status is still IN_PROGRESS", async () => {
+      const t = createTestContext();
+      // Create a MULTIPLAYER session with expiresAt in the past but status still IN_PROGRESS
+      const session = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            format: "MULTIPLAYER",
+            status: "IN_PROGRESS",
+            mapPoolSize: 5,
+            playerCount: 3,
+            currentRound: 1,
+            expiresAt: Date.now() - 1000, // 1 second in the past
+          })
+        );
+
+        const masterMapIds = await Promise.all(
+          Array.from({ length: 5 }, (_, i) =>
+            ctx.db.insert("maps", mapFactory({ name: `Map ${i + 1}` }))
+          )
+        );
+        const mapIds = await Promise.all(
+          masterMapIds.map((masterMapId, i) =>
+            ctx.db.insert(
+              "sessionMaps",
+              sessionMapFactory(sessionId, masterMapId, {
+                name: `Map ${i + 1}`,
+                state: "AVAILABLE",
+              })
+            )
+          )
+        );
+
+        const token = crypto.randomUUID();
+        const playerId = await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            token,
+            role: "PLAYER_1",
+            teamName: "Team A",
+            ipAddress: "10.0.0.1",
+            isConnected: true,
+          })
+        );
+
+        return {
+          sessionId,
+          players: [{ id: playerId, token, ip: "10.0.0.1" }],
+          mapIds,
+        };
+      });
+
+      const result = await t.mutation(internal.voting.submitVote, {
+        token: session.players[0].token,
+        mapId: session.mapIds[0],
+        ipAddress: session.players[0].ip,
+      });
+
+      expect(result).toEqual({ status: "error", error: "SESSION_NOT_IN_PROGRESS" });
+    });
 
     it("rejects when format is ABBA (not MULTIPLAYER)", async () => {
       const t = createTestContext();

@@ -62,7 +62,10 @@ async function validatePlayerForVoting(
   ipAddress: string
 ): Promise<
   | { status: "ok"; player: Doc<"sessionPlayers">; session: Doc<"sessions"> }
-  | { status: "error"; error: PlayerLookupError | "IP_MISMATCH" }
+  | {
+      status: "error";
+      error: PlayerLookupError | "IP_MISMATCH" | "SESSION_NOT_IN_PROGRESS";
+    }
 > {
   const result = await lookupAndValidatePlayer(ctx, token, ipAddress);
   if (result.status === "error") {
@@ -74,6 +77,14 @@ async function validatePlayerForVoting(
   // Verify IP matches (token must already be activated)
   if (!player.ipAddress || player.ipAddress !== ipAddress) {
     return { status: "error", error: "IP_MISMATCH" };
+  }
+
+  // Reject if session has expired (closes window between expiresAt and cron cleanup)
+  if (session.expiresAt < Date.now()) {
+    return {
+      status: "error" as const,
+      error: "SESSION_NOT_IN_PROGRESS" as const,
+    };
   }
 
   return { status: "ok", player, session };
@@ -671,7 +682,10 @@ export const submitVote = internalMutation({
       .first();
     const allVotesSubmitted = unvotedPlayer === null;
 
-    // Auto-resolve round when all votes are in
+    // Auto-resolve round when all votes are in.
+    // Note: No post-resolve session status check needed — Convex mutations are
+    // serialized (single-writer), so no concurrent vote can interleave between
+    // resolveRound completing and this mutation returning.
     if (allVotesSubmitted) {
       const resolution = await resolveRound(ctx, session);
       return {
