@@ -363,6 +363,9 @@ function PlayerVotingPage() {
               const bannedByPlayer = map.bannedByPlayerId
                 ? allPlayers.find((p) => p._id === map.bannedByPlayerId)
                 : null;
+              const isMyVote =
+                map._id === data.playerVotedMapId &&
+                map.state === "AVAILABLE";
 
               return (
                 <Card
@@ -371,7 +374,7 @@ function PlayerVotingPage() {
                     map.state === "AVAILABLE" && isYourTurn && !isSubmitting
                       ? "cursor-pointer hover:ring-2 hover:ring-primary hover:shadow-lg hover:shadow-primary/20 active:ring-2 active:ring-primary"
                       : ""
-                  } ${map.state === "BANNED" ? "opacity-60" : ""} ${
+                  } ${isMyVote ? "ring-2 ring-amber-400 shadow-lg shadow-amber-400/20" : ""} ${map.state === "BANNED" ? "opacity-60" : ""} ${
                     isSubmitting ? "pointer-events-none opacity-80" : ""
                   }`}
                   onClick={() => {
@@ -407,6 +410,11 @@ function PlayerVotingPage() {
 
                   <div className="p-3">
                     <div className="font-semibold text-center">{map.name}</div>
+                    {isMyVote && (
+                      <div className="text-xs text-center text-amber-400 mt-1">
+                        Your vote
+                      </div>
+                    )}
                     {map.state === "BANNED" && bannedByPlayer && (
                       <div className="text-xs text-center text-muted-foreground mt-1">
                         Banned by {bannedByPlayer.teamName}
