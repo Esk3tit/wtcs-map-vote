@@ -2383,6 +2383,14 @@ describe("WAR-20: multi-round voting flow", () => {
     if (r1Result.status !== "ok") throw new Error("Expected ok");
     expect(r1Result.resolution!.outcome).toBe("ROUND_ADVANCED");
 
+    // Verify round actually advanced and vote flags reset
+    const dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+    expect(dbSession?.currentRound).toBe(2);
+    for (const player of session.players) {
+      const dbPlayer = await t.run(async (ctx) => ctx.db.get(player.id));
+      expect(dbPlayer?.hasVotedThisRound).toBe(false);
+    }
+
     // Verify all players can vote again in round 2
     // Maps 4 and 5 (index 3, 4) are still available
     const r2_p1 = await t.mutation(internal.voting.submitVote, {
@@ -2441,9 +2449,7 @@ describe("WAR-20: multi-round voting flow", () => {
     const allVotes = await t.run(async (ctx) =>
       ctx.db
         .query("votes")
-        .withIndex("by_sessionId_and_round", (q) =>
-          q.eq("sessionId", session.sessionId)
-        )
+        .filter((q) => q.eq(q.field("sessionId"), session.sessionId))
         .collect()
     );
 
