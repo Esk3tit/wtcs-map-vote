@@ -2,7 +2,7 @@
 
 Current progress and next steps for the WTCS Map Vote project.
 
-**Last Updated:** February 9, 2026
+**Last Updated:** February 10, 2026
 
 ---
 
@@ -131,6 +131,8 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] 85+ voting tests (submitBan, submitVote, resolveRound)
 - [x] Voting query enhancements — roundHistory, voteProgress, isRevoteRound, completedRounds (WAR-35)
 - [x] GDPR IP address redaction in admin session detail (WAR-35)
+- [x] Frontend vote submission wiring — fetch calls, shared SITE_URL, unified handler, error handling (WAR-36, PR #56)
+- [x] Multiplayer vote confirmation UI — golden border on voted map, "Your vote" label, playerVotedMapId query (WAR-37, PR #57)
 
 ---
 
