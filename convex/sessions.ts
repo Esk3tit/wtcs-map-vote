@@ -1195,8 +1195,8 @@ export const getSessionByToken = query({
       };
     }
 
-    // Get all players and maps in parallel
-    const [allPlayers, maps] = await Promise.all([
+    // Get all players, maps, and current player's vote in parallel
+    const [allPlayers, maps, playerVote] = await Promise.all([
       ctx.db
         .query("sessionPlayers")
         .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
@@ -1205,6 +1205,14 @@ export const getSessionByToken = query({
         .query("sessionMaps")
         .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
         .collect(),
+      session.format === "MULTIPLAYER" && player.hasVotedThisRound
+        ? ctx.db
+            .query("votes")
+            .withIndex("by_playerId_and_round", (q) =>
+              q.eq("playerId", player._id).eq("round", session.currentRound)
+            )
+            .first()
+        : Promise.resolve(null),
     ]);
 
     // Sanitize player data (exclude tokens, IPs)
@@ -1250,18 +1258,7 @@ export const getSessionByToken = query({
           }
         : undefined;
 
-    // Look up current player's vote for this round (MULTIPLAYER only)
-    const playerVotedMapId =
-      session.format === "MULTIPLAYER" && player.hasVotedThisRound
-        ? (
-            await ctx.db
-              .query("votes")
-              .withIndex("by_playerId_and_round", (q) =>
-                q.eq("playerId", player._id).eq("round", session.currentRound)
-              )
-              .first()
-          )?.mapId ?? undefined
-        : undefined;
+    const playerVotedMapId = playerVote?.mapId ?? undefined;
 
     return {
       status: "valid" as const,
