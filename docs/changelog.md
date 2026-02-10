@@ -10,6 +10,21 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 
+#### Multiplayer Vote Confirmation UI (WAR-37, PR #57)
+- **Golden border indicator** — After confirming a vote in MULTIPLAYER mode, the voted map shows a golden amber ring (`ring-2 ring-amber-400`) while waiting for other players
+- **"Your vote" text label** — Accessibility-compliant non-color indicator below the voted map name (WCAG 1.4.1)
+- **`playerVotedMapId` in `getSessionByToken`** — Backend returns the current player's voted map ID using the existing `by_playerId_and_round` index; auto-clears on round transition
+- **Server-derived state with optimistic UI** — Persists across page refresh, syncs across tabs; optimistic `useState` bridges the gap between HTTP response and Convex subscription update
+
+#### Frontend Vote Submission Wiring (WAR-36, PR #56)
+- **Vote submission fetch calls** — Replaced console.log stubs with actual `fetch()` calls to `/api/player/submit-ban` and `/api/player/submit-vote` HTTP endpoints
+- **Shared `SITE_URL` utility** — `src/lib/convexHttp.ts` extracts Convex HTTP action URL with runtime validation, shared by `usePlayerAuth.ts` and `vote.$token.tsx`
+- **Unified action handler** — Merged duplicate `confirmBan`/`confirmVote` into single `submitAction` with `pendingAction.type` discriminant
+- **Single confirmation dialog** — Collapsed two `AlertDialog` components into one with conditional title/description/button text
+- **Error handling** — `res.ok` check, `AbortSignal.timeout(10_000)`, typed response, `VotingErrorCode` union type with all 12 known error codes
+- **Auto-dismiss effects** — Dialog auto-closes when map becomes unavailable or turn expires (reactive Convex query)
+- **`console.error` logging** — Vote submission catch block now logs errors for debugging
+
 #### Voting Query Enhancements (WAR-35)
 - **`roundHistory`** — Structured round-by-round ban history in `getSessionByToken` response, derived from existing sessionMaps data
 - **`buildRoundHistory` helper** — Groups banned maps by turn (ABBA) or round (MULTIPLAYER), works for both active and completed sessions

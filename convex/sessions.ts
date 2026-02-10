@@ -1153,6 +1153,7 @@ export const getSessionByToken = query({
       isYourTurn: v.boolean(),
       roundHistory: v.array(roundHistoryEntryValidator),
       voteProgress: v.optional(voteProgressValidator),
+      playerVotedMapId: v.optional(v.id("sessionMaps")),
     }),
     v.object({
       status: v.literal("error"),
@@ -1194,8 +1195,8 @@ export const getSessionByToken = query({
       };
     }
 
-    // Get all players and maps in parallel
-    const [allPlayers, maps] = await Promise.all([
+    // Get all players, maps, and current player's vote in parallel
+    const [allPlayers, maps, playerVote] = await Promise.all([
       ctx.db
         .query("sessionPlayers")
         .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
@@ -1204,6 +1205,14 @@ export const getSessionByToken = query({
         .query("sessionMaps")
         .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
         .collect(),
+      session.format === "MULTIPLAYER" && player.hasVotedThisRound
+        ? ctx.db
+            .query("votes")
+            .withIndex("by_playerId_and_round", (q) =>
+              q.eq("playerId", player._id).eq("round", session.currentRound)
+            )
+            .first()
+        : Promise.resolve(null),
     ]);
 
     // Sanitize player data (exclude tokens, IPs)
@@ -1249,6 +1258,8 @@ export const getSessionByToken = query({
           }
         : undefined;
 
+    const playerVotedMapId = playerVote?.mapId ?? undefined;
+
     return {
       status: "valid" as const,
       player: toSanitizedPlayer(player),
@@ -1271,6 +1282,7 @@ export const getSessionByToken = query({
       isYourTurn,
       roundHistory,
       voteProgress,
+      playerVotedMapId,
     };
   },
 });

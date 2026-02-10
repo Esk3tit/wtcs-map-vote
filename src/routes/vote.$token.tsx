@@ -136,6 +136,7 @@ function PlayerVotingPage() {
     type: "ban" | "vote";
   } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [optimisticVotedMapId, setOptimisticVotedMapId] = useState<Id<"sessionMaps"> | null>(null);
 
   // Auto-redirect to results when session completes (hook before early returns)
   useEffect(() => {
@@ -167,6 +168,25 @@ function PlayerVotingPage() {
       setPendingAction(null);
     }
   }, [data, pendingAction]);
+
+  // Clear optimistic vote indicator once server state confirms the same vote
+  useEffect(() => {
+    if (
+      data?.status === "valid" &&
+      optimisticVotedMapId &&
+      data.playerVotedMapId === optimisticVotedMapId
+    ) {
+      setOptimisticVotedMapId(null);
+    }
+  }, [data, optimisticVotedMapId]);
+
+  // Clear optimistic vote on round transition
+  useEffect(() => {
+    if (optimisticVotedMapId) {
+      setOptimisticVotedMapId(null);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.status === "valid" ? data.session.currentRound : undefined]);
 
   // Auth loading
   if (auth.status === "loading") {
@@ -263,6 +283,9 @@ function PlayerVotingPage() {
       const result: { status: string; error?: string } = await res.json();
 
       if (result.status === "ok") {
+        if (pendingAction.type === "vote") {
+          setOptimisticVotedMapId(pendingAction._id);
+        }
         setPendingAction(null);
       } else {
         toast.error(getVotingErrorMessage((result.error ?? "") as VotingErrorCode));
@@ -363,6 +386,9 @@ function PlayerVotingPage() {
               const bannedByPlayer = map.bannedByPlayerId
                 ? allPlayers.find((p) => p._id === map.bannedByPlayerId)
                 : null;
+              const isMyVote =
+                (map._id === data.playerVotedMapId || map._id === optimisticVotedMapId) &&
+                map.state === "AVAILABLE";
 
               return (
                 <Card
@@ -371,7 +397,7 @@ function PlayerVotingPage() {
                     map.state === "AVAILABLE" && isYourTurn && !isSubmitting
                       ? "cursor-pointer hover:ring-2 hover:ring-primary hover:shadow-lg hover:shadow-primary/20 active:ring-2 active:ring-primary"
                       : ""
-                  } ${map.state === "BANNED" ? "opacity-60" : ""} ${
+                  } ${isMyVote ? "ring-2 ring-amber-400 shadow-lg shadow-amber-400/20" : ""} ${map.state === "BANNED" ? "opacity-60" : ""} ${
                     isSubmitting ? "pointer-events-none opacity-80" : ""
                   }`}
                   onClick={() => {
@@ -407,6 +433,11 @@ function PlayerVotingPage() {
 
                   <div className="p-3">
                     <div className="font-semibold text-center">{map.name}</div>
+                    {isMyVote && (
+                      <div className="text-xs text-center text-amber-400 mt-1">
+                        Your vote
+                      </div>
+                    )}
                     {map.state === "BANNED" && bannedByPlayer && (
                       <div className="text-xs text-center text-muted-foreground mt-1">
                         Banned by {bannedByPlayer.teamName}
