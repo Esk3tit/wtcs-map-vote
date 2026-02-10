@@ -1,12 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from "react";
-
-const CONVEX_URL = import.meta.env.VITE_CONVEX_URL;
-if (!CONVEX_URL || typeof CONVEX_URL !== "string" || !CONVEX_URL.includes(".cloud")) {
-  throw new Error(
-    "VITE_CONVEX_URL must be set and contain '.cloud' for HTTP action URL derivation"
-  );
-}
-const SITE_URL = CONVEX_URL.replace(".cloud", ".site");
+import { SITE_URL } from "@/lib/convexHttp";
 
 // Heartbeat interval in milliseconds.
 // SYNC: Must be greater than HEARTBEAT_SKIP_MS (convex/lib/constants.ts, currently 15s)

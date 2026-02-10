@@ -16,12 +16,59 @@ import {
 } from "@/components/ui/alert-dialog";
 import { TokenErrorPage } from "@/components/session/TokenErrorPage";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
+import { SITE_URL } from "@/lib/convexHttp";
 import { Check, Lock, X, Loader2 } from "lucide-react";
+import { toast } from "sonner";
 import type { Id } from "../../convex/_generated/dataModel";
 
 export const Route = createFileRoute("/vote/$token")({
   component: PlayerVotingPage,
 });
+
+// Union type for all known voting error codes
+type VotingErrorCode =
+  | "NOT_YOUR_TURN"
+  | "MAP_UNAVAILABLE"
+  | "SESSION_NOT_IN_PROGRESS"
+  | "ALREADY_VOTED"
+  | "IP_MISMATCH"
+  | "INVALID_TOKEN"
+  | "TOKEN_EXPIRED"
+  | "SESSION_NOT_FOUND"
+  | "FORMAT_NOT_ABBA"
+  | "FORMAT_NOT_MULTIPLAYER"
+  | "INVALID_REQUEST"
+  | "INVALID_IP";
+
+// Map backend error codes to user-friendly messages
+function getVotingErrorMessage(error: VotingErrorCode): string {
+  switch (error) {
+    case "NOT_YOUR_TURN":
+      return "It's not your turn";
+    case "MAP_UNAVAILABLE":
+      return "This map is no longer available";
+    case "SESSION_NOT_IN_PROGRESS":
+      return "Session is no longer active";
+    case "ALREADY_VOTED":
+      return "You already voted this round";
+    case "IP_MISMATCH":
+      return "Session is locked to another device";
+    case "INVALID_TOKEN":
+    case "TOKEN_EXPIRED":
+      return "Your session has expired. Please refresh.";
+    case "SESSION_NOT_FOUND":
+      return "Session not found. It may have been deleted.";
+    case "FORMAT_NOT_ABBA":
+    case "FORMAT_NOT_MULTIPLAYER":
+      return "Invalid action for this session format";
+    case "INVALID_REQUEST":
+      return "Invalid request. Please refresh and try again.";
+    case "INVALID_IP":
+      return "Session is locked to another device";
+    default:
+      return "Something went wrong. Please try again.";
+  }
+}
 
 // Helper function to calculate remaining time from server timestamp
 function calculateRemainingTime(
@@ -83,10 +130,12 @@ function PlayerVotingPage() {
     auth.status === "authenticated" ? { token } : "skip"
   );
 
-  const [confirmBanMap, setConfirmBanMap] = useState<{
+  const [pendingAction, setPendingAction] = useState<{
     _id: Id<"sessionMaps">;
     name: string;
+    type: "ban" | "vote";
   } | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Auto-redirect to results when session completes (hook before early returns)
   useEffect(() => {
@@ -102,6 +151,22 @@ function PlayerVotingPage() {
       }
     }
   }, [data, navigate, token]);
+
+  // Auto-dismiss dialog when the selected map is no longer available (e.g. opponent banned it)
+  useEffect(() => {
+    if (!pendingAction || data?.status !== "valid") return;
+    const map = data.maps.find((m) => m._id === pendingAction._id);
+    if (!map || map.state !== "AVAILABLE") {
+      setPendingAction(null);
+    }
+  }, [data, pendingAction]);
+
+  // Auto-dismiss dialog when turn expires (server flips isYourTurn to false)
+  useEffect(() => {
+    if (pendingAction && data?.status === "valid" && !data.isYourTurn) {
+      setPendingAction(null);
+    }
+  }, [data, pendingAction]);
 
   // Auth loading
   if (auth.status === "loading") {
@@ -163,18 +228,51 @@ function PlayerVotingPage() {
 
   const currentStep = banSteps.findIndex((step) => !step.completed);
 
-  const handleBanMap = (mapId: Id<"sessionMaps">, mapName: string) => {
-    if (!isYourTurn) return;
-    setConfirmBanMap({ _id: mapId, name: mapName });
+  const handleMapClick = (mapId: Id<"sessionMaps">, mapName: string) => {
+    if (!isYourTurn || isSubmitting) return;
+
+    setPendingAction({
+      _id: mapId,
+      name: mapName,
+      type: session.format === "ABBA" ? "ban" : "vote",
+    });
   };
 
-  const confirmBan = () => {
-    if (!confirmBanMap) return;
+  const submitAction = async () => {
+    if (!pendingAction || isSubmitting) return;
 
-    // TODO: Call submitBan mutation (out of scope for WAR-11)
-    // For now, just close the dialog
-    console.log("Ban map:", confirmBanMap._id);
-    setConfirmBanMap(null);
+    const endpoint =
+      pendingAction.type === "ban"
+        ? "/api/player/submit-ban"
+        : "/api/player/submit-vote";
+
+    setIsSubmitting(true);
+    try {
+      const res = await fetch(`${SITE_URL}${endpoint}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token, mapId: pendingAction._id }),
+        signal: AbortSignal.timeout(10_000),
+      });
+
+      if (!res.ok) {
+        toast.error("Server error. Please try again.");
+        return;
+      }
+
+      const result: { status: string; error?: string } = await res.json();
+
+      if (result.status === "ok") {
+        setPendingAction(null);
+      } else {
+        toast.error(getVotingErrorMessage((result.error ?? "") as VotingErrorCode));
+      }
+    } catch (error) {
+      console.error("Vote submission failed:", error);
+      toast.error("Network error. Please try again.");
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   // Show paused state
@@ -270,13 +368,15 @@ function PlayerVotingPage() {
                 <Card
                   key={map._id}
                   className={`overflow-hidden transition-all duration-200 relative group ${
-                    map.state === "AVAILABLE" && isYourTurn
+                    map.state === "AVAILABLE" && isYourTurn && !isSubmitting
                       ? "cursor-pointer hover:ring-2 hover:ring-primary hover:shadow-lg hover:shadow-primary/20 active:ring-2 active:ring-primary"
                       : ""
-                  } ${map.state === "BANNED" ? "opacity-60" : ""}`}
+                  } ${map.state === "BANNED" ? "opacity-60" : ""} ${
+                    isSubmitting ? "pointer-events-none opacity-80" : ""
+                  }`}
                   onClick={() => {
-                    if (map.state === "AVAILABLE" && isYourTurn) {
-                      handleBanMap(map._id, map.name);
+                    if (map.state === "AVAILABLE" && isYourTurn && !isSubmitting) {
+                      handleMapClick(map._id, map.name);
                     }
                   }}
                 >
@@ -424,29 +524,49 @@ function PlayerVotingPage() {
         </div>
       </footer>
 
-      {/* Confirmation Dialog */}
+      {/* Confirmation Dialog (Ban / Vote) */}
       <AlertDialog
-        open={!!confirmBanMap}
-        onOpenChange={(open) => !open && setConfirmBanMap(null)}
+        open={!!pendingAction}
+        onOpenChange={(open) =>
+          !open && !isSubmitting && setPendingAction(null)
+        }
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Confirm Ban</AlertDialogTitle>
+            <AlertDialogTitle>
+              {pendingAction?.type === "ban" ? "Confirm Ban" : "Confirm Vote"}
+            </AlertDialogTitle>
             <AlertDialogDescription>
-              Are you sure you want to ban{" "}
+              {pendingAction?.type === "ban"
+                ? "Are you sure you want to ban "
+                : "Vote to eliminate "}
               <span className="font-semibold text-foreground">
-                {confirmBanMap?.name}
+                {pendingAction?.name}
               </span>
-              ? This action cannot be undone.
+              {pendingAction?.type === "ban"
+                ? "? This action cannot be undone."
+                : "? This cannot be changed."}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogCancel disabled={isSubmitting}>
+              Cancel
+            </AlertDialogCancel>
             <AlertDialogAction
-              onClick={confirmBan}
+              onClick={submitAction}
+              disabled={isSubmitting}
               className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
             >
-              Confirm Ban
+              {isSubmitting ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  {pendingAction?.type === "ban" ? "Banning..." : "Voting..."}
+                </>
+              ) : pendingAction?.type === "ban" ? (
+                "Confirm Ban"
+              ) : (
+                "Confirm Vote"
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
