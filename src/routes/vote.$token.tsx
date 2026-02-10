@@ -128,6 +128,22 @@ function PlayerVotingPage() {
     }
   }, [data, navigate, token]);
 
+  // Auto-dismiss dialog when the selected map is no longer available (e.g. opponent banned it)
+  useEffect(() => {
+    if (!pendingAction || data?.status !== "valid") return;
+    const map = data.maps.find((m) => m._id === pendingAction._id);
+    if (!map || map.state !== "AVAILABLE") {
+      setPendingAction(null);
+    }
+  }, [data, pendingAction]);
+
+  // Auto-dismiss dialog when turn expires (server flips isYourTurn to false)
+  useEffect(() => {
+    if (pendingAction && data?.status === "valid" && !data.isYourTurn) {
+      setPendingAction(null);
+    }
+  }, [data, pendingAction]);
+
   // Auth loading
   if (auth.status === "loading") {
     return (
