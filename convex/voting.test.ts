@@ -2202,11 +2202,11 @@ describe("voting.resolveRound", () => {
 
       const actions = logs.map((l) => l.action);
 
-      // Round 1: 3 VOTE_SUBMITTED + ROUND_REVOTE_TRIGGERED
+      // 6 total VOTE_SUBMITTED (3 from round 1 + 3 from revote round 2)
       expect(actions.filter((a) => a === "VOTE_SUBMITTED")).toHaveLength(6);
       expect(actions.filter((a) => a === "ROUND_REVOTE_TRIGGERED")).toHaveLength(1);
 
-      // Round 2: 3 VOTE_SUBMITTED + ROUND_RESOLVED + WINNER_DECLARED
+      // Resolution after revote round: ROUND_RESOLVED + WINNER_DECLARED
       expect(actions.filter((a) => a === "ROUND_RESOLVED")).toHaveLength(1);
       expect(actions.filter((a) => a === "WINNER_DECLARED")).toHaveLength(1);
     });
