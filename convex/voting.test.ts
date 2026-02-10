@@ -2400,73 +2400,28 @@ describe("WAR-20: large session", () => {
     expect(dbSession?.status).toBe("IN_PROGRESS");
     expect(dbSession?.currentRound).toBe(2);
 
-    // Round 2: players spread votes across maps 2-4 (3 maps banned, 3 remain)
-    await t.mutation(internal.voting.submitVote, {
-      token: session.players[0].token,
-      mapId: session.mapIds[1],
-      ipAddress: session.players[0].ip,
-    });
-    await t.mutation(internal.voting.submitVote, {
-      token: session.players[1].token,
-      mapId: session.mapIds[1],
-      ipAddress: session.players[1].ip,
-    });
-    await t.mutation(internal.voting.submitVote, {
-      token: session.players[2].token,
-      mapId: session.mapIds[2],
-      ipAddress: session.players[2].ip,
-    });
-    await t.mutation(internal.voting.submitVote, {
-      token: session.players[3].token,
-      mapId: session.mapIds[2],
-      ipAddress: session.players[3].ip,
-    });
-    await t.mutation(internal.voting.submitVote, {
-      token: session.players[4].token,
-      mapId: session.mapIds[3],
-      ipAddress: session.players[4].ip,
-    });
-    await t.mutation(internal.voting.submitVote, {
-      token: session.players[5].token,
-      mapId: session.mapIds[3],
-      ipAddress: session.players[5].ip,
-    });
+    // Round 2: pairs of players vote maps 2, 3, 4 (all 3 banned, 3 remain)
+    const round2Targets = [1, 1, 2, 2, 3, 3]; // mapIds index per player
+    for (let i = 0; i < session.players.length; i++) {
+      await t.mutation(internal.voting.submitVote, {
+        token: session.players[i].token,
+        mapId: session.mapIds[round2Targets[i]],
+        ipAddress: session.players[i].ip,
+      });
+    }
 
     dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
     expect(dbSession?.status).toBe("IN_PROGRESS");
     expect(dbSession?.currentRound).toBe(3);
 
     // 3 maps remain (indices 4, 5, 6). Round 3: all vote Map 5 → banned, 2 remain
-    await t.mutation(internal.voting.submitVote, {
-      token: session.players[0].token,
-      mapId: session.mapIds[4],
-      ipAddress: session.players[0].ip,
-    });
-    await t.mutation(internal.voting.submitVote, {
-      token: session.players[1].token,
-      mapId: session.mapIds[4],
-      ipAddress: session.players[1].ip,
-    });
-    await t.mutation(internal.voting.submitVote, {
-      token: session.players[2].token,
-      mapId: session.mapIds[4],
-      ipAddress: session.players[2].ip,
-    });
-    await t.mutation(internal.voting.submitVote, {
-      token: session.players[3].token,
-      mapId: session.mapIds[4],
-      ipAddress: session.players[3].ip,
-    });
-    await t.mutation(internal.voting.submitVote, {
-      token: session.players[4].token,
-      mapId: session.mapIds[4],
-      ipAddress: session.players[4].ip,
-    });
-    await t.mutation(internal.voting.submitVote, {
-      token: session.players[5].token,
-      mapId: session.mapIds[4],
-      ipAddress: session.players[5].ip,
-    });
+    for (const player of session.players) {
+      await t.mutation(internal.voting.submitVote, {
+        token: player.token,
+        mapId: session.mapIds[4],
+        ipAddress: player.ip,
+      });
+    }
 
     dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
     expect(dbSession?.status).toBe("IN_PROGRESS");
