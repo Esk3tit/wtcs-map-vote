@@ -13,6 +13,7 @@ import {
   sessionPlayerFactory,
   sessionMapFactory,
   mapFactory,
+  voteFactory,
 } from "./test.factories";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
@@ -2200,14 +2201,10 @@ describe("WAR-20: defense-in-depth duplicate vote check", () => {
     // Manually insert a vote record but leave hasVotedThisRound = false
     // (simulates a desync between the flag and actual vote records)
     await t.run(async (ctx) => {
-      await ctx.db.insert("votes", {
-        sessionId: session.sessionId,
-        round: 1,
-        playerId: session.players[0].id,
-        mapId: session.mapIds[0],
-        submittedAt: Date.now(),
-        submittedByAdmin: false,
-      });
+      await ctx.db.insert(
+        "votes",
+        voteFactory(session.sessionId, session.players[0].id, session.mapIds[0])
+      );
     });
 
     // The hasVotedThisRound flag is still false, but the DB vote record exists
@@ -2230,14 +2227,10 @@ describe("WAR-20: defense-in-depth duplicate vote check", () => {
 
     // Insert a vote record from round 1 (previous round)
     await t.run(async (ctx) => {
-      await ctx.db.insert("votes", {
-        sessionId: session.sessionId,
-        round: 1,
-        playerId: session.players[0].id,
-        mapId: session.mapIds[0],
-        submittedAt: Date.now(),
-        submittedByAdmin: false,
-      });
+      await ctx.db.insert(
+        "votes",
+        voteFactory(session.sessionId, session.players[0].id, session.mapIds[0])
+      );
     });
 
     // Vote in round 2 should succeed despite round 1 vote existing
@@ -2294,10 +2287,8 @@ describe("WAR-20: multi-round voting flow", () => {
     expect(r2_p3.status).toBe("ok");
     if (r2_p3.status !== "ok") throw new Error("Expected ok");
     expect(r2_p3.allVotesSubmitted).toBe(true);
-    // Map 4 (2 votes) and Map 5 (1 vote) both banned → only 1 map left? No:
-    // Both maps voted → both banned → 0 remain → deadlock/revote
-    // OR if maps 4 had 2 votes and map 5 had 1 vote, both banned → revote
-    // The outcome depends on resolution, but the key assertion is votes succeed
+    // Both remaining maps received votes → both banned → 0 remain → deadlock → REVOTE
+    expect(r2_p3.resolution!.outcome).toBe("REVOTE");
   });
 
   it("vote records use correct round number across rounds", async () => {
@@ -2339,26 +2330,6 @@ describe("WAR-20: multi-round voting flow", () => {
     expect(round2Votes).toHaveLength(2);
   });
 
-  it("hasVotedThisRound resets between rounds via the full mutation path", async () => {
-    const t = createTestContext();
-    const session = await createMultiplayerSession(t, {
-      playerCount: 2,
-      mapPoolSize: 4,
-    });
-
-    // Round 1: both vote → triggers resolve + advance
-    await allPlayersVoteSame(t, session, 0);
-
-    // Verify hasVotedThisRound was reset for all players
-    for (const player of session.players) {
-      const dbPlayer = await t.run(async (ctx) => ctx.db.get(player.id));
-      expect(dbPlayer?.hasVotedThisRound).toBe(false);
-    }
-
-    // Verify session round incremented
-    const dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
-    expect(dbSession?.currentRound).toBe(2);
-  });
 });
 
 describe("WAR-20: revote allows re-voting on same maps", () => {

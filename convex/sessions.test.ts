@@ -5079,9 +5079,8 @@ describe("WAR-20: playerVotedMapId in getSessionByToken", () => {
 
     const result = await t.query(api.sessions.getSessionByToken, { token });
     expect(result.status).toBe("valid");
-    if (result.status === "valid") {
-      expect(result.playerVotedMapId).toBeUndefined();
-    }
+    if (result.status !== "valid") throw new Error("Expected valid");
+    expect(result.playerVotedMapId).toBeUndefined();
   });
 
   it("returns the voted map ID after player votes", async () => {
@@ -5124,9 +5123,8 @@ describe("WAR-20: playerVotedMapId in getSessionByToken", () => {
 
     const result = await t.query(api.sessions.getSessionByToken, { token });
     expect(result.status).toBe("valid");
-    if (result.status === "valid") {
-      expect(result.playerVotedMapId).toBe(sessionMapId);
-    }
+    if (result.status !== "valid") throw new Error("Expected valid");
+    expect(result.playerVotedMapId).toBe(sessionMapId);
   });
 
   it("returns undefined for new round when vote exists only in previous round", async () => {
@@ -5167,9 +5165,8 @@ describe("WAR-20: playerVotedMapId in getSessionByToken", () => {
 
     const result = await t.query(api.sessions.getSessionByToken, { token });
     expect(result.status).toBe("valid");
-    if (result.status === "valid") {
-      expect(result.playerVotedMapId).toBeUndefined();
-    }
+    if (result.status !== "valid") throw new Error("Expected valid");
+    expect(result.playerVotedMapId).toBeUndefined();
   });
 
   it("returns undefined for ABBA format", async () => {
@@ -5203,8 +5200,7 @@ describe("WAR-20: playerVotedMapId in getSessionByToken", () => {
 
     const result = await t.query(api.sessions.getSessionByToken, { token });
     expect(result.status).toBe("valid");
-    if (result.status === "valid") {
-      expect(result.playerVotedMapId).toBeUndefined();
-    }
+    if (result.status !== "valid") throw new Error("Expected valid");
+    expect(result.playerVotedMapId).toBeUndefined();
   });
 });
