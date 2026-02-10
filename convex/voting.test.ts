@@ -2353,7 +2353,9 @@ describe("WAR-20: defense-in-depth duplicate vote check", () => {
     await t.run(async (ctx) => {
       await ctx.db.insert(
         "votes",
-        voteFactory(session.sessionId, session.players[0].id, session.mapIds[0])
+        voteFactory(session.sessionId, session.players[0].id, session.mapIds[0], {
+          round: 1,
+        })
       );
     });
 
