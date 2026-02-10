@@ -136,7 +136,7 @@ function PlayerVotingPage() {
     type: "ban" | "vote";
   } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [optimisticVotedMapId, setOptimisticVotedMapId] = useState<string | null>(null);
+  const [optimisticVotedMapId, setOptimisticVotedMapId] = useState<Id<"sessionMaps"> | null>(null);
 
   // Auto-redirect to results when session completes (hook before early returns)
   useEffect(() => {
@@ -279,7 +279,9 @@ function PlayerVotingPage() {
       const result: { status: string; error?: string } = await res.json();
 
       if (result.status === "ok") {
-        setOptimisticVotedMapId(pendingAction._id);
+        if (pendingAction.type === "vote") {
+          setOptimisticVotedMapId(pendingAction._id);
+        }
         setPendingAction(null);
       } else {
         toast.error(getVotingErrorMessage((result.error ?? "") as VotingErrorCode));
