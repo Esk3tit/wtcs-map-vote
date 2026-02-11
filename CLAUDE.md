@@ -317,6 +317,7 @@ Reusable modules in `convex/lib/`:
 | `cascadeDelete.ts` | Atomic cascade delete for sessions and related data |
 | `types.ts` | Shared TypeScript types (`PlayerRole`, `AuditAction`) |
 | `imageConstants.ts` | Image upload constraints (max size, allowed types) |
+| `sessionLifecycle.ts` | Session state transition helpers (`validateTransition`, `guardFinalize`, `guardStart`, `transitionSession`) |
 | `auth.ts` | Admin auth helpers (`getCurrentAdmin`, `requireAdmin`, `requireRootAdmin`) |
 
 **Always check for existing utilities** before creating new validation or helper functions.

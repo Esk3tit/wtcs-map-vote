@@ -156,16 +156,25 @@ The database schema is fully implemented in `convex/schema.ts`. See [SPECIFICATI
 ┌──────────┐     ┌─────────┐     ┌─────────────┐     ┌──────────┐
 │  DRAFT   │────▶│ WAITING │────▶│ IN_PROGRESS │────▶│ COMPLETE │
 └──────────┘     └─────────┘     └─────────────┘     └──────────┘
-     │                │                 │
-     │                │                 ▼
-     │                │          ┌──────────┐
-     │                └─────────▶│  PAUSED  │
-     │                           └──────────┘
-     ▼
-┌──────────┐
-│ EXPIRED  │  (2 weeks without starting)
-└──────────┘
+     │                │                 │  ▲               │
+     │                │                 ▼  │               │
+     │                │          ┌──────────┐              │
+     │                └─────────▶│  PAUSED  │              │
+     │                           └──────────┘              │
+     ▼                                                     ▼
+┌──────────┐                                        ┌─────────┐
+│ EXPIRED  │  (terminal)                            │  RESET  │
+└──────────┘                                        │WAITING ◀┘
+                                                    └─────────┘
 ```
+
+**Transition rules** (enforced by `convex/lib/sessionLifecycle.ts`):
+- DRAFT → WAITING (finalize), COMPLETE (force-end)
+- WAITING → IN_PROGRESS (start), COMPLETE (force-end)
+- IN_PROGRESS → PAUSED (pause), COMPLETE (force-end/natural end)
+- PAUSED → IN_PROGRESS (resume), COMPLETE (force-end)
+- COMPLETE → WAITING (session reset)
+- EXPIRED → (terminal, no transitions)
 
 ---
 

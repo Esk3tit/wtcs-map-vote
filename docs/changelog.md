@@ -6,6 +6,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.10.0] - 2026-02-11 - Phase 5: Session Lifecycle Helpers (WAR-37, PR #59)
+
+### Added
+- **Session state transition map** — `VALID_TRANSITIONS` in `convex/lib/constants.ts` defines all valid state transitions across 6 statuses (DRAFT, WAITING, IN_PROGRESS, PAUSED, COMPLETE, EXPIRED)
+- **`validateTransition`** — Pure function that throws `ConvexError` with descriptive message on invalid transitions, including terminal state detection
+- **`guardFinalize`** — Async guard for DRAFT→WAITING checking player count and map pool size
+- **`guardStart`** — Async guard for WAITING→IN_PROGRESS checking player count and connectivity (IP activation)
+- **`transitionSession`** — Atomic helper that validates transition, patches session, and logs audit event in a single Convex transaction
+- **`SessionStatePatches` type** — Narrowed type restricting patchable fields to 8 runtime state fields only
+- **`TransitionOptions` interface** — Options object pattern for `transitionSession` (auditAction, actorType, actorId, patches, auditDetails)
+- **`SESSION_RESET_PATCHES`** — Predefined reset patches for COMPLETE→WAITING session reset (for WAR-45)
+- **New audit actions** — `SESSION_RESET` and `SESSION_CLONED` added to `AuditAction` type and validators
+- **60 unit tests** — Full coverage for transition validation, guard functions, atomic transitions, edge cases
+
+---
+
 ## [0.9.0] - 2026-02-11 - Phase 4: Voting Module
 
 Complete voting system for both ABBA (2-player ban) and Multiplayer (simultaneous voting) formats. Includes backend mutations, HTTP endpoints, round resolution with deadlock handling, frontend wiring, vote confirmation UI, GDPR compliance, and comprehensive test coverage (100+ voting tests).
