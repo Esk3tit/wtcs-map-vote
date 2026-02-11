@@ -5172,3 +5172,790 @@ describe("WAR-20: playerVotedMapId in getSessionByToken", () => {
     expect(result.playerVotedMapId).toBeUndefined();
   });
 });
+
+// ============================================================================
+// Lifecycle Mutation Tests
+// ============================================================================
+
+/**
+ * Creates a DRAFT session with the correct number of players and maps
+ * for finalize guard testing.
+ */
+async function createFinalizableSession(
+  overrides: { playerCount?: number; mapPoolSize?: number } = {}
+) {
+  const playerCount = overrides.playerCount ?? 2;
+  const mapPoolSize = overrides.mapPoolSize ?? 5;
+  const { t, authT, adminId } = await createAuthenticatedAdmin();
+
+  const sessionId = await t.run(async (ctx) => {
+    const sessionId = await ctx.db.insert(
+      "sessions",
+      sessionFactory(adminId, {
+        status: "DRAFT",
+        playerCount,
+        mapPoolSize,
+      })
+    );
+
+    // Create master maps
+    const masterMapIds = await Promise.all(
+      Array.from({ length: mapPoolSize }, (_, i) =>
+        ctx.db.insert("maps", mapFactory({ name: `Map ${i + 1}` }))
+      )
+    );
+
+    // Create session players
+    await Promise.all(
+      Array.from({ length: playerCount }, (_, i) =>
+        ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            teamName: `Team ${i + 1}`,
+            isConnected: false,
+          })
+        )
+      )
+    );
+
+    // Create session maps
+    await Promise.all(
+      masterMapIds.map((mapId, i) =>
+        ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, mapId, { name: `Map ${i + 1}` })
+        )
+      )
+    );
+
+    return sessionId;
+  });
+
+  return { t, authT, adminId, sessionId };
+}
+
+/**
+ * Creates a WAITING session with all players connected, ready to start.
+ */
+async function createStartableSession() {
+  const { t, authT, adminId } = await createAuthenticatedAdmin();
+
+  const sessionId = await t.run(async (ctx) => {
+    const sessionId = await ctx.db.insert(
+      "sessions",
+      sessionFactory(adminId, {
+        status: "WAITING",
+        playerCount: 2,
+        mapPoolSize: 5,
+      })
+    );
+
+    // Create connected players
+    await Promise.all([
+      ctx.db.insert(
+        "sessionPlayers",
+        sessionPlayerFactory(sessionId, {
+          teamName: "Team Alpha",
+          isConnected: true,
+        })
+      ),
+      ctx.db.insert(
+        "sessionPlayers",
+        sessionPlayerFactory(sessionId, {
+          teamName: "Team Beta",
+          isConnected: true,
+        })
+      ),
+    ]);
+
+    return sessionId;
+  });
+
+  return { t, authT, adminId, sessionId };
+}
+
+// ============================================================================
+// finalizeSession Tests (WAR-38)
+// ============================================================================
+
+describe("sessions.finalizeSession", () => {
+  it("transitions DRAFT → WAITING with correct player/map counts", async () => {
+    const { t, authT, sessionId } = await createFinalizableSession();
+
+    const result = await authT.mutation(api.sessions.finalizeSession, {
+      sessionId,
+    });
+    expect(result.success).toBe(true);
+
+    const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+    expect(session?.status).toBe("WAITING");
+  });
+
+  it("creates audit log with SESSION_FINALIZED action", async () => {
+    const { t, authT, sessionId } = await createFinalizableSession();
+
+    await authT.mutation(api.sessions.finalizeSession, { sessionId });
+
+    const auditLogs = await t.run(async (ctx) =>
+      ctx.db
+        .query("auditLogs")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+        .collect()
+    );
+    const finalizeLog = auditLogs.find(
+      (l) => l.action === "SESSION_FINALIZED"
+    );
+    expect(finalizeLog).toBeDefined();
+    expect(finalizeLog?.actorType).toBe("ADMIN");
+  });
+
+  it("rejects when players are missing", async () => {
+    const { t, authT, adminId } = await createAuthenticatedAdmin();
+
+    const sessionId = await t.run(async (ctx) => {
+      const sessionId = await ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, {
+          status: "DRAFT",
+          playerCount: 2,
+          mapPoolSize: 5,
+        })
+      );
+
+      // Only add 1 player (need 2)
+      await ctx.db.insert(
+        "sessionPlayers",
+        sessionPlayerFactory(sessionId, { teamName: "Team Solo" })
+      );
+
+      // Add all 5 maps
+      const masterMapIds = await Promise.all(
+        Array.from({ length: 5 }, (_, i) =>
+          ctx.db.insert("maps", mapFactory({ name: `Map ${i + 1}` }))
+        )
+      );
+      await Promise.all(
+        masterMapIds.map((mapId, i) =>
+          ctx.db.insert(
+            "sessionMaps",
+            sessionMapFactory(sessionId, mapId, { name: `Map ${i + 1}` })
+          )
+        )
+      );
+
+      return sessionId;
+    });
+
+    await expect(
+      authT.mutation(api.sessions.finalizeSession, { sessionId })
+    ).rejects.toThrow(/1 of 2 players assigned/);
+  });
+
+  it("rejects when maps are missing", async () => {
+    const { t, authT, adminId } = await createAuthenticatedAdmin();
+
+    const sessionId = await t.run(async (ctx) => {
+      const sessionId = await ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, {
+          status: "DRAFT",
+          playerCount: 2,
+          mapPoolSize: 5,
+        })
+      );
+
+      // Add 2 players (correct)
+      await Promise.all([
+        ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, { teamName: "Team A" })
+        ),
+        ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, { teamName: "Team B" })
+        ),
+      ]);
+
+      // Only add 3 maps (need 5)
+      const masterMapIds = await Promise.all(
+        Array.from({ length: 3 }, (_, i) =>
+          ctx.db.insert("maps", mapFactory({ name: `Map ${i + 1}` }))
+        )
+      );
+      await Promise.all(
+        masterMapIds.map((mapId, i) =>
+          ctx.db.insert(
+            "sessionMaps",
+            sessionMapFactory(sessionId, mapId, { name: `Map ${i + 1}` })
+          )
+        )
+      );
+
+      return sessionId;
+    });
+
+    await expect(
+      authT.mutation(api.sessions.finalizeSession, { sessionId })
+    ).rejects.toThrow(/3 of 5 maps assigned/);
+  });
+
+  it("rejects wrong status (WAITING → WAITING invalid)", async () => {
+    const { authT, sessionId } = await createAuthenticatedSessionInStatus(
+      "WAITING"
+    );
+
+    await expect(
+      authT.mutation(api.sessions.finalizeSession, { sessionId })
+    ).rejects.toThrow(/Cannot transition from WAITING/);
+  });
+
+  it("throws when session not found", async () => {
+    const { t, authT } = await createAuthenticatedAdmin();
+    const deletedId = await createDeletedSessionId(t);
+
+    await expect(
+      authT.mutation(api.sessions.finalizeSession, { sessionId: deletedId })
+    ).rejects.toThrow(/Session not found/);
+  });
+
+  it("throws when not authenticated", async () => {
+    const t = createTestContext();
+
+    const sessionId = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert("admins", adminFactory());
+      return ctx.db.insert("sessions", sessionFactory(adminId));
+    });
+
+    await expect(
+      t.mutation(api.sessions.finalizeSession, { sessionId })
+    ).rejects.toThrow(/Authentication required/);
+  });
+});
+
+// ============================================================================
+// startSession Tests (WAR-39)
+// ============================================================================
+
+describe("sessions.startSession", () => {
+  it("transitions WAITING → IN_PROGRESS with all players connected", async () => {
+    const { t, authT, sessionId } = await createStartableSession();
+
+    const result = await authT.mutation(api.sessions.startSession, {
+      sessionId,
+    });
+    expect(result.success).toBe(true);
+
+    const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+    expect(session?.status).toBe("IN_PROGRESS");
+  });
+
+  it("sets startedAt and timerStartedAt to current timestamp", async () => {
+    const { t, authT, sessionId } = await createStartableSession();
+
+    const before = Date.now();
+    await authT.mutation(api.sessions.startSession, { sessionId });
+    const after = Date.now();
+
+    const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+    expect(session?.startedAt).toBeGreaterThanOrEqual(before);
+    expect(session?.startedAt).toBeLessThanOrEqual(after);
+    expect(session?.timerStartedAt).toBe(session?.startedAt);
+  });
+
+  it("sets currentTurn to 0 and currentRound to 1", async () => {
+    const { t, authT, sessionId } = await createStartableSession();
+
+    await authT.mutation(api.sessions.startSession, { sessionId });
+
+    const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+    expect(session?.currentTurn).toBe(0);
+    expect(session?.currentRound).toBe(1);
+  });
+
+  it("creates audit log with SESSION_STARTED action", async () => {
+    const { t, authT, sessionId } = await createStartableSession();
+
+    await authT.mutation(api.sessions.startSession, { sessionId });
+
+    const auditLogs = await t.run(async (ctx) =>
+      ctx.db
+        .query("auditLogs")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+        .collect()
+    );
+    const startLog = auditLogs.find((l) => l.action === "SESSION_STARTED");
+    expect(startLog).toBeDefined();
+    expect(startLog?.actorType).toBe("ADMIN");
+  });
+
+  it("rejects when players are disconnected", async () => {
+    const { t, authT, adminId } = await createAuthenticatedAdmin();
+
+    const sessionId = await t.run(async (ctx) => {
+      const sessionId = await ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, {
+          status: "WAITING",
+          playerCount: 2,
+        })
+      );
+
+      await Promise.all([
+        ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            teamName: "Team Alpha",
+            isConnected: true,
+          })
+        ),
+        ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            teamName: "Team Beta",
+            isConnected: false,
+          })
+        ),
+      ]);
+
+      return sessionId;
+    });
+
+    await expect(
+      authT.mutation(api.sessions.startSession, { sessionId })
+    ).rejects.toThrow(/not connected.*Team Beta/);
+  });
+
+  it("rejects wrong status (DRAFT → IN_PROGRESS invalid)", async () => {
+    const { authT, sessionId } = await createAuthenticatedSessionInStatus(
+      "DRAFT"
+    );
+
+    await expect(
+      authT.mutation(api.sessions.startSession, { sessionId })
+    ).rejects.toThrow(/Cannot transition from DRAFT to IN_PROGRESS/);
+  });
+
+  it("throws when session not found", async () => {
+    const { t, authT } = await createAuthenticatedAdmin();
+    const deletedId = await createDeletedSessionId(t);
+
+    await expect(
+      authT.mutation(api.sessions.startSession, { sessionId: deletedId })
+    ).rejects.toThrow(/Session not found/);
+  });
+});
+
+// ============================================================================
+// pauseSession Tests (WAR-40)
+// ============================================================================
+
+describe("sessions.pauseSession", () => {
+  it("transitions IN_PROGRESS → PAUSED", async () => {
+    const { t, authT, sessionId } = await createAuthenticatedSessionInStatus(
+      "IN_PROGRESS"
+    );
+
+    const result = await authT.mutation(api.sessions.pauseSession, {
+      sessionId,
+    });
+    expect(result.success).toBe(true);
+
+    const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+    expect(session?.status).toBe("PAUSED");
+  });
+
+  it("sets timerPausedAt to current timestamp", async () => {
+    const { t, authT, sessionId } = await createAuthenticatedSessionInStatus(
+      "IN_PROGRESS"
+    );
+
+    const before = Date.now();
+    await authT.mutation(api.sessions.pauseSession, { sessionId });
+    const after = Date.now();
+
+    const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+    expect(session?.timerPausedAt).toBeGreaterThanOrEqual(before);
+    expect(session?.timerPausedAt).toBeLessThanOrEqual(after);
+  });
+
+  it("records optional reason in audit details", async () => {
+    const { t, authT, sessionId } = await createAuthenticatedSessionInStatus(
+      "IN_PROGRESS"
+    );
+
+    await authT.mutation(api.sessions.pauseSession, {
+      sessionId,
+      reason: "Player disconnected",
+    });
+
+    const auditLogs = await t.run(async (ctx) =>
+      ctx.db
+        .query("auditLogs")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+        .collect()
+    );
+    const pauseLog = auditLogs.find((l) => l.action === "SESSION_PAUSED");
+    expect(pauseLog).toBeDefined();
+    expect(pauseLog?.details?.reason).toBe("Player disconnected");
+  });
+
+  it("creates audit log without reason when not provided", async () => {
+    const { t, authT, sessionId } = await createAuthenticatedSessionInStatus(
+      "IN_PROGRESS"
+    );
+
+    await authT.mutation(api.sessions.pauseSession, { sessionId });
+
+    const auditLogs = await t.run(async (ctx) =>
+      ctx.db
+        .query("auditLogs")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+        .collect()
+    );
+    const pauseLog = auditLogs.find((l) => l.action === "SESSION_PAUSED");
+    expect(pauseLog).toBeDefined();
+    expect(pauseLog?.actorType).toBe("ADMIN");
+  });
+
+  it("rejects wrong status (WAITING → PAUSED invalid)", async () => {
+    const { authT, sessionId } = await createAuthenticatedSessionInStatus(
+      "WAITING"
+    );
+
+    await expect(
+      authT.mutation(api.sessions.pauseSession, { sessionId })
+    ).rejects.toThrow(/Cannot transition from WAITING/);
+  });
+
+  it("throws when session not found", async () => {
+    const { t, authT } = await createAuthenticatedAdmin();
+    const deletedId = await createDeletedSessionId(t);
+
+    await expect(
+      authT.mutation(api.sessions.pauseSession, { sessionId: deletedId })
+    ).rejects.toThrow(/Session not found/);
+  });
+});
+
+// ============================================================================
+// resumeSession Tests (WAR-40)
+// ============================================================================
+
+describe("sessions.resumeSession", () => {
+  it("transitions PAUSED → IN_PROGRESS", async () => {
+    const { t, authT, sessionId } = await createAuthenticatedSessionInStatus(
+      "PAUSED"
+    );
+
+    const result = await authT.mutation(api.sessions.resumeSession, {
+      sessionId,
+    });
+    expect(result.success).toBe(true);
+
+    const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+    expect(session?.status).toBe("IN_PROGRESS");
+  });
+
+  it("preserves remaining timer via arithmetic", async () => {
+    const { t, authT, adminId } = await createAuthenticatedAdmin();
+
+    // Set up session with known timer values:
+    // timerStartedAt = 1000, timerPausedAt = 1012000 (12s elapsed)
+    const sessionId = await t.run(async (ctx) =>
+      ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, {
+          status: "PAUSED",
+        })
+      )
+    );
+
+    // Patch timer fields directly (factory doesn't support these optional fields)
+    await t.run(async (ctx) => {
+      await ctx.db.patch(sessionId, {
+        timerStartedAt: 1000,
+        timerPausedAt: 13000, // 12 seconds elapsed
+      });
+    });
+
+    const beforeResume = Date.now();
+    await authT.mutation(api.sessions.resumeSession, { sessionId });
+
+    const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+
+    // Elapsed was 13000 - 1000 = 12000ms
+    // adjustedTimerStart = now - 12000
+    // So timerStartedAt should be roughly (beforeResume - 12000)
+    expect(session?.timerStartedAt).toBeDefined();
+    const expectedStart = beforeResume - 12000;
+    // Allow small timing tolerance (mutation executes ~within 100ms)
+    expect(Math.abs(session!.timerStartedAt! - expectedStart)).toBeLessThan(
+      200
+    );
+  });
+
+  it("clears timerPausedAt to undefined", async () => {
+    const { t, authT, adminId } = await createAuthenticatedAdmin();
+
+    const sessionId = await t.run(async (ctx) => {
+      const id = await ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, { status: "PAUSED" })
+      );
+      await ctx.db.patch(id, {
+        timerStartedAt: 1000,
+        timerPausedAt: 5000,
+      });
+      return id;
+    });
+
+    await authT.mutation(api.sessions.resumeSession, { sessionId });
+
+    const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+    expect(session?.timerPausedAt).toBeUndefined();
+  });
+
+  it("resets isRevoteRound to false (schema.ts TODO)", async () => {
+    const { t, authT, adminId } = await createAuthenticatedAdmin();
+
+    const sessionId = await t.run(async (ctx) => {
+      const id = await ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, { status: "PAUSED", isRevoteRound: true })
+      );
+      await ctx.db.patch(id, {
+        timerStartedAt: 1000,
+        timerPausedAt: 5000,
+      });
+      return id;
+    });
+
+    await authT.mutation(api.sessions.resumeSession, { sessionId });
+
+    const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+    expect(session?.isRevoteRound).toBe(false);
+  });
+
+  it("handles null timer fields safely (defaults to 0 elapsed)", async () => {
+    const { t, authT, sessionId } = await createAuthenticatedSessionInStatus(
+      "PAUSED"
+    );
+
+    // Session created without timerStartedAt/timerPausedAt (both undefined)
+    const before = Date.now();
+    await authT.mutation(api.sessions.resumeSession, { sessionId });
+    const after = Date.now();
+
+    const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+    // With both undefined, elapsed = (now - now) = 0, so timerStartedAt ≈ now
+    expect(session?.timerStartedAt).toBeGreaterThanOrEqual(before);
+    expect(session?.timerStartedAt).toBeLessThanOrEqual(after);
+  });
+
+  it("creates audit log with SESSION_RESUMED action", async () => {
+    const { t, authT, sessionId } = await createAuthenticatedSessionInStatus(
+      "PAUSED"
+    );
+
+    await authT.mutation(api.sessions.resumeSession, { sessionId });
+
+    const auditLogs = await t.run(async (ctx) =>
+      ctx.db
+        .query("auditLogs")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+        .collect()
+    );
+    const resumeLog = auditLogs.find((l) => l.action === "SESSION_RESUMED");
+    expect(resumeLog).toBeDefined();
+    expect(resumeLog?.actorType).toBe("ADMIN");
+  });
+
+  it("rejects wrong status (IN_PROGRESS → IN_PROGRESS invalid)", async () => {
+    const { authT, sessionId } = await createAuthenticatedSessionInStatus(
+      "IN_PROGRESS"
+    );
+
+    await expect(
+      authT.mutation(api.sessions.resumeSession, { sessionId })
+    ).rejects.toThrow(/Cannot transition from IN_PROGRESS/);
+  });
+
+  it("throws when session not found", async () => {
+    const { t, authT } = await createAuthenticatedAdmin();
+    const deletedId = await createDeletedSessionId(t);
+
+    await expect(
+      authT.mutation(api.sessions.resumeSession, { sessionId: deletedId })
+    ).rejects.toThrow(/Session not found/);
+  });
+});
+
+// ============================================================================
+// endSession Tests (WAR-41)
+// ============================================================================
+
+describe("sessions.endSession", () => {
+  it("force-ends from DRAFT → COMPLETE", async () => {
+    const { t, authT, sessionId } = await createAuthenticatedSessionInStatus(
+      "DRAFT"
+    );
+
+    const result = await authT.mutation(api.sessions.endSession, {
+      sessionId,
+    });
+
+    expect(result.success).toBe(true);
+
+    const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+    expect(session?.status).toBe("COMPLETE");
+  });
+
+  it("force-ends from WAITING → COMPLETE", async () => {
+    const { t, authT, sessionId } = await createAuthenticatedSessionInStatus(
+      "WAITING"
+    );
+
+    const result = await authT.mutation(api.sessions.endSession, {
+      sessionId,
+    });
+
+    expect(result.success).toBe(true);
+
+    const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+    expect(session?.status).toBe("COMPLETE");
+  });
+
+  it("force-ends from IN_PROGRESS → COMPLETE", async () => {
+    const { t, authT, sessionId } = await createAuthenticatedSessionInStatus(
+      "IN_PROGRESS"
+    );
+
+    const result = await authT.mutation(api.sessions.endSession, {
+      sessionId,
+    });
+
+    expect(result.success).toBe(true);
+
+    const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+    expect(session?.status).toBe("COMPLETE");
+  });
+
+  it("force-ends from PAUSED → COMPLETE", async () => {
+    const { t, authT, sessionId } = await createAuthenticatedSessionInStatus(
+      "PAUSED"
+    );
+
+    const result = await authT.mutation(api.sessions.endSession, {
+      sessionId,
+    });
+
+    expect(result.success).toBe(true);
+
+    const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+    expect(session?.status).toBe("COMPLETE");
+  });
+
+  it("sets completedAt and clears timer fields", async () => {
+    const { t, authT, adminId } = await createAuthenticatedAdmin();
+
+    const sessionId = await t.run(async (ctx) => {
+      const id = await ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, { status: "IN_PROGRESS" })
+      );
+      await ctx.db.patch(id, {
+        timerStartedAt: 1000,
+        timerPausedAt: 5000,
+      });
+      return id;
+    });
+
+    const before = Date.now();
+    await authT.mutation(api.sessions.endSession, { sessionId });
+
+    const after = Date.now();
+
+    const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+    expect(session?.completedAt).toBeGreaterThanOrEqual(before);
+    expect(session?.completedAt).toBeLessThanOrEqual(after);
+    expect(session?.timerStartedAt).toBeUndefined();
+    expect(session?.timerPausedAt).toBeUndefined();
+  });
+
+  it("does NOT set winnerMapId", async () => {
+    const { t, authT, sessionId } = await createAuthenticatedSessionInStatus(
+      "IN_PROGRESS"
+    );
+
+    await authT.mutation(api.sessions.endSession, { sessionId });
+
+
+    const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+    expect(session?.winnerMapId).toBeUndefined();
+  });
+
+  it("rejects already-COMPLETE session", async () => {
+    const { authT, sessionId } = await createAuthenticatedSessionInStatus(
+      "COMPLETE"
+    );
+
+    await expect(
+      authT.mutation(api.sessions.endSession, { sessionId })
+    ).rejects.toThrow(/Cannot transition from COMPLETE/);
+  });
+
+  it("rejects EXPIRED session (terminal state)", async () => {
+    const { authT, sessionId } = await createAuthenticatedSessionInStatus(
+      "EXPIRED"
+    );
+
+    await expect(
+      authT.mutation(api.sessions.endSession, { sessionId })
+    ).rejects.toThrow(/terminal state/);
+  });
+
+  it("creates audit log with SESSION_ENDED and reason ADMIN_FORCE_END", async () => {
+    const { t, authT, sessionId } = await createAuthenticatedSessionInStatus(
+      "IN_PROGRESS"
+    );
+
+    await authT.mutation(api.sessions.endSession, { sessionId });
+
+
+    const auditLogs = await t.run(async (ctx) =>
+      ctx.db
+        .query("auditLogs")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+        .collect()
+    );
+    const endLog = auditLogs.find((l) => l.action === "SESSION_ENDED");
+    expect(endLog).toBeDefined();
+    expect(endLog?.actorType).toBe("ADMIN");
+    expect(endLog?.details?.reason).toBe("ADMIN_FORCE_END");
+  });
+
+  it("throws when session not found", async () => {
+    const { t, authT } = await createAuthenticatedAdmin();
+    const deletedId = await createDeletedSessionId(t);
+
+    await expect(
+      authT.mutation(api.sessions.endSession, { sessionId: deletedId })
+    ).rejects.toThrow(/Session not found/);
+  });
+
+  it("throws when not authenticated", async () => {
+    const t = createTestContext();
+
+    const sessionId = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert("admins", adminFactory());
+      return ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, { status: "IN_PROGRESS" })
+      );
+    });
+
+    await expect(
+      t.mutation(api.sessions.endSession, { sessionId })
+    ).rejects.toThrow(/Authentication required/);
+  });
+});

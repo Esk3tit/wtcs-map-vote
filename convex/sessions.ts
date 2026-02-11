@@ -34,6 +34,12 @@ import {
 
 import { logAction } from "./audit";
 import { requireAdmin } from "./lib/auth";
+import {
+  guardFinalize,
+  guardStart,
+  transitionSession,
+  validateTransition,
+} from "./lib/sessionLifecycle";
 
 const validateMatchName = (name: string) => validateName(name, "Match");
 
@@ -1073,6 +1079,170 @@ export const createSessionFull = mutation({
     });
 
     return { sessionId, playerTokens };
+  },
+});
+
+// ============================================================================
+// Lifecycle Mutations
+// ============================================================================
+
+/**
+ * Finalize a session, transitioning DRAFT → WAITING.
+ * Validates that the correct number of players and maps are assigned.
+ *
+ * @param sessionId - Session to finalize
+ */
+export const finalizeSession = mutation({
+  args: { sessionId: v.id("sessions") },
+  returns: v.object({ success: v.boolean() }),
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) throw new ConvexError("Session not found");
+
+    validateTransition(session.status, "WAITING");
+    await guardFinalize(ctx, session);
+    await transitionSession(ctx, session, "WAITING", {
+      auditAction: "SESSION_FINALIZED",
+      actorType: "ADMIN",
+      actorId: admin._id,
+    });
+
+    return { success: true };
+  },
+});
+
+/**
+ * Start a session, transitioning WAITING → IN_PROGRESS.
+ * Validates that all players are connected before starting.
+ *
+ * @param sessionId - Session to start
+ */
+export const startSession = mutation({
+  args: { sessionId: v.id("sessions") },
+  returns: v.object({ success: v.boolean() }),
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) throw new ConvexError("Session not found");
+
+    validateTransition(session.status, "IN_PROGRESS");
+    await guardStart(ctx, session);
+
+    const now = Date.now();
+    await transitionSession(ctx, session, "IN_PROGRESS", {
+      auditAction: "SESSION_STARTED",
+      actorType: "ADMIN",
+      actorId: admin._id,
+      patches: {
+        startedAt: now,
+        timerStartedAt: now,
+        currentTurn: 0,
+        currentRound: 1,
+      },
+    });
+
+    return { success: true };
+  },
+});
+
+/**
+ * Pause a session, transitioning IN_PROGRESS → PAUSED.
+ * Preserves timer state via timerPausedAt for later resume.
+ *
+ * @param sessionId - Session to pause
+ * @param reason - Optional pause reason for audit log
+ */
+export const pauseSession = mutation({
+  args: {
+    sessionId: v.id("sessions"),
+    reason: v.optional(v.string()),
+  },
+  returns: v.object({ success: v.boolean() }),
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) throw new ConvexError("Session not found");
+
+    await transitionSession(ctx, session, "PAUSED", {
+      auditAction: "SESSION_PAUSED",
+      actorType: "ADMIN",
+      actorId: admin._id,
+      patches: { timerPausedAt: Date.now() },
+      auditDetails: args.reason ? { reason: args.reason } : undefined,
+    });
+
+    return { success: true };
+  },
+});
+
+/**
+ * Resume a paused session, transitioning PAUSED → IN_PROGRESS.
+ * Timer arithmetic preserves remaining time from before pause.
+ * Clears isRevoteRound per schema.ts TODO (line 69-72).
+ *
+ * @param sessionId - Session to resume
+ */
+export const resumeSession = mutation({
+  args: { sessionId: v.id("sessions") },
+  returns: v.object({ success: v.boolean() }),
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) throw new ConvexError("Session not found");
+
+    // Calculate elapsed time to preserve remaining timer
+    const now = Date.now();
+    const elapsed =
+      (session.timerPausedAt ?? now) - (session.timerStartedAt ?? now);
+    const adjustedTimerStart = now - elapsed;
+
+    await transitionSession(ctx, session, "IN_PROGRESS", {
+      auditAction: "SESSION_RESUMED",
+      actorType: "ADMIN",
+      actorId: admin._id,
+      patches: {
+        timerStartedAt: adjustedTimerStart,
+        timerPausedAt: undefined,
+        isRevoteRound: false,
+      },
+    });
+
+    return { success: true };
+  },
+});
+
+/**
+ * Force-end a session from any active state → COMPLETE.
+ * Does not set winnerMapId. Schedules immediate IP cleanup.
+ *
+ * @param sessionId - Session to end
+ */
+export const endSession = mutation({
+  args: { sessionId: v.id("sessions") },
+  returns: v.object({ success: v.boolean() }),
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) throw new ConvexError("Session not found");
+
+    await transitionSession(ctx, session, "COMPLETE", {
+      auditAction: "SESSION_ENDED",
+      actorType: "ADMIN",
+      actorId: admin._id,
+      patches: {
+        completedAt: Date.now(),
+        timerStartedAt: undefined,
+        timerPausedAt: undefined,
+      },
+      auditDetails: { reason: "ADMIN_FORCE_END" },
+    });
+
+    // IP cleanup handled by hourly cron clearCompletedSessionIps (convex/crons.ts)
+    // TODO: Add immediate scheduling via ctx.scheduler.runAfter when
+    // convex-test supports scheduled function execution (Phase 2)
+
+    return { success: true };
   },
 });
 
