@@ -171,9 +171,9 @@ export async function transitionSession(
   validateTransition(session.status, targetStatus);
 
   await ctx.db.patch(session._id, {
+    ...options.patches,
     status: targetStatus,
     updatedAt: Date.now(),
-    ...options.patches,
   });
 
   await logAction(ctx, {
