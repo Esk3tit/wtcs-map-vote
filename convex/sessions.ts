@@ -23,6 +23,7 @@ import {
   MAX_TURN_TIMER_SECONDS,
   MIN_MAP_POOL_SIZE,
   MAX_MAP_POOL_SIZE,
+  MAX_REASON_LENGTH,
   getActivePlayerIndex,
 } from "./lib/constants";
 import { validateName, validateRange } from "./lib/validation";
@@ -1100,6 +1101,7 @@ export const finalizeSession = mutation({
     const session = await ctx.db.get(args.sessionId);
     if (!session) throw new ConvexError("Session not found");
 
+    // Fail-fast before expensive guard queries
     validateTransition(session.status, "WAITING");
     await guardFinalize(ctx, session);
     await transitionSession(ctx, session, "WAITING", {
@@ -1126,6 +1128,7 @@ export const startSession = mutation({
     const session = await ctx.db.get(args.sessionId);
     if (!session) throw new ConvexError("Session not found");
 
+    // Fail-fast before expensive guard queries
     validateTransition(session.status, "IN_PROGRESS");
     await guardStart(ctx, session);
 
@@ -1163,6 +1166,10 @@ export const pauseSession = mutation({
     const admin = await requireAdmin(ctx);
     const session = await ctx.db.get(args.sessionId);
     if (!session) throw new ConvexError("Session not found");
+
+    if (args.reason && args.reason.length > MAX_REASON_LENGTH) {
+      throw new ConvexError("Reason must be 500 characters or fewer");
+    }
 
     await transitionSession(ctx, session, "PAUSED", {
       auditAction: "SESSION_PAUSED",
@@ -1214,7 +1221,7 @@ export const resumeSession = mutation({
 
 /**
  * Force-end a session from any active state → COMPLETE.
- * Does not set winnerMapId. Schedules immediate IP cleanup.
+ * Does not set winnerMapId. IP cleanup deferred to hourly cron.
  *
  * @param sessionId - Session to end
  */
@@ -1234,6 +1241,7 @@ export const endSession = mutation({
         completedAt: Date.now(),
         timerStartedAt: undefined,
         timerPausedAt: undefined,
+        isRevoteRound: false,
       },
       auditDetails: { reason: "ADMIN_FORCE_END" },
     });

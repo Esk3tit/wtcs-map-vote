@@ -5274,6 +5274,28 @@ async function createStartableSession() {
   return { t, authT, adminId, sessionId };
 }
 
+/** Helper to verify an audit log entry exists for a session. */
+async function expectAuditLog(
+  t: ReturnType<typeof createTestContext>,
+  sessionId: Id<"sessions">,
+  expectedAction: string,
+  additionalChecks?: (log: Record<string, unknown>) => void
+) {
+  const auditLogs = await t.run(async (ctx) =>
+    ctx.db
+      .query("auditLogs")
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+      .collect()
+  );
+  const log = auditLogs.find((l) => l.action === expectedAction);
+  expect(log).toBeDefined();
+  expect(log?.actorType).toBe("ADMIN");
+  if (additionalChecks && log) {
+    additionalChecks(log as unknown as Record<string, unknown>);
+  }
+  return log;
+}
+
 // ============================================================================
 // finalizeSession Tests (WAR-38)
 // ============================================================================
@@ -5296,17 +5318,7 @@ describe("sessions.finalizeSession", () => {
 
     await authT.mutation(api.sessions.finalizeSession, { sessionId });
 
-    const auditLogs = await t.run(async (ctx) =>
-      ctx.db
-        .query("auditLogs")
-        .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
-        .collect()
-    );
-    const finalizeLog = auditLogs.find(
-      (l) => l.action === "SESSION_FINALIZED"
-    );
-    expect(finalizeLog).toBeDefined();
-    expect(finalizeLog?.actorType).toBe("ADMIN");
+    await expectAuditLog(t, sessionId, "SESSION_FINALIZED");
   });
 
   it("rejects when players are missing", async () => {
@@ -5477,15 +5489,7 @@ describe("sessions.startSession", () => {
 
     await authT.mutation(api.sessions.startSession, { sessionId });
 
-    const auditLogs = await t.run(async (ctx) =>
-      ctx.db
-        .query("auditLogs")
-        .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
-        .collect()
-    );
-    const startLog = auditLogs.find((l) => l.action === "SESSION_STARTED");
-    expect(startLog).toBeDefined();
-    expect(startLog?.actorType).toBe("ADMIN");
+    await expectAuditLog(t, sessionId, "SESSION_STARTED");
   });
 
   it("rejects when players are disconnected", async () => {
@@ -5588,15 +5592,9 @@ describe("sessions.pauseSession", () => {
       reason: "Player disconnected",
     });
 
-    const auditLogs = await t.run(async (ctx) =>
-      ctx.db
-        .query("auditLogs")
-        .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
-        .collect()
-    );
-    const pauseLog = auditLogs.find((l) => l.action === "SESSION_PAUSED");
-    expect(pauseLog).toBeDefined();
-    expect(pauseLog?.details?.reason).toBe("Player disconnected");
+    await expectAuditLog(t, sessionId, "SESSION_PAUSED", (log) => {
+      expect((log as { details?: { reason?: string } }).details?.reason).toBe("Player disconnected");
+    });
   });
 
   it("creates audit log without reason when not provided", async () => {
@@ -5606,15 +5604,21 @@ describe("sessions.pauseSession", () => {
 
     await authT.mutation(api.sessions.pauseSession, { sessionId });
 
-    const auditLogs = await t.run(async (ctx) =>
-      ctx.db
-        .query("auditLogs")
-        .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
-        .collect()
+    await expectAuditLog(t, sessionId, "SESSION_PAUSED");
+  });
+
+  it("rejects reason exceeding MAX_REASON_LENGTH", async () => {
+    const { authT, sessionId } = await createAuthenticatedSessionInStatus(
+      "IN_PROGRESS"
     );
-    const pauseLog = auditLogs.find((l) => l.action === "SESSION_PAUSED");
-    expect(pauseLog).toBeDefined();
-    expect(pauseLog?.actorType).toBe("ADMIN");
+
+    const longReason = "x".repeat(501);
+    await expect(
+      authT.mutation(api.sessions.pauseSession, {
+        sessionId,
+        reason: longReason,
+      })
+    ).rejects.toThrow(/500 characters/);
   });
 
   it("rejects wrong status (WAITING → PAUSED invalid)", async () => {
@@ -5759,15 +5763,7 @@ describe("sessions.resumeSession", () => {
 
     await authT.mutation(api.sessions.resumeSession, { sessionId });
 
-    const auditLogs = await t.run(async (ctx) =>
-      ctx.db
-        .query("auditLogs")
-        .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
-        .collect()
-    );
-    const resumeLog = auditLogs.find((l) => l.action === "SESSION_RESUMED");
-    expect(resumeLog).toBeDefined();
-    expect(resumeLog?.actorType).toBe("ADMIN");
+    await expectAuditLog(t, sessionId, "SESSION_RESUMED");
   });
 
   it("rejects wrong status (IN_PROGRESS → IN_PROGRESS invalid)", async () => {
@@ -5795,65 +5791,22 @@ describe("sessions.resumeSession", () => {
 // ============================================================================
 
 describe("sessions.endSession", () => {
-  it("force-ends from DRAFT → COMPLETE", async () => {
-    const { t, authT, sessionId } = await createAuthenticatedSessionInStatus(
-      "DRAFT"
-    );
+  it.each(["DRAFT", "WAITING", "IN_PROGRESS", "PAUSED"] as const)(
+    "force-ends from %s → COMPLETE",
+    async (status) => {
+      const { t, authT, sessionId } =
+        await createAuthenticatedSessionInStatus(status);
 
-    const result = await authT.mutation(api.sessions.endSession, {
-      sessionId,
-    });
+      const result = await authT.mutation(api.sessions.endSession, {
+        sessionId,
+      });
 
-    expect(result.success).toBe(true);
+      expect(result.success).toBe(true);
 
-    const session = await t.run(async (ctx) => ctx.db.get(sessionId));
-    expect(session?.status).toBe("COMPLETE");
-  });
-
-  it("force-ends from WAITING → COMPLETE", async () => {
-    const { t, authT, sessionId } = await createAuthenticatedSessionInStatus(
-      "WAITING"
-    );
-
-    const result = await authT.mutation(api.sessions.endSession, {
-      sessionId,
-    });
-
-    expect(result.success).toBe(true);
-
-    const session = await t.run(async (ctx) => ctx.db.get(sessionId));
-    expect(session?.status).toBe("COMPLETE");
-  });
-
-  it("force-ends from IN_PROGRESS → COMPLETE", async () => {
-    const { t, authT, sessionId } = await createAuthenticatedSessionInStatus(
-      "IN_PROGRESS"
-    );
-
-    const result = await authT.mutation(api.sessions.endSession, {
-      sessionId,
-    });
-
-    expect(result.success).toBe(true);
-
-    const session = await t.run(async (ctx) => ctx.db.get(sessionId));
-    expect(session?.status).toBe("COMPLETE");
-  });
-
-  it("force-ends from PAUSED → COMPLETE", async () => {
-    const { t, authT, sessionId } = await createAuthenticatedSessionInStatus(
-      "PAUSED"
-    );
-
-    const result = await authT.mutation(api.sessions.endSession, {
-      sessionId,
-    });
-
-    expect(result.success).toBe(true);
-
-    const session = await t.run(async (ctx) => ctx.db.get(sessionId));
-    expect(session?.status).toBe("COMPLETE");
-  });
+      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(session?.status).toBe("COMPLETE");
+    }
+  );
 
   it("sets completedAt and clears timer fields", async () => {
     const { t, authT, adminId } = await createAuthenticatedAdmin();
@@ -5880,6 +5833,7 @@ describe("sessions.endSession", () => {
     expect(session?.completedAt).toBeLessThanOrEqual(after);
     expect(session?.timerStartedAt).toBeUndefined();
     expect(session?.timerPausedAt).toBeUndefined();
+    expect(session?.isRevoteRound).toBe(false);
   });
 
   it("does NOT set winnerMapId", async () => {
@@ -5888,7 +5842,6 @@ describe("sessions.endSession", () => {
     );
 
     await authT.mutation(api.sessions.endSession, { sessionId });
-
 
     const session = await t.run(async (ctx) => ctx.db.get(sessionId));
     expect(session?.winnerMapId).toBeUndefined();
@@ -5921,17 +5874,9 @@ describe("sessions.endSession", () => {
 
     await authT.mutation(api.sessions.endSession, { sessionId });
 
-
-    const auditLogs = await t.run(async (ctx) =>
-      ctx.db
-        .query("auditLogs")
-        .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
-        .collect()
-    );
-    const endLog = auditLogs.find((l) => l.action === "SESSION_ENDED");
-    expect(endLog).toBeDefined();
-    expect(endLog?.actorType).toBe("ADMIN");
-    expect(endLog?.details?.reason).toBe("ADMIN_FORCE_END");
+    await expectAuditLog(t, sessionId, "SESSION_ENDED", (log) => {
+      expect((log as { details?: { reason?: string } }).details?.reason).toBe("ADMIN_FORCE_END");
+    });
   });
 
   it("throws when session not found", async () => {

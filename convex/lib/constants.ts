@@ -15,6 +15,7 @@ export const MIN_TURN_TIMER_SECONDS = 10;
 export const MAX_TURN_TIMER_SECONDS = 300;
 export const MIN_MAP_POOL_SIZE = 3;
 export const MAX_MAP_POOL_SIZE = 15;
+export const MAX_REASON_LENGTH = 500;
 
 // ABBA voting pattern
 /**
