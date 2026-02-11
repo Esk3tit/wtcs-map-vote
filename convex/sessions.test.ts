@@ -29,6 +29,7 @@ import {
   MIN_MAP_POOL_SIZE,
   MAX_MAP_POOL_SIZE,
   TOKEN_EXPIRY_MS,
+  MAX_REASON_LENGTH,
 } from "./lib/constants";
 
 // ============================================================================
@@ -5612,7 +5613,7 @@ describe("sessions.pauseSession", () => {
       "IN_PROGRESS"
     );
 
-    const longReason = "x".repeat(501);
+    const longReason = "x".repeat(MAX_REASON_LENGTH + 1);
     await expect(
       authT.mutation(api.sessions.pauseSession, {
         sessionId,
