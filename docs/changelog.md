@@ -6,6 +6,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.11.0] - 2026-02-11 - Phase 5: Session Lifecycle Mutations (WAR-38–41, PR #60)
+
+### Added
+- **`finalizeSession`** (WAR-38) — DRAFT → WAITING transition with `guardFinalize` (validates player count and map pool size)
+- **`startSession`** (WAR-39) — WAITING → IN_PROGRESS with `guardStart` (checks player connectivity), sets `startedAt`, `timerStartedAt`, `currentTurn`, `currentRound`
+- **`pauseSession`** (WAR-40) — IN_PROGRESS → PAUSED, records `timerPausedAt`, optional reason in audit log
+- **`resumeSession`** (WAR-40) — PAUSED → IN_PROGRESS with timer arithmetic preserving elapsed time, clears `isRevoteRound` per schema TODO
+- **`endSession`** (WAR-41) — Any active state → COMPLETE (admin force-end), clears timer fields, sets `completedAt`
+- **39 unit tests** covering happy paths, guard failures, wrong-status rejections, audit logging, timer preservation, and force-end from all active states
+- All mutations use `transitionSession` helper from WAR-37 for atomic validate + patch + audit
+
+### Technical Notes
+- `validateTransition()` is called before guard functions for correct error ordering (fast-fail on invalid transitions)
+- Timer resume arithmetic: `elapsed = timerPausedAt - timerStartedAt`, then `adjustedTimerStart = now - elapsed`
+- IP cleanup deferred to existing hourly cron (`clearCompletedSessionIps`) — `ctx.scheduler.runAfter` incompatible with convex-test
+
+---
+
 ## [0.10.0] - 2026-02-11 - Phase 5: Session Lifecycle Helpers (WAR-37, PR #59)
 
 ### Added

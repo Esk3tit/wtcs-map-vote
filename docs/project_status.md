@@ -140,13 +140,14 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] `VALID_TRANSITIONS` map, `validateTransition`, `guardFinalize`, `guardStart`, `transitionSession`
 - [x] `SessionStatePatches` type, `TransitionOptions` interface, `SESSION_RESET_PATCHES`
 - [x] 60 unit tests for transition validation, guards, and atomic transitions
+- [x] Session lifecycle mutations — finalize, start, pause, resume, end (WAR-38–41, PR #60)
+- [x] 39 unit tests for lifecycle mutations (700 total tests)
 
 ---
 
 ## Next Steps
 
 ### Session Lifecycle — Remaining (Priority: High)
-   - [ ] Session lifecycle mutations — finalize, start, pause, resume, end (WAR-38+)
    - [ ] Session reset mutation — COMPLETE→WAITING with reset patches (WAR-45)
    - [ ] Timer expiration handling (scheduled functions)
 
