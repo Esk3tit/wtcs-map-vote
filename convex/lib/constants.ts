@@ -44,3 +44,30 @@ export const ACTIVE_SESSION_STATUSES: Set<SessionStatus> = new Set([
   "IN_PROGRESS",
   "PAUSED",
 ]);
+
+/**
+ * Valid session state transitions.
+ * Maps each status to the set of statuses it can transition to.
+ * Terminal states (EXPIRED) have no valid transitions.
+ * COMPLETE->WAITING is allowed for session reset.
+ */
+export const VALID_TRANSITIONS: Record<SessionStatus, ReadonlySet<SessionStatus>> = {
+  DRAFT: new Set(["WAITING", "COMPLETE"]),
+  WAITING: new Set(["IN_PROGRESS", "COMPLETE"]),
+  IN_PROGRESS: new Set(["PAUSED", "COMPLETE"]),
+  PAUSED: new Set(["IN_PROGRESS", "COMPLETE"]),
+  COMPLETE: new Set(["WAITING"]),
+  EXPIRED: new Set([]),
+};
+
+/** Standard session state reset patches for COMPLETE -> WAITING. */
+export const SESSION_RESET_PATCHES = {
+  currentTurn: 0,
+  currentRound: 1,
+  isRevoteRound: false,
+  winnerMapId: undefined,
+  completedAt: undefined,
+  startedAt: undefined,
+  timerStartedAt: undefined,
+  timerPausedAt: undefined,
+} as const;

@@ -67,7 +67,10 @@ export const auditActionValidator = v.union(
   v.literal("REVOTE_DEADLOCK_RANDOM_SELECTION"),
   v.literal("TIMER_EXPIRED"),
   v.literal("RANDOM_SELECTION"),
-  v.literal("WINNER_DECLARED")
+  v.literal("WINNER_DECLARED"),
+  // Session reset/clone
+  v.literal("SESSION_RESET"),
+  v.literal("SESSION_CLONED")
 );
 
 /**

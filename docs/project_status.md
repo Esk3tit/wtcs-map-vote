@@ -135,12 +135,19 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] Multiplayer vote confirmation UI — golden border on voted map, "Your vote" label, playerVotedMapId query (WAR-37, PR #57)
 - [x] Voting unit tests for coverage gaps — session expiry, revote audit, cross-round isolation (WAR-20, PR #58)
 
+### Phase 5: Session Lifecycle (IN PROGRESS)
+- [x] Centralized state transition map and helpers (WAR-37, PR #59)
+- [x] `VALID_TRANSITIONS` map, `validateTransition`, `guardFinalize`, `guardStart`, `transitionSession`
+- [x] `SessionStatePatches` type, `TransitionOptions` interface, `SESSION_RESET_PATCHES`
+- [x] 60 unit tests for transition validation, guards, and atomic transitions
+
 ---
 
 ## Next Steps
 
-### Session Lifecycle (Priority: High)
-   - [ ] Session lifecycle mutations (finalize, start, pause, resume, end)
+### Session Lifecycle — Remaining (Priority: High)
+   - [ ] Session lifecycle mutations — finalize, start, pause, resume, end (WAR-38+)
+   - [ ] Session reset mutation — COMPLETE→WAITING with reset patches (WAR-45)
    - [ ] Timer expiration handling (scheduled functions)
 
 ### Real-Time Features
