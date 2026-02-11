@@ -56,7 +56,10 @@ export type AuditAction =
   | "REVOTE_DEADLOCK_RANDOM_SELECTION"
   | "TIMER_EXPIRED"
   | "RANDOM_SELECTION"
-  | "WINNER_DECLARED";
+  | "WINNER_DECLARED"
+  // Session reset/clone
+  | "SESSION_RESET"
+  | "SESSION_CLONED";
 
 /**
  * Actor types for audit logging
