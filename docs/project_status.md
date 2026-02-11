@@ -2,7 +2,7 @@
 
 Current progress and next steps for the WTCS Map Vote project.
 
-**Last Updated:** February 10, 2026
+**Last Updated:** February 11, 2026
 
 ---
 
@@ -122,17 +122,18 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] 100% coverage on admins.ts, playerAuth.ts, lib/auth.ts
 - [x] Full lobby URLs in session detail page (WAR-31, PR #51)
 
-### Phase 4: Voting Module (IN PROGRESS)
+### Phase 4: Voting Module (COMPLETE)
 - [x] ABBA submitBan mutation with full validation chain (WAR-32, PR #52)
 - [x] Multiplayer submitVote mutation with vote tracking (WAR-33, PR #53)
 - [x] Round resolution & deadlock handling for multiplayer format (WAR-34, PR #54)
 - [x] Shared validation helpers (lookupAndValidatePlayer, requireAvailableSessionMap)
 - [x] HTTP endpoints for submit-ban and submit-vote with CORS
-- [x] 85+ voting tests (submitBan, submitVote, resolveRound)
+- [x] 100+ voting tests (submitBan, submitVote, resolveRound, coverage gaps)
 - [x] Voting query enhancements — roundHistory, voteProgress, isRevoteRound, completedRounds (WAR-35)
 - [x] GDPR IP address redaction in admin session detail (WAR-35)
 - [x] Frontend vote submission wiring — fetch calls, shared SITE_URL, unified handler, error handling (WAR-36, PR #56)
 - [x] Multiplayer vote confirmation UI — golden border on voted map, "Your vote" label, playerVotedMapId query (WAR-37, PR #57)
+- [x] Voting unit tests for coverage gaps — session expiry, revote audit, cross-round isolation (WAR-20, PR #58)
 
 ---
 

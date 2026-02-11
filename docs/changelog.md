@@ -6,9 +6,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
-## [Unreleased]
+## [0.9.0] - 2026-02-11 - Phase 4: Voting Module
+
+Complete voting system for both ABBA (2-player ban) and Multiplayer (simultaneous voting) formats. Includes backend mutations, HTTP endpoints, round resolution with deadlock handling, frontend wiring, vote confirmation UI, GDPR compliance, and comprehensive test coverage (100+ voting tests).
 
 ### Added
+
+#### Voting Unit Tests (WAR-20, PR #58)
+- **Comprehensive voting coverage** — Tests for session expiry guards, revote audit log verification, cross-round vote isolation, explicit round parameter in vote factory
+- **Post-resolve safety documentation** — Documents behavior when votes arrive after round resolution
 
 #### Multiplayer Vote Confirmation UI (WAR-37, PR #57)
 - **Golden border indicator** — After confirming a vote in MULTIPLAYER mode, the voted map shows a golden amber ring (`ring-2 ring-amber-400`) while waiting for other players
@@ -25,7 +31,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **Auto-dismiss effects** — Dialog auto-closes when map becomes unavailable or turn expires (reactive Convex query)
 - **`console.error` logging** — Vote submission catch block now logs errors for debugging
 
-#### Voting Query Enhancements (WAR-35)
+#### Voting Query Enhancements (WAR-35, PR #55)
 - **`roundHistory`** — Structured round-by-round ban history in `getSessionByToken` response, derived from existing sessionMaps data
 - **`buildRoundHistory` helper** — Groups banned maps by turn (ABBA) or round (MULTIPLAYER), works for both active and completed sessions
 - **`voteProgress`** — Aggregate vote count for MULTIPLAYER IN_PROGRESS sessions (`totalPlayers`, `votedCount`, `allVoted`) without revealing individual choices
@@ -33,13 +39,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **`completedRounds`** — Derived completed rounds count for progress tracking
 - **Refactored `buildSessionResults`** — Now delegates to `buildRoundHistory` internally, eliminating code duplication
 - **17 new unit tests** across 5 groups: roundHistory, voteProgress, isRevoteRound, completedRounds, privacy enforcement, GDPR
-
-### Changed
-
-#### GDPR: IP Address Redaction (WAR-35)
-- **Admin session detail** — `ipAddress` field removed from `getSession` query response, replaced with boolean `isIpLocked`
-- **Frontend** — Orange IP badge now shows "IP Locked" instead of actual IP address
-- **Validator** — `sessionPlayerObjectValidator` renamed to `adminPlayerObjectValidator` with `isIpLocked` replacing `ipAddress`
 
 #### Round Resolution & Deadlock Handling (WAR-34, PR #54)
 - **`resolveRound` helper** — Auto-triggers inside `submitVote` when all players have voted in a multiplayer round
@@ -68,6 +67,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 - **32 unit tests** across 5 groups: validation errors, happy path, completion logic, audit logging, edge cases
 - **Dynamic map pool support** — works with any pool size (3, 5, 7, etc.), not hardcoded to 5
 - **LAN-safe** — allows same IP for both players
+
+### Changed
+
+#### GDPR: IP Address Redaction (WAR-35)
+- **Admin session detail** — `ipAddress` field removed from `getSession` query response, replaced with boolean `isIpLocked`
+- **Frontend** — Orange IP badge now shows "IP Locked" instead of actual IP address
+- **Validator** — `sessionPlayerObjectValidator` renamed to `adminPlayerObjectValidator` with `isIpLocked` replacing `ipAddress`
 
 ---
 
