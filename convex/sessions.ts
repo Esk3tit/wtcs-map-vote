@@ -32,8 +32,6 @@ import {
   sessionFormatValidator,
   mapStateValidator,
 } from "./lib/validators";
-
-import { logAction } from "./audit";
 import { requireAdmin } from "./lib/auth";
 import {
   guardFinalize,
@@ -41,6 +39,8 @@ import {
   transitionSession,
   validateTransition,
 } from "./lib/sessionLifecycle";
+
+import { logAction } from "./audit";
 
 const validateMatchName = (name: string) => validateName(name, "Match");
 
@@ -1092,6 +1092,7 @@ export const createSessionFull = mutation({
  * Validates that the correct number of players and maps are assigned.
  *
  * @param sessionId - Session to finalize
+ * @returns success flag
  */
 export const finalizeSession = mutation({
   args: { sessionId: v.id("sessions") },
@@ -1119,6 +1120,7 @@ export const finalizeSession = mutation({
  * Validates that all players are connected before starting.
  *
  * @param sessionId - Session to start
+ * @returns success flag
  */
 export const startSession = mutation({
   args: { sessionId: v.id("sessions") },
@@ -1155,6 +1157,7 @@ export const startSession = mutation({
  *
  * @param sessionId - Session to pause
  * @param reason - Optional pause reason for audit log
+ * @returns success flag
  */
 export const pauseSession = mutation({
   args: {
@@ -1189,6 +1192,7 @@ export const pauseSession = mutation({
  * Clears isRevoteRound per schema.ts TODO (line 69-72).
  *
  * @param sessionId - Session to resume
+ * @returns success flag
  */
 export const resumeSession = mutation({
   args: { sessionId: v.id("sessions") },
@@ -1224,6 +1228,7 @@ export const resumeSession = mutation({
  * Does not set winnerMapId. IP cleanup deferred to hourly cron.
  *
  * @param sessionId - Session to end
+ * @returns success flag
  */
 export const endSession = mutation({
   args: { sessionId: v.id("sessions") },
@@ -1247,8 +1252,7 @@ export const endSession = mutation({
     });
 
     // IP cleanup handled by hourly cron clearCompletedSessionIps (convex/crons.ts)
-    // TODO: Add immediate scheduling via ctx.scheduler.runAfter when
-    // convex-test supports scheduled function execution (Phase 2)
+    // TODO: Add immediate IP cleanup scheduling via ctx.scheduler.runAfter (Phase 2)
 
     return { success: true };
   },

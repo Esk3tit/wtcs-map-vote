@@ -1,5 +1,5 @@
 ---
-status: ready
+status: complete
 priority: p3
 issue_id: "004"
 tags: [code-review, data-integrity, architecture]
@@ -47,9 +47,9 @@ Option 1: Add `isRevoteRound: false` to endSession patches for defense-in-depth.
 
 ## Acceptance Criteria
 
-- [ ] `isRevoteRound: false` added to endSession patches (if approved)
-- [ ] Test verifying isRevoteRound is false after endSession (if approved)
-- [ ] All existing tests still pass
+- [x] `isRevoteRound: false` added to endSession patches (if approved)
+- [x] Test verifying isRevoteRound is false after endSession (if approved)
+- [x] All existing tests still pass
 
 ## Work Log
 

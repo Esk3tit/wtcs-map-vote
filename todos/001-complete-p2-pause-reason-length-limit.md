@@ -1,5 +1,5 @@
 ---
-status: ready
+status: complete
 priority: p2
 issue_id: "001"
 tags: [code-review, security, validation]
@@ -48,10 +48,10 @@ Option 1: Add `MAX_REASON_LENGTH` constant (500 chars) in `convex/lib/constants.
 
 ## Acceptance Criteria
 
-- [ ] `MAX_REASON_LENGTH` constant defined in `convex/lib/constants.ts`
-- [ ] `pauseSession` validates `reason` length before use
-- [ ] Test added for oversized reason rejection
-- [ ] Existing tests still pass
+- [x] `MAX_REASON_LENGTH` constant defined in `convex/lib/constants.ts`
+- [x] `pauseSession` validates `reason` length before use
+- [x] Test added for oversized reason rejection
+- [x] Existing tests still pass
 
 ## Work Log
 

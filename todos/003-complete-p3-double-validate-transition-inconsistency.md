@@ -1,5 +1,5 @@
 ---
-status: ready
+status: complete
 priority: p3
 issue_id: "003"
 tags: [code-review, architecture, consistency]
@@ -47,8 +47,8 @@ Option 1: Add `// Fail-fast before expensive guard queries` comment above each e
 
 ## Acceptance Criteria
 
-- [ ] Intent of double validation is documented (comment or removal)
-- [ ] All existing tests still pass
+- [x] Intent of double validation is documented (comment or removal)
+- [x] All existing tests still pass
 
 ## Work Log
 

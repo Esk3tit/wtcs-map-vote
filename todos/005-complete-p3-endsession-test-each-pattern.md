@@ -1,5 +1,5 @@
 ---
-status: ready
+status: complete
 priority: p3
 issue_id: "005"
 tags: [code-review, quality, testing]
@@ -46,9 +46,9 @@ Option 1: Replace 4 identical endSession state tests with `it.each(["DRAFT", "WA
 
 ## Acceptance Criteria
 
-- [ ] 4 state tests consolidated into parameterized test (if approved)
-- [ ] All test assertions preserved
-- [ ] All tests still pass
+- [x] 4 state tests consolidated into parameterized test (if approved)
+- [x] All test assertions preserved
+- [x] All tests still pass
 
 ## Work Log
 

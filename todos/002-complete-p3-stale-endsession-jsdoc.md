@@ -1,5 +1,5 @@
 ---
-status: ready
+status: complete
 priority: p3
 issue_id: "002"
 tags: [code-review, quality, documentation]
@@ -40,8 +40,8 @@ Option 1: Update JSDoc to say "IP cleanup deferred to hourly cron." Keep inline 
 
 ## Acceptance Criteria
 
-- [ ] JSDoc accurately describes current IP cleanup behavior
-- [ ] Inline TODO comment preserved for future scheduler work
+- [x] JSDoc accurately describes current IP cleanup behavior
+- [x] Inline TODO comment preserved for future scheduler work
 
 ## Work Log
 
