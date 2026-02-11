@@ -86,7 +86,7 @@ export async function guardFinalize(
 
 /**
  * Guard: WAITING -> IN_PROGRESS preconditions.
- * Checks that all players are connected (IP-activated).
+ * Checks that all players are assigned and connected (IP-activated).
  *
  * @param ctx - Mutation context
  * @param session - Current session document
@@ -100,6 +100,12 @@ export async function guardStart(
     .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
     .collect();
 
+  if (players.length !== session.playerCount) {
+    throw new ConvexError(
+      `Cannot start: ${players.length} of ${session.playerCount} players assigned`
+    );
+  }
+
   const disconnected = players.filter((p) => !p.isConnected);
   if (disconnected.length > 0) {
     const teams = disconnected.map((p) => p.teamName).join(", ");
@@ -107,6 +113,39 @@ export async function guardStart(
       `Cannot start: ${disconnected.length} player(s) not connected (${teams})`
     );
   }
+}
+
+// ============================================================================
+// Types
+// ============================================================================
+
+/**
+ * Allowed session fields for transition patches.
+ * Restricts to runtime state fields only — config fields (format, playerCount,
+ * mapPoolSize, turnTimerSeconds, createdBy, expiresAt) cannot be patched
+ * during transitions.
+ */
+export type SessionStatePatches = Partial<
+  Pick<
+    Doc<"sessions">,
+    | "currentTurn"
+    | "currentRound"
+    | "isRevoteRound"
+    | "winnerMapId"
+    | "completedAt"
+    | "startedAt"
+    | "timerStartedAt"
+    | "timerPausedAt"
+  >
+>;
+
+/** Options for `transitionSession`. */
+export interface TransitionOptions {
+  auditAction: AuditAction;
+  actorType: ActorType;
+  actorId?: string;
+  patches?: SessionStatePatches;
+  auditDetails?: AuditDetails;
 }
 
 // ============================================================================
@@ -121,35 +160,27 @@ export async function guardStart(
  * @param ctx - Mutation context
  * @param session - Current session document (must be fresh read)
  * @param targetStatus - Desired target status
- * @param auditAction - Audit action to log
- * @param actorType - Who is performing the transition
- * @param actorId - ID of the actor (admin ID or undefined for system)
- * @param patches - Additional fields to patch on the session (e.g. timerPausedAt)
- * @param auditDetails - Additional audit log details
+ * @param options - Audit and patch options
  */
 export async function transitionSession(
   ctx: MutationCtx,
   session: Doc<"sessions">,
   targetStatus: SessionStatus,
-  auditAction: AuditAction,
-  actorType: ActorType,
-  actorId?: string,
-  patches?: Partial<Doc<"sessions">>,
-  auditDetails?: AuditDetails
+  options: TransitionOptions
 ): Promise<void> {
   validateTransition(session.status, targetStatus);
 
   await ctx.db.patch(session._id, {
     status: targetStatus,
     updatedAt: Date.now(),
-    ...patches,
+    ...options.patches,
   });
 
   await logAction(ctx, {
     sessionId: session._id,
-    action: auditAction,
-    actorType,
-    actorId,
-    details: auditDetails,
+    action: options.auditAction,
+    actorType: options.actorType,
+    actorId: options.actorId,
+    details: options.auditDetails,
   });
 }

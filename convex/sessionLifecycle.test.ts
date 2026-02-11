@@ -486,7 +486,7 @@ describe("guardStart", () => {
     });
   });
 
-  it("passes when no players exist (edge case — guard only checks connectivity)", async () => {
+  it("throws when no players exist", async () => {
     const t = createTestContext();
 
     await t.run(async (ctx) => {
@@ -496,9 +496,11 @@ describe("guardStart", () => {
         sessionFactory(adminId, { playerCount: 2, status: "WAITING" })
       );
 
-      // No players inserted — disconnected.length === 0
+      // No players inserted — should fail player count check
       const session = await ctx.db.get(sessionId);
-      await expect(guardStart(ctx, session!)).resolves.toBeUndefined();
+      await expect(guardStart(ctx, session!)).rejects.toThrow(
+        /Cannot start: 0 of 2 players assigned/
+      );
     });
   });
 });
@@ -519,14 +521,11 @@ describe("transitionSession", () => {
       );
 
       const session = await ctx.db.get(sessionId);
-      await transitionSession(
-        ctx,
-        session!,
-        "WAITING",
-        "SESSION_FINALIZED",
-        "ADMIN",
-        adminId
-      );
+      await transitionSession(ctx, session!, "WAITING", {
+        auditAction: "SESSION_FINALIZED",
+        actorType: "ADMIN",
+        actorId: adminId,
+      });
 
       const updated = await ctx.db.get(sessionId);
       expect(updated!.status).toBe("WAITING");
@@ -545,14 +544,11 @@ describe("transitionSession", () => {
       );
 
       const session = await ctx.db.get(sessionId);
-      await transitionSession(
-        ctx,
-        session!,
-        "IN_PROGRESS",
-        "SESSION_STARTED",
-        "ADMIN",
-        adminId
-      );
+      await transitionSession(ctx, session!, "IN_PROGRESS", {
+        auditAction: "SESSION_STARTED",
+        actorType: "ADMIN",
+        actorId: adminId,
+      });
 
       const logs = await ctx.db
         .query("auditLogs")
@@ -577,15 +573,12 @@ describe("transitionSession", () => {
 
       const session = await ctx.db.get(sessionId);
       const pausedAt = Date.now();
-      await transitionSession(
-        ctx,
-        session!,
-        "PAUSED",
-        "SESSION_PAUSED",
-        "ADMIN",
-        adminId,
-        { timerPausedAt: pausedAt }
-      );
+      await transitionSession(ctx, session!, "PAUSED", {
+        auditAction: "SESSION_PAUSED",
+        actorType: "ADMIN",
+        actorId: adminId,
+        patches: { timerPausedAt: pausedAt },
+      });
 
       const updated = await ctx.db.get(sessionId);
       expect(updated!.status).toBe("PAUSED");
@@ -606,16 +599,13 @@ describe("transitionSession", () => {
       );
 
       const session = await ctx.db.get(sessionId);
-      await transitionSession(
-        ctx,
-        session!,
-        "COMPLETE",
-        "SESSION_ENDED",
-        "ADMIN",
-        adminId,
-        { isRevoteRound: false },
-        { reason: "Admin forced end" }
-      );
+      await transitionSession(ctx, session!, "COMPLETE", {
+        auditAction: "SESSION_ENDED",
+        actorType: "ADMIN",
+        actorId: adminId,
+        patches: { isRevoteRound: false },
+        auditDetails: { reason: "Admin forced end" },
+      });
 
       const logs = await ctx.db
         .query("auditLogs")
@@ -637,14 +627,11 @@ describe("transitionSession", () => {
 
       const session = await ctx.db.get(sessionId);
       await expect(
-        transitionSession(
-          ctx,
-          session!,
-          "IN_PROGRESS",
-          "SESSION_STARTED",
-          "ADMIN",
-          adminId
-        )
+        transitionSession(ctx, session!, "IN_PROGRESS", {
+          auditAction: "SESSION_STARTED",
+          actorType: "ADMIN",
+          actorId: adminId,
+        })
       ).rejects.toThrow(/Cannot transition from DRAFT to IN_PROGRESS/);
 
       // Session unchanged
@@ -671,13 +658,10 @@ describe("transitionSession", () => {
       );
 
       const session = await ctx.db.get(sessionId);
-      await transitionSession(
-        ctx,
-        session!,
-        "COMPLETE",
-        "SESSION_ENDED",
-        "SYSTEM"
-      );
+      await transitionSession(ctx, session!, "COMPLETE", {
+        auditAction: "SESSION_ENDED",
+        actorType: "SYSTEM",
+      });
 
       const logs = await ctx.db
         .query("auditLogs")
@@ -704,15 +688,12 @@ describe("transitionSession", () => {
       );
 
       const session = await ctx.db.get(sessionId);
-      await transitionSession(
-        ctx,
-        session!,
-        "WAITING",
-        "SESSION_RESET",
-        "ADMIN",
-        adminId,
-        SESSION_RESET_PATCHES
-      );
+      await transitionSession(ctx, session!, "WAITING", {
+        auditAction: "SESSION_RESET",
+        actorType: "ADMIN",
+        actorId: adminId,
+        patches: SESSION_RESET_PATCHES,
+      });
 
       const updated = await ctx.db.get(sessionId);
       expect(updated!.status).toBe("WAITING");
@@ -741,15 +722,12 @@ describe("transitionSession", () => {
           );
 
           const session = await ctx.db.get(sessionId);
-          await transitionSession(
-            ctx,
-            session!,
-            to,
-            "SESSION_ENDED",
-            "ADMIN",
-            adminId,
-            { isRevoteRound: false }
-          );
+          await transitionSession(ctx, session!, to, {
+            auditAction: "SESSION_ENDED",
+            actorType: "ADMIN",
+            actorId: adminId,
+            patches: { isRevoteRound: false },
+          });
 
           const updated = await ctx.db.get(sessionId);
           expect(updated!.status).toBe("COMPLETE");

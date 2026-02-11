@@ -58,7 +58,7 @@ export const VALID_TRANSITIONS: Record<SessionStatus, ReadonlySet<SessionStatus>
   PAUSED: new Set(["IN_PROGRESS", "COMPLETE"]),
   COMPLETE: new Set(["WAITING"]),
   EXPIRED: new Set([]),
-} as const;
+};
 
 /** Standard session state reset patches for COMPLETE -> WAITING. */
 export const SESSION_RESET_PATCHES = {
