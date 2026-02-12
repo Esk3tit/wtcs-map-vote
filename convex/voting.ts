@@ -7,19 +7,19 @@
  * and automatic round resolution (WAR-34).
  */
 
-import { internalMutation, mutation } from "./_generated/server";
+import { internalMutation } from "./_generated/server";
 import type { MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 
-import { ConvexError, v } from "convex/values";
+import { v } from "convex/values";
 
 import { getActivePlayerIndex } from "./lib/constants";
 import {
   lookupAndValidatePlayer,
-  requireAdmin,
   type PlayerLookupError,
 } from "./lib/auth";
-import { validateTransition } from "./lib/sessionLifecycle";
+import { completeSession } from "./lib/sessionLifecycle";
+import { pickRandom } from "./lib/random";
 import { logAction } from "./audit";
 
 // ============================================================================
@@ -109,48 +109,6 @@ async function validateTargetMap(
     return null;
   }
   return map;
-}
-
-/**
- * Declare a winner map and complete the session.
- *
- * Patches the winning map to WINNER state, updates the session to COMPLETE,
- * and logs the WINNER_DECLARED audit action. Sets isRevoteRound: false for
- * consistency (harmless for ABBA sessions that lack the field).
- *
- * @param ctx - Mutation context
- * @param session - Current session document
- * @param winnerMap - The session map to declare as winner
- * @param auditDetails - Optional extra fields for the WINNER_DECLARED audit log
- */
-async function completeSession(
-  ctx: MutationCtx,
-  session: Doc<"sessions">,
-  winnerMap: Doc<"sessionMaps">,
-  auditDetails?: Record<string, unknown>
-): Promise<void> {
-  const now = Date.now();
-  await ctx.db.patch(winnerMap._id, { state: "WINNER" });
-  await ctx.db.patch(session._id, {
-    winnerMapId: winnerMap._id,
-    status: "COMPLETE",
-    completedAt: now,
-    updatedAt: now,
-    isRevoteRound: false,
-    timerStartedAt: undefined,
-    timerPausedAt: undefined,
-  });
-
-  await logAction(ctx, {
-    sessionId: session._id,
-    action: "WINNER_DECLARED",
-    actorType: "SYSTEM",
-    details: {
-      mapId: winnerMap._id,
-      mapName: winnerMap.name,
-      ...auditDetails,
-    },
-  });
 }
 
 // ============================================================================
@@ -373,10 +331,7 @@ async function resolveRound(
   }
 
   // Random selection (CSPRNG for competitive integrity)
-  const randomBuffer = new Uint32Array(1);
-  crypto.getRandomValues(randomBuffer);
-  const randomIndex = randomBuffer[0] % currentRoundPool.length;
-  const winnerMap = currentRoundPool[randomIndex];
+  const winnerMap = pickRandom(currentRoundPool);
 
   await logAction(ctx, {
     sessionId: session._id,
@@ -719,71 +674,5 @@ export const submitVote = internalMutation({
       vote: { mapId, mapName: targetMap.name, round: currentRound },
       allVotesSubmitted: false,
     };
-  },
-});
-
-// ============================================================================
-// Admin Actions
-// ============================================================================
-
-/**
- * Force-select a random winner from available maps and complete the session.
- * Admin-only action for immediately ending an active session.
- *
- * @param sessionId - Session to force-complete
- */
-export const forceRandomSelection = mutation({
-  args: { sessionId: v.id("sessions") },
-  returns: v.object({ success: v.boolean(), winnerMapName: v.string() }),
-  handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
-
-    const session = await ctx.db.get(args.sessionId);
-    if (!session) throw new ConvexError("Session not found");
-
-    // Validate IN_PROGRESS or PAUSED → COMPLETE is allowed
-    validateTransition(session.status, "COMPLETE");
-
-    // Get all available maps
-    const availableMaps = await ctx.db
-      .query("sessionMaps")
-      .withIndex("by_sessionId_and_state", (q) =>
-        q.eq("sessionId", session._id).eq("state", "AVAILABLE")
-      )
-      .collect();
-
-    if (availableMaps.length === 0) {
-      throw new ConvexError("No available maps to select from");
-    }
-
-    // CSPRNG selection (matching resolveRound pattern)
-    const randomBuffer = new Uint32Array(1);
-    crypto.getRandomValues(randomBuffer);
-    const randomIndex = randomBuffer[0] % availableMaps.length;
-    const winnerMap = availableMaps[randomIndex];
-
-    // Ban all other available maps
-    const otherMaps = availableMaps.filter((m) => m._id !== winnerMap._id);
-    await Promise.all(
-      otherMaps.map((m) => ctx.db.patch(m._id, { state: "BANNED" }))
-    );
-
-    // Log RANDOM_SELECTION audit event
-    await logAction(ctx, {
-      sessionId: session._id,
-      action: "RANDOM_SELECTION",
-      actorType: "ADMIN",
-      actorId: admin._id,
-      details: {
-        mapId: winnerMap._id,
-        mapName: winnerMap.name,
-        reason: "ADMIN_FORCE",
-      },
-    });
-
-    // Complete session (marks winner, patches status, logs WINNER_DECLARED)
-    await completeSession(ctx, session, winnerMap, { reason: "ADMIN_FORCE" });
-
-    return { success: true, winnerMapName: winnerMap.name };
   },
 });

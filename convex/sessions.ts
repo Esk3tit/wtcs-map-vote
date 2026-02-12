@@ -34,11 +34,13 @@ import {
 } from "./lib/validators";
 import { requireAdmin } from "./lib/auth";
 import {
+  completeSession,
   guardFinalize,
   guardStart,
   transitionSession,
   validateTransition,
 } from "./lib/sessionLifecycle";
+import { pickRandom } from "./lib/random";
 
 import { logAction } from "./audit";
 
@@ -1255,6 +1257,65 @@ export const endSession = mutation({
     // TODO: Add immediate IP cleanup scheduling via ctx.scheduler.runAfter (Phase 2)
 
     return { success: true };
+  },
+});
+
+/**
+ * Force-select a random winner from available maps and complete the session.
+ * Admin-only action for immediately ending an active session.
+ *
+ * @param sessionId - Session to force-complete
+ */
+export const forceRandomSelection = mutation({
+  args: { sessionId: v.id("sessions") },
+  returns: v.object({ success: v.boolean(), winnerMapName: v.string() }),
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) throw new ConvexError("Session not found");
+
+    // Validate IN_PROGRESS or PAUSED → COMPLETE is allowed
+    validateTransition(session.status, "COMPLETE");
+
+    // Get all available maps
+    const availableMaps = await ctx.db
+      .query("sessionMaps")
+      .withIndex("by_sessionId_and_state", (q) =>
+        q.eq("sessionId", session._id).eq("state", "AVAILABLE")
+      )
+      .collect();
+
+    if (availableMaps.length === 0) {
+      throw new ConvexError("No available maps to select from");
+    }
+
+    // CSPRNG selection (matching resolveRound pattern)
+    const winnerMap = pickRandom(availableMaps);
+
+    // Ban all other available maps
+    const otherMaps = availableMaps.filter((m) => m._id !== winnerMap._id);
+    await Promise.all(
+      otherMaps.map((m) => ctx.db.patch(m._id, { state: "BANNED" }))
+    );
+
+    // Log RANDOM_SELECTION audit event
+    await logAction(ctx, {
+      sessionId: session._id,
+      action: "RANDOM_SELECTION",
+      actorType: "ADMIN",
+      actorId: admin._id,
+      details: {
+        mapId: winnerMap._id,
+        mapName: winnerMap.name,
+        reason: "ADMIN_FORCE",
+      },
+    });
+
+    // Complete session (marks winner, patches status, logs WINNER_DECLARED)
+    await completeSession(ctx, session, winnerMap, { reason: "ADMIN_FORCE" });
+
+    return { success: true, winnerMapName: winnerMap.name };
   },
 });
 
