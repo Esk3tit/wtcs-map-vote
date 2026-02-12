@@ -2855,6 +2855,9 @@ describe("forceRandomSelection", () => {
 
     const winnerLog = logs.find((l) => l.action === "WINNER_DECLARED");
     expect(winnerLog).toBeDefined();
+    expect(winnerLog?.actorType).toBe("SYSTEM");
+    expect(winnerLog?.details.reason).toBe("ADMIN_FORCE");
+    expect(winnerLog?.details.mapName).toBe(randomLog?.details.mapName);
   });
 
   // --------------------------------------------------------------------------

@@ -782,7 +782,7 @@ export const forceRandomSelection = mutation({
     });
 
     // Complete session (marks winner, patches status, logs WINNER_DECLARED)
-    await completeSession(ctx, session, winnerMap);
+    await completeSession(ctx, session, winnerMap, { reason: "ADMIN_FORCE" });
 
     return { success: true, winnerMapName: winnerMap.name };
   },
