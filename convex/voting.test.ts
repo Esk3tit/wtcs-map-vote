@@ -73,6 +73,8 @@ async function createABBASession(
     playerAIp?: string;
     playerBIp?: string;
     tokenExpiresAt?: number;
+    timerStartedAt?: number;
+    timerPausedAt?: number;
   } = {}
 ): Promise<ABBASessionData> {
   return await t.run(async (ctx) => {
@@ -86,6 +88,8 @@ async function createABBASession(
         mapPoolSize,
         playerCount: 2,
         currentTurn: overrides.currentTurn ?? 0,
+        timerStartedAt: overrides.timerStartedAt,
+        timerPausedAt: overrides.timerPausedAt,
       })
     );
 
@@ -798,6 +802,63 @@ describe("voting.submitBan", () => {
       expect(map2?.bannedAtTurn).toBe(1);
     });
   });
+
+  // ============================================================================
+  // submitBan - Timer Management
+  // ============================================================================
+
+  describe("timer management", () => {
+    it("resets timerStartedAt after turn advance", async () => {
+      const t = createTestContext();
+      const pastTimerStart = Date.now() - 30_000;
+      const session = await createABBASession(t, {
+        timerStartedAt: pastTimerStart,
+      });
+
+      const before = Date.now();
+      await t.mutation(internal.voting.submitBan, {
+        token: session.playerA.token,
+        mapId: session.mapIds[0],
+        ipAddress: "10.0.0.1",
+      });
+      const after = Date.now();
+
+      const dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+      expect(dbSession?.timerStartedAt).toBeGreaterThanOrEqual(before);
+      expect(dbSession?.timerStartedAt).toBeLessThanOrEqual(after);
+    });
+
+    it("clears timerPausedAt after turn advance", async () => {
+      const t = createTestContext();
+      const session = await createABBASession(t, {
+        timerStartedAt: Date.now() - 10_000,
+        timerPausedAt: Date.now() - 5_000,
+      });
+
+      await t.mutation(internal.voting.submitBan, {
+        token: session.playerA.token,
+        mapId: session.mapIds[0],
+        ipAddress: "10.0.0.1",
+      });
+
+      const dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+      expect(dbSession?.timerPausedAt).toBeUndefined();
+    });
+
+    it("clears both timer fields on session completion", async () => {
+      const t = createTestContext();
+      const session = await createABBASession(t, {
+        timerStartedAt: Date.now() - 60_000,
+      });
+
+      await completeABBAFlow(t, session);
+
+      const dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+      expect(dbSession?.status).toBe("COMPLETE");
+      expect(dbSession?.timerStartedAt).toBeUndefined();
+      expect(dbSession?.timerPausedAt).toBeUndefined();
+    });
+  });
 });
 
 // ============================================================================
@@ -826,6 +887,8 @@ async function createMultiplayerSession(
     isRevoteRound?: boolean;
     tokenExpiresAt?: number;
     playerOverrides?: Array<{ ip?: string }>;
+    timerStartedAt?: number;
+    timerPausedAt?: number;
   } = {}
 ): Promise<MultiplayerSessionData> {
   return await t.run(async (ctx) => {
@@ -841,6 +904,8 @@ async function createMultiplayerSession(
         playerCount,
         currentRound: overrides.currentRound ?? 1,
         isRevoteRound: overrides.isRevoteRound ?? false,
+        timerStartedAt: overrides.timerStartedAt,
+        timerPausedAt: overrides.timerPausedAt,
       })
     );
 
@@ -2209,6 +2274,120 @@ describe("voting.resolveRound", () => {
       // Resolution after revote round: ROUND_RESOLVED + WINNER_DECLARED
       expect(actions.filter((a) => a === "ROUND_RESOLVED")).toHaveLength(1);
       expect(actions.filter((a) => a === "WINNER_DECLARED")).toHaveLength(1);
+    });
+  });
+
+  // ============================================================================
+  // Timer Management
+  // ============================================================================
+
+  describe("timer management", () => {
+    it("resets timerStartedAt on round advance (ROUND_ADVANCED)", async () => {
+      const t = createTestContext();
+      const pastTimerStart = Date.now() - 30_000;
+      const session = await createMultiplayerSession(t, {
+        playerCount: 3,
+        mapPoolSize: 5,
+        timerStartedAt: pastTimerStart,
+      });
+
+      // 3 players vote 3 different maps → 3 banned, 2 remain → ROUND_ADVANCED
+      const before = Date.now();
+      await allPlayersVoteDifferent(t, session);
+      const after = Date.now();
+
+      const dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+      expect(dbSession?.status).toBe("IN_PROGRESS");
+      expect(dbSession?.timerStartedAt).toBeGreaterThanOrEqual(before);
+      expect(dbSession?.timerStartedAt).toBeLessThanOrEqual(after);
+    });
+
+    it("clears timerPausedAt on round advance", async () => {
+      const t = createTestContext();
+      const session = await createMultiplayerSession(t, {
+        playerCount: 3,
+        mapPoolSize: 5,
+        timerStartedAt: Date.now() - 30_000,
+        timerPausedAt: Date.now() - 15_000,
+      });
+
+      await allPlayersVoteDifferent(t, session);
+
+      const dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+      expect(dbSession?.timerPausedAt).toBeUndefined();
+    });
+
+    it("resets timerStartedAt on revote (REVOTE)", async () => {
+      const t = createTestContext();
+      const pastTimerStart = Date.now() - 30_000;
+      const session = await createMultiplayerSession(t, {
+        playerCount: 3,
+        mapPoolSize: 3,
+        timerStartedAt: pastTimerStart,
+      });
+
+      // 3 players, 3 maps: each votes different → all eliminated → deadlock → revote
+      const before = Date.now();
+      await allPlayersVoteDifferent(t, session);
+      const after = Date.now();
+
+      const dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+      expect(dbSession?.isRevoteRound).toBe(true);
+      expect(dbSession?.timerStartedAt).toBeGreaterThanOrEqual(before);
+      expect(dbSession?.timerStartedAt).toBeLessThanOrEqual(after);
+    });
+
+    it("clears timers on session completion (WINNER)", async () => {
+      const t = createTestContext();
+      const session = await createMultiplayerSession(t, {
+        playerCount: 2,
+        mapPoolSize: 3,
+        timerStartedAt: Date.now() - 30_000,
+      });
+
+      // 2 players vote 2 different maps → 2 banned, 1 remains → WINNER
+      await t.mutation(internal.voting.submitVote, {
+        token: session.players[0].token,
+        mapId: session.mapIds[0],
+        ipAddress: session.players[0].ip,
+      });
+      await t.mutation(internal.voting.submitVote, {
+        token: session.players[1].token,
+        mapId: session.mapIds[1],
+        ipAddress: session.players[1].ip,
+      });
+
+      const dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+      expect(dbSession?.status).toBe("COMPLETE");
+      expect(dbSession?.timerStartedAt).toBeUndefined();
+      expect(dbSession?.timerPausedAt).toBeUndefined();
+    });
+
+    it("clears timers on random selection (RANDOM_WINNER)", async () => {
+      const t = createTestContext();
+      const session = await createMultiplayerSession(t, {
+        playerCount: 2,
+        mapPoolSize: 2,
+        isRevoteRound: true,
+        timerStartedAt: Date.now() - 30_000,
+      });
+
+      // Double deadlock → random winner
+      await t.mutation(internal.voting.submitVote, {
+        token: session.players[0].token,
+        mapId: session.mapIds[0],
+        ipAddress: session.players[0].ip,
+      });
+      await t.mutation(internal.voting.submitVote, {
+        token: session.players[1].token,
+        mapId: session.mapIds[1],
+        ipAddress: session.players[1].ip,
+      });
+
+      const dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+      expect(dbSession?.status).toBe("COMPLETE");
+      expect(dbSession?.timerStartedAt).toBeUndefined();
+      expect(dbSession?.timerPausedAt).toBeUndefined();
     });
   });
 

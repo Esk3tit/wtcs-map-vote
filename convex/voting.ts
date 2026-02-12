@@ -131,6 +131,8 @@ async function completeSession(
     completedAt: Date.now(),
     updatedAt: Date.now(),
     isRevoteRound: false,
+    timerStartedAt: undefined,
+    timerPausedAt: undefined,
   });
 
   await logAction(ctx, {
@@ -282,6 +284,8 @@ async function resolveRound(
       currentRound: currentRound + 1,
       isRevoteRound: false,
       updatedAt: Date.now(),
+      timerStartedAt: Date.now(),
+      timerPausedAt: undefined,
     });
     await resetVoteFlags(ctx, session._id);
 
@@ -323,6 +327,8 @@ async function resolveRound(
       currentRound: currentRound + 1,
       isRevoteRound: true,
       updatedAt: Date.now(),
+      timerStartedAt: Date.now(),
+      timerPausedAt: undefined,
     });
     await resetVoteFlags(ctx, session._id);
 
@@ -495,11 +501,13 @@ export const submitBan = internalMutation({
       bannedAtTurn: currentTurn,
     });
 
-    // Increment turn
+    // Increment turn and reset timer for next player
     const newCurrentTurn = currentTurn + 1;
     await ctx.db.patch(session._id, {
       currentTurn: newCurrentTurn,
       updatedAt: Date.now(),
+      timerStartedAt: Date.now(),
+      timerPausedAt: undefined,
     });
 
     // Audit log: MAP_BANNED
