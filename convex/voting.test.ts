@@ -808,11 +808,11 @@ describe("voting.submitBan", () => {
   // ============================================================================
 
   describe("timer management", () => {
-    it("resets timerStartedAt after turn advance", async () => {
+    it("resets timerStartedAt and clears timerPausedAt after turn advance", async () => {
       const t = createTestContext();
-      const pastTimerStart = Date.now() - 30_000;
       const session = await createABBASession(t, {
-        timerStartedAt: pastTimerStart,
+        timerStartedAt: Date.now() - 30_000,
+        timerPausedAt: Date.now() - 5_000,
       });
 
       const before = Date.now();
@@ -826,22 +826,6 @@ describe("voting.submitBan", () => {
       const dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
       expect(dbSession?.timerStartedAt).toBeGreaterThanOrEqual(before);
       expect(dbSession?.timerStartedAt).toBeLessThanOrEqual(after);
-    });
-
-    it("clears timerPausedAt after turn advance", async () => {
-      const t = createTestContext();
-      const session = await createABBASession(t, {
-        timerStartedAt: Date.now() - 10_000,
-        timerPausedAt: Date.now() - 5_000,
-      });
-
-      await t.mutation(internal.voting.submitBan, {
-        token: session.playerA.token,
-        mapId: session.mapIds[0],
-        ipAddress: "10.0.0.1",
-      });
-
-      const dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
       expect(dbSession?.timerPausedAt).toBeUndefined();
     });
 
@@ -2282,13 +2266,13 @@ describe("voting.resolveRound", () => {
   // ============================================================================
 
   describe("timer management", () => {
-    it("resets timerStartedAt on round advance (ROUND_ADVANCED)", async () => {
+    it("resets timerStartedAt and clears timerPausedAt on round advance (ROUND_ADVANCED)", async () => {
       const t = createTestContext();
-      const pastTimerStart = Date.now() - 30_000;
       const session = await createMultiplayerSession(t, {
         playerCount: 3,
         mapPoolSize: 5,
-        timerStartedAt: pastTimerStart,
+        timerStartedAt: Date.now() - 30_000,
+        timerPausedAt: Date.now() - 15_000,
       });
 
       // 3 players vote 3 different maps → 3 banned, 2 remain → ROUND_ADVANCED
@@ -2300,20 +2284,6 @@ describe("voting.resolveRound", () => {
       expect(dbSession?.status).toBe("IN_PROGRESS");
       expect(dbSession?.timerStartedAt).toBeGreaterThanOrEqual(before);
       expect(dbSession?.timerStartedAt).toBeLessThanOrEqual(after);
-    });
-
-    it("clears timerPausedAt on round advance", async () => {
-      const t = createTestContext();
-      const session = await createMultiplayerSession(t, {
-        playerCount: 3,
-        mapPoolSize: 5,
-        timerStartedAt: Date.now() - 30_000,
-        timerPausedAt: Date.now() - 15_000,
-      });
-
-      await allPlayersVoteDifferent(t, session);
-
-      const dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
       expect(dbSession?.timerPausedAt).toBeUndefined();
     });
 
