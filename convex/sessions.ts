@@ -1265,6 +1265,7 @@ export const endSession = mutation({
  * Admin-only action for immediately ending an active session.
  *
  * @param sessionId - Session to force-complete
+ * @returns Success flag and selected winner map name
  */
 export const forceRandomSelection = mutation({
   args: { sessionId: v.id("sessions") },
@@ -1293,11 +1294,13 @@ export const forceRandomSelection = mutation({
     // CSPRNG selection (matching resolveRound pattern)
     const winnerMap = pickRandom(availableMaps);
 
-    // Ban all other available maps
+    // Ban all other available maps (with metadata so buildRoundHistory sorts correctly)
     const otherMaps = availableMaps.filter((m) => m._id !== winnerMap._id);
-    await Promise.all(
-      otherMaps.map((m) => ctx.db.patch(m._id, { state: "BANNED" }))
-    );
+    const banPatch =
+      session.format === "ABBA"
+        ? { state: "BANNED" as const, bannedAtTurn: session.currentTurn }
+        : { state: "BANNED" as const, bannedAtRound: session.currentRound };
+    await Promise.all(otherMaps.map((m) => ctx.db.patch(m._id, banPatch)));
 
     // Log RANDOM_SELECTION audit event
     await logAction(ctx, {

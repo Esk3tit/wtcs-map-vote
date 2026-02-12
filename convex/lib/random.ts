@@ -14,6 +14,9 @@
  * @returns A randomly selected element from the array
  */
 export function pickRandom<T>(items: T[]): T {
+  if (items.length === 0) {
+    throw new Error("Cannot pick random item from empty array");
+  }
   const buf = new Uint32Array(1);
   crypto.getRandomValues(buf);
   return items[buf[0] % items.length];
