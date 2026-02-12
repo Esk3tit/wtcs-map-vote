@@ -124,13 +124,16 @@ async function completeSession(
   winnerMap: Doc<"sessionMaps">,
   auditDetails?: Record<string, unknown>
 ): Promise<void> {
+  const now = Date.now();
   await ctx.db.patch(winnerMap._id, { state: "WINNER" });
   await ctx.db.patch(session._id, {
     winnerMapId: winnerMap._id,
     status: "COMPLETE",
-    completedAt: Date.now(),
-    updatedAt: Date.now(),
+    completedAt: now,
+    updatedAt: now,
     isRevoteRound: false,
+    timerStartedAt: undefined,
+    timerPausedAt: undefined,
   });
 
   await logAction(ctx, {
@@ -278,10 +281,13 @@ async function resolveRound(
 
   if (remainingCount > 1) {
     // === ROUND_ADVANCED: multiple maps still available ===
+    const now = Date.now();
     await ctx.db.patch(session._id, {
       currentRound: currentRound + 1,
       isRevoteRound: false,
-      updatedAt: Date.now(),
+      updatedAt: now,
+      timerStartedAt: now,
+      timerPausedAt: undefined,
     });
     await resetVoteFlags(ctx, session._id);
 
@@ -319,10 +325,13 @@ async function resolveRound(
       )
     );
 
+    const now = Date.now();
     await ctx.db.patch(session._id, {
       currentRound: currentRound + 1,
       isRevoteRound: true,
-      updatedAt: Date.now(),
+      updatedAt: now,
+      timerStartedAt: now,
+      timerPausedAt: undefined,
     });
     await resetVoteFlags(ctx, session._id);
 
@@ -495,11 +504,15 @@ export const submitBan = internalMutation({
       bannedAtTurn: currentTurn,
     });
 
-    // Increment turn
+    // Increment turn and reset timer for next player
+    // (On the final ban, completeSession overwrites timer fields with undefined)
+    const now = Date.now();
     const newCurrentTurn = currentTurn + 1;
     await ctx.db.patch(session._id, {
       currentTurn: newCurrentTurn,
-      updatedAt: Date.now(),
+      updatedAt: now,
+      timerStartedAt: now,
+      timerPausedAt: undefined,
     });
 
     // Audit log: MAP_BANNED

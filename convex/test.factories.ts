@@ -101,6 +101,8 @@ export const sessionFactory = (
     currentTurn: number;
     currentRound: number;
     isRevoteRound: boolean;
+    timerStartedAt: number;
+    timerPausedAt: number;
     updatedAt: number;
     expiresAt: number;
   }> = {}
@@ -116,6 +118,8 @@ export const sessionFactory = (
     currentTurn: overrides.currentTurn ?? 0,
     currentRound: overrides.currentRound ?? 1,
     isRevoteRound: overrides.isRevoteRound ?? false,
+    timerStartedAt: overrides.timerStartedAt,
+    timerPausedAt: overrides.timerPausedAt,
     createdBy,
     updatedAt: overrides.updatedAt ?? now,
     expiresAt: overrides.expiresAt ?? now + ONE_DAY_MS,
