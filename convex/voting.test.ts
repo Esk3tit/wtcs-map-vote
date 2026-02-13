@@ -1,12 +1,13 @@
 /**
  * Voting Module Tests
  *
- * Tests for ABBA ban submission and MULTIPLAYER vote submission:
- * validation errors, happy path, completion logic, and audit logging.
+ * Tests for ABBA ban submission, MULTIPLAYER vote submission,
+ * and admin vote-on-behalf: validation errors, happy path,
+ * completion logic, and audit logging.
  */
 
 import { describe, it, expect } from "vitest";
-import { createTestContext } from "./test.setup";
+import { createTestContext, createAuthenticatedAdmin } from "./test.setup";
 import {
   adminFactory,
   sessionFactory,
@@ -15,7 +16,7 @@ import {
   mapFactory,
   voteFactory,
 } from "./test.factories";
-import { internal } from "./_generated/api";
+import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 
 // ============================================================================
@@ -66,6 +67,7 @@ async function completeABBAFlow(t: TestContext, session: ABBASessionData) {
 async function createABBASession(
   t: TestContext,
   overrides: {
+    adminId?: Id<"admins">;
     sessionStatus?: "DRAFT" | "WAITING" | "IN_PROGRESS" | "PAUSED" | "COMPLETE" | "EXPIRED";
     format?: "ABBA" | "MULTIPLAYER";
     mapPoolSize?: number;
@@ -78,7 +80,7 @@ async function createABBASession(
   } = {}
 ): Promise<ABBASessionData> {
   return await t.run(async (ctx) => {
-    const adminId = await ctx.db.insert("admins", adminFactory());
+    const adminId = overrides.adminId ?? await ctx.db.insert("admins", adminFactory());
     const mapPoolSize = overrides.mapPoolSize ?? 5;
     const sessionId = await ctx.db.insert(
       "sessions",
@@ -863,6 +865,7 @@ interface MultiplayerSessionData {
 async function createMultiplayerSession(
   t: TestContext,
   overrides: {
+    adminId?: Id<"admins">;
     sessionStatus?: "DRAFT" | "WAITING" | "IN_PROGRESS" | "PAUSED" | "COMPLETE" | "EXPIRED";
     format?: "ABBA" | "MULTIPLAYER";
     mapPoolSize?: number;
@@ -876,7 +879,7 @@ async function createMultiplayerSession(
   } = {}
 ): Promise<MultiplayerSessionData> {
   return await t.run(async (ctx) => {
-    const adminId = await ctx.db.insert("admins", adminFactory());
+    const adminId = overrides.adminId ?? await ctx.db.insert("admins", adminFactory());
     const playerCount = overrides.playerCount ?? 3;
     const mapPoolSize = overrides.mapPoolSize ?? 5;
     const sessionId = await ctx.db.insert(
@@ -2724,5 +2727,595 @@ describe("WAR-20: large session", () => {
     // Verify winner map state
     const winnerMap = await t.run(async (ctx) => ctx.db.get(session.mapIds[6]));
     expect(winnerMap?.state).toBe("WINNER");
+  });
+});
+
+// ============================================================================
+// adminVoteOnBehalf (WAR-44)
+// ============================================================================
+
+describe("voting.adminVoteOnBehalf", () => {
+  // --------------------------------------------------------------------------
+  // Test Helpers
+  // --------------------------------------------------------------------------
+
+  /** Create an ABBA session with admin auth context for adminVoteOnBehalf tests. */
+  async function createAdminABBASession(
+    overrides: {
+      sessionStatus?: "DRAFT" | "WAITING" | "IN_PROGRESS" | "PAUSED" | "COMPLETE" | "EXPIRED";
+      mapPoolSize?: number;
+      currentTurn?: number;
+    } = {}
+  ) {
+    const { t, authT, adminId } = await createAuthenticatedAdmin();
+    const session = await createABBASession(t, { ...overrides, adminId });
+    return {
+      t,
+      authT,
+      adminId,
+      sessionId: session.sessionId,
+      mapIds: session.mapIds,
+      playerAId: session.playerA.id,
+      playerBId: session.playerB.id,
+    };
+  }
+
+  /** Create a MULTIPLAYER session with admin auth context for adminVoteOnBehalf tests. */
+  async function createAdminMultiplayerSession(
+    overrides: {
+      sessionStatus?: "DRAFT" | "WAITING" | "IN_PROGRESS" | "PAUSED" | "COMPLETE" | "EXPIRED";
+      mapPoolSize?: number;
+      playerCount?: number;
+      currentRound?: number;
+      isRevoteRound?: boolean;
+    } = {}
+  ) {
+    const { t, authT, adminId } = await createAuthenticatedAdmin();
+    const session = await createMultiplayerSession(t, { ...overrides, adminId });
+    return {
+      t,
+      authT,
+      adminId,
+      sessionId: session.sessionId,
+      mapIds: session.mapIds,
+      playerIds: session.players.map((p) => p.id),
+    };
+  }
+
+  // --------------------------------------------------------------------------
+  // ABBA - Happy Path
+  // --------------------------------------------------------------------------
+
+  describe("ABBA format", () => {
+    it("bans a map on behalf of the current-turn player", async () => {
+      const { t, authT, sessionId, playerAId, mapIds } =
+        await createAdminABBASession();
+
+      const result = await authT.mutation(api.voting.adminVoteOnBehalf, {
+        sessionId,
+        playerId: playerAId,
+        mapId: mapIds[0],
+      });
+
+      expect(result.mapName).toBe("Map 1");
+      expect(result.isComplete).toBe(false);
+
+      // Verify map state
+      const map = await t.run(async (ctx) => ctx.db.get(mapIds[0]));
+      expect(map?.state).toBe("BANNED");
+      expect(map?.bannedByPlayerId).toBe(playerAId);
+      expect(map?.bannedAtTurn).toBe(0);
+      expect(map?.submittedByAdmin).toBe(true);
+
+      // Verify turn advanced and timer reset
+      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(session?.currentTurn).toBe(1);
+      expect(session?.timerStartedAt).toBeDefined();
+      expect(session?.timerPausedAt).toBeUndefined();
+    });
+
+    it("completes session when final ban is submitted", async () => {
+      // 5 maps → 4 bans needed. Pre-ban 3 maps, then admin submits final ban.
+      const { t, authT, sessionId, playerAId, mapIds } =
+        await createAdminABBASession({ currentTurn: 3 });
+
+      // Pre-ban maps 0-2 (turns 0, 1, 2 already happened)
+      await t.run(async (ctx) => {
+        for (let i = 0; i < 3; i++) {
+          await ctx.db.patch(mapIds[i], {
+            state: "BANNED",
+            bannedAtTurn: i,
+          });
+        }
+      });
+
+      // Turn 3 = Player A's turn (ABBA pattern [0,1,1,0])
+      const result = await authT.mutation(api.voting.adminVoteOnBehalf, {
+        sessionId,
+        playerId: playerAId,
+        mapId: mapIds[3],
+      });
+
+      expect(result.isComplete).toBe(true);
+      expect(result.winnerMapName).toBe("Map 5");
+
+      // Verify session complete
+      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(session?.status).toBe("COMPLETE");
+      expect(session?.completedAt).toBeDefined();
+
+      // Verify winner map
+      const winnerMap = await t.run(async (ctx) => ctx.db.get(mapIds[4]));
+      expect(winnerMap?.state).toBe("WINNER");
+    });
+
+    it("logs MAP_BANNED audit event with admin actor", async () => {
+      const { t, authT, adminId, sessionId, playerAId, mapIds } =
+        await createAdminABBASession();
+
+      await authT.mutation(api.voting.adminVoteOnBehalf, {
+        sessionId,
+        playerId: playerAId,
+        mapId: mapIds[0],
+      });
+
+      const logs = await t.run(async (ctx) =>
+        ctx.db
+          .query("auditLogs")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+          .collect()
+      );
+
+      const banLog = logs.find((l) => l.action === "MAP_BANNED");
+      expect(banLog).toBeDefined();
+      expect(banLog?.actorType).toBe("ADMIN");
+      expect(banLog?.actorId).toBe(adminId);
+      expect(banLog?.details.mapName).toBe("Map 1");
+      expect(banLog?.details.teamName).toBe("Team Alpha");
+      expect(banLog?.details.reason).toBe("ADMIN_VOTE_ON_BEHALF");
+    });
+
+    // --------------------------------------------------------------------------
+    // ABBA - Validation Errors
+    // --------------------------------------------------------------------------
+
+    it("rejects when it's not the target player's turn", async () => {
+      const { authT, sessionId, playerBId, mapIds } =
+        await createAdminABBASession(); // Turn 0 = Player A's turn
+
+      await expect(
+        authT.mutation(api.voting.adminVoteOnBehalf, {
+          sessionId,
+          playerId: playerBId, // Player B, but it's Player A's turn
+          mapId: mapIds[0],
+        })
+      ).rejects.toThrow(/Not this player's turn/);
+    });
+
+    it("rejects when target map is already banned", async () => {
+      const { t, authT, sessionId, playerAId, mapIds } =
+        await createAdminABBASession();
+
+      await t.run(async (ctx) => {
+        await ctx.db.patch(mapIds[0], { state: "BANNED" });
+      });
+
+      await expect(
+        authT.mutation(api.voting.adminVoteOnBehalf, {
+          sessionId,
+          playerId: playerAId,
+          mapId: mapIds[0],
+        })
+      ).rejects.toThrow(/Map not available/);
+    });
+
+    it("rejects when session is not IN_PROGRESS", async () => {
+      const { authT, sessionId, playerAId, mapIds } =
+        await createAdminABBASession({ sessionStatus: "PAUSED" });
+
+      await expect(
+        authT.mutation(api.voting.adminVoteOnBehalf, {
+          sessionId,
+          playerId: playerAId,
+          mapId: mapIds[0],
+        })
+      ).rejects.toThrow(/Session is not in progress/);
+    });
+
+    it("rejects when session has expired (expiresAt in the past)", async () => {
+      const { t, authT, sessionId, playerAId, mapIds } =
+        await createAdminABBASession();
+
+      await t.run(async (ctx) => {
+        await ctx.db.patch(sessionId, { expiresAt: Date.now() - 1000 });
+      });
+
+      await expect(
+        authT.mutation(api.voting.adminVoteOnBehalf, {
+          sessionId,
+          playerId: playerAId,
+          mapId: mapIds[0],
+        })
+      ).rejects.toThrow(/Session has expired/);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // MULTIPLAYER - Happy Path
+  // --------------------------------------------------------------------------
+
+  describe("MULTIPLAYER format", () => {
+    it("votes on behalf of a player", async () => {
+      const { t, authT, sessionId, playerIds, mapIds } =
+        await createAdminMultiplayerSession();
+
+      const result = await authT.mutation(api.voting.adminVoteOnBehalf, {
+        sessionId,
+        playerId: playerIds[0],
+        mapId: mapIds[0],
+      });
+
+      expect(result.mapName).toBe("Map 1");
+      expect(result.isComplete).toBe(false);
+
+      // Verify vote record
+      const votes = await t.run(async (ctx) =>
+        ctx.db
+          .query("votes")
+          .withIndex("by_sessionId_and_round", (q) =>
+            q.eq("sessionId", sessionId).eq("round", 1)
+          )
+          .collect()
+      );
+      expect(votes).toHaveLength(1);
+      expect(votes[0].playerId).toBe(playerIds[0]);
+      expect(votes[0].mapId).toBe(mapIds[0]);
+      expect(votes[0].submittedByAdmin).toBe(true);
+
+      // Verify player flagged
+      const player = await t.run(async (ctx) => ctx.db.get(playerIds[0]));
+      expect(player?.hasVotedThisRound).toBe(true);
+    });
+
+    it("triggers round resolution when last vote is submitted", async () => {
+      // 3 players, 5 maps. All vote for same map → it gets banned.
+      const { t, authT, sessionId, playerIds, mapIds } =
+        await createAdminMultiplayerSession();
+
+      // First two players vote via internal mutation (simulate normal player votes)
+      for (let i = 0; i < 2; i++) {
+        await t.run(async (ctx) => {
+          await ctx.db.insert("votes", voteFactory(sessionId, playerIds[i], mapIds[0]));
+          await ctx.db.patch(playerIds[i], { hasVotedThisRound: true });
+        });
+      }
+
+      // Admin submits last vote on behalf of player 3
+      await authT.mutation(api.voting.adminVoteOnBehalf, {
+        sessionId,
+        playerId: playerIds[2],
+        mapId: mapIds[0],
+      });
+
+      // Verify round advanced (Map 1 banned, 4 remain → round 2)
+      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(session?.currentRound).toBe(2);
+
+      const bannedMap = await t.run(async (ctx) => ctx.db.get(mapIds[0]));
+      expect(bannedMap?.state).toBe("BANNED");
+    });
+
+    it("logs VOTE_SUBMITTED audit event with admin actor", async () => {
+      const { t, authT, adminId, sessionId, playerIds, mapIds } =
+        await createAdminMultiplayerSession();
+
+      await authT.mutation(api.voting.adminVoteOnBehalf, {
+        sessionId,
+        playerId: playerIds[0],
+        mapId: mapIds[0],
+      });
+
+      const logs = await t.run(async (ctx) =>
+        ctx.db
+          .query("auditLogs")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+          .collect()
+      );
+
+      const voteLog = logs.find((l) => l.action === "VOTE_SUBMITTED");
+      expect(voteLog).toBeDefined();
+      expect(voteLog?.actorType).toBe("ADMIN");
+      expect(voteLog?.actorId).toBe(adminId);
+      expect(voteLog?.details.mapName).toBe("Map 1");
+      expect(voteLog?.details.teamName).toBe("Team A");
+      expect(voteLog?.details.reason).toBe("ADMIN_VOTE_ON_BEHALF");
+    });
+
+    // --------------------------------------------------------------------------
+    // MULTIPLAYER - Validation Errors
+    // --------------------------------------------------------------------------
+
+    it("rejects when player has already voted this round", async () => {
+      const { t, authT, sessionId, playerIds, mapIds } =
+        await createAdminMultiplayerSession();
+
+      // Mark player as voted
+      await t.run(async (ctx) => {
+        await ctx.db.patch(playerIds[0], { hasVotedThisRound: true });
+      });
+
+      await expect(
+        authT.mutation(api.voting.adminVoteOnBehalf, {
+          sessionId,
+          playerId: playerIds[0],
+          mapId: mapIds[0],
+        })
+      ).rejects.toThrow(/Player has already voted this round/);
+    });
+
+    it("rejects when target map is not available", async () => {
+      const { t, authT, sessionId, playerIds, mapIds } =
+        await createAdminMultiplayerSession();
+
+      await t.run(async (ctx) => {
+        await ctx.db.patch(mapIds[0], { state: "BANNED" });
+      });
+
+      await expect(
+        authT.mutation(api.voting.adminVoteOnBehalf, {
+          sessionId,
+          playerId: playerIds[0],
+          mapId: mapIds[0],
+        })
+      ).rejects.toThrow(/Map not available/);
+    });
+
+    it("rejects when session is not IN_PROGRESS", async () => {
+      const { authT, sessionId, playerIds, mapIds } =
+        await createAdminMultiplayerSession({ sessionStatus: "COMPLETE" });
+
+      await expect(
+        authT.mutation(api.voting.adminVoteOnBehalf, {
+          sessionId,
+          playerId: playerIds[0],
+          mapId: mapIds[0],
+        })
+      ).rejects.toThrow(/Session is not in progress/);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Shared Validation Errors
+  // --------------------------------------------------------------------------
+
+  describe("shared validation", () => {
+    it("rejects unauthenticated callers", async () => {
+      const { t, adminId } = await createAuthenticatedAdmin();
+
+      const sessionId = await t.run(async (ctx) =>
+        ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, { status: "IN_PROGRESS" })
+        )
+      );
+
+      const playerId = await t.run(async (ctx) =>
+        ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId)
+        )
+      );
+
+      const mapId = await t.run(async (ctx) => {
+        const masterMapId = await ctx.db.insert("maps", mapFactory());
+        return ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, masterMapId)
+        );
+      });
+
+      // Use unauthenticated context (t, not authT)
+      await expect(
+        t.mutation(api.voting.adminVoteOnBehalf, {
+          sessionId,
+          playerId,
+          mapId,
+        })
+      ).rejects.toThrow(/Authentication required/);
+    });
+
+    it("rejects when player does not belong to the session", async () => {
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
+
+      // Create two sessions
+      const data = await t.run(async (ctx) => {
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            format: "ABBA",
+            status: "IN_PROGRESS",
+            mapPoolSize: 5,
+            playerCount: 2,
+          })
+        );
+
+        const otherSessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            format: "ABBA",
+            status: "IN_PROGRESS",
+            mapPoolSize: 5,
+            playerCount: 2,
+          })
+        );
+
+        // Player belongs to other session
+        const playerId = await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(otherSessionId, {
+            role: "PLAYER_A",
+            teamName: "Team A",
+          })
+        );
+
+        const masterMapId = await ctx.db.insert("maps", mapFactory());
+        const mapId = await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, masterMapId)
+        );
+
+        return { sessionId, playerId, mapId };
+      });
+
+      await expect(
+        authT.mutation(api.voting.adminVoteOnBehalf, {
+          sessionId: data.sessionId,
+          playerId: data.playerId,
+          mapId: data.mapId,
+        })
+      ).rejects.toThrow(/Player not found in session/);
+    });
+
+    it("rejects non-existent session", async () => {
+      const { t, authT } = await createAuthenticatedAdmin();
+
+      // Create then delete a session to get a valid but non-existent ID
+      const data = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory({ email: "other@test.com" }));
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId)
+        );
+        const playerId = await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId)
+        );
+        const masterMapId = await ctx.db.insert("maps", mapFactory());
+        const mapId = await ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, masterMapId)
+        );
+        await ctx.db.delete(sessionId);
+        return { sessionId, playerId, mapId };
+      });
+
+      await expect(
+        authT.mutation(api.voting.adminVoteOnBehalf, {
+          sessionId: data.sessionId,
+          playerId: data.playerId,
+          mapId: data.mapId,
+        })
+      ).rejects.toThrow(/Session not found/);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Edge Cases
+  // --------------------------------------------------------------------------
+
+  describe("edge cases", () => {
+    it("defense-in-depth: rejects duplicate vote via DB check when hasVotedThisRound flag is desynchronized (MULTIPLAYER)", async () => {
+      const { t, authT, sessionId, playerIds, mapIds } =
+        await createAdminMultiplayerSession();
+
+      // Submit a legitimate vote via admin for player 1
+      await authT.mutation(api.voting.adminVoteOnBehalf, {
+        sessionId,
+        playerId: playerIds[0],
+        mapId: mapIds[0],
+      });
+
+      // Manually reset hasVotedThisRound to false (simulates a desync between flag and actual vote records)
+      await t.run(async (ctx) => {
+        await ctx.db.patch(playerIds[0], { hasVotedThisRound: false });
+      });
+
+      // The hasVotedThisRound flag is false, but the DB vote record exists.
+      // The defense-in-depth DB check should catch this.
+      await expect(
+        authT.mutation(api.voting.adminVoteOnBehalf, {
+          sessionId,
+          playerId: playerIds[0],
+          mapId: mapIds[1],
+        })
+      ).rejects.toThrow(/Player has already voted this round/);
+    });
+
+    it("admin vote triggers WINNER outcome through full multi-round flow (MULTIPLAYER)", async () => {
+      // 2 players, 3 maps: need to eliminate 2 maps to get a winner
+      const { t, authT, sessionId, playerIds, mapIds } =
+        await createAdminMultiplayerSession({ playerCount: 2, mapPoolSize: 3 });
+
+      // Round 1: both players vote same map -> 1 banned, 2 remain -> ROUND_ADVANCED
+      await authT.mutation(api.voting.adminVoteOnBehalf, {
+        sessionId,
+        playerId: playerIds[0],
+        mapId: mapIds[0],
+      });
+      const r1Result = await authT.mutation(api.voting.adminVoteOnBehalf, {
+        sessionId,
+        playerId: playerIds[1],
+        mapId: mapIds[0],
+      });
+
+      expect(r1Result.mapName).toBe("Map 1");
+      expect(r1Result.isComplete).toBe(false);
+
+      // Verify round advanced
+      const sessionAfterR1 = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(sessionAfterR1?.currentRound).toBe(2);
+
+      // Round 2: both players vote same map -> 1 banned, 1 remains -> WINNER
+      await authT.mutation(api.voting.adminVoteOnBehalf, {
+        sessionId,
+        playerId: playerIds[0],
+        mapId: mapIds[1],
+      });
+      const r2Result = await authT.mutation(api.voting.adminVoteOnBehalf, {
+        sessionId,
+        playerId: playerIds[1],
+        mapId: mapIds[1],
+      });
+
+      expect(r2Result.isComplete).toBe(true);
+      expect(r2Result.winnerMapName).toBe("Map 3");
+
+      // Verify session is complete
+      const sessionAfterR2 = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(sessionAfterR2?.status).toBe("COMPLETE");
+      expect(sessionAfterR2?.completedAt).toBeDefined();
+
+      // Verify winner map state
+      const winnerMap = await t.run(async (ctx) => ctx.db.get(mapIds[2]));
+      expect(winnerMap?.state).toBe("WINNER");
+    });
+
+    it("rejects when player ID does not exist", async () => {
+      const { t, authT, sessionId, mapIds } =
+        await createAdminMultiplayerSession();
+
+      // Create a player and then delete it to get a valid but non-existent ID
+      const deletedPlayerId = await t.run(async (ctx) => {
+        const tempPlayerId = await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sessionId, {
+            role: "PLAYER_99",
+            teamName: "Team Deleted",
+            ipAddress: "10.0.0.99",
+            isConnected: true,
+          })
+        );
+        await ctx.db.delete(tempPlayerId);
+        return tempPlayerId;
+      });
+
+      await expect(
+        authT.mutation(api.voting.adminVoteOnBehalf, {
+          sessionId,
+          playerId: deletedPlayerId,
+          mapId: mapIds[0],
+        })
+      ).rejects.toThrow(/Player not found in session/);
+    });
   });
 });

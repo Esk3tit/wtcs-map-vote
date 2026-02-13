@@ -177,6 +177,7 @@ export const sessionMapFactory = (
     bannedAtTurn: number;
     bannedAtRound: number;
     voteCount: number;
+    submittedByAdmin: boolean;
   }> = {}
 ) => ({
   sessionId,
@@ -188,6 +189,7 @@ export const sessionMapFactory = (
   bannedAtTurn: overrides.bannedAtTurn,
   bannedAtRound: overrides.bannedAtRound,
   voteCount: overrides.voteCount,
+  submittedByAdmin: overrides.submittedByAdmin,
 });
 
 /**

@@ -34,6 +34,18 @@ export function getActivePlayerIndex(currentTurn: number): number {
   return ABBA_TURN_PATTERN[currentTurn % ABBA_TURN_PATTERN.length];
 }
 
+/**
+ * Sort players by join order (creation time, then ID tiebreaker).
+ * This determines Player A vs Player B in ABBA format.
+ */
+export function sortPlayersByJoinOrder<T extends { _creationTime: number; _id: string }>(
+  players: T[]
+): T[] {
+  return [...players].sort(
+    (a, b) => a._creationTime - b._creationTime || a._id.localeCompare(b._id)
+  );
+}
+
 // Player heartbeat constants
 export const HEARTBEAT_SKIP_MS = 15_000; // Skip DB write if heartbeat is still fresh
 
