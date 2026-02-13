@@ -2991,7 +2991,7 @@ describe("voting.adminVoteOnBehalf", () => {
       }
 
       // Admin submits last vote on behalf of player 3
-      const result = await authT.mutation(api.voting.adminVoteOnBehalf, {
+      await authT.mutation(api.voting.adminVoteOnBehalf, {
         sessionId,
         playerId: playerIds[2],
         mapId: mapIds[0],
@@ -3291,7 +3291,7 @@ describe("voting.adminVoteOnBehalf", () => {
     });
 
     it("rejects when player ID does not exist", async () => {
-      const { t, authT, sessionId, playerIds, mapIds } =
+      const { t, authT, sessionId, mapIds } =
         await createAdminMultiplayerSession();
 
       // Create a player and then delete it to get a valid but non-existent ID
