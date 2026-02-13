@@ -14,7 +14,7 @@ import type { Doc, Id } from "./_generated/dataModel";
 
 import { ConvexError, v } from "convex/values";
 
-import { getActivePlayerIndex } from "./lib/constants";
+import { getActivePlayerIndex, sortPlayersByJoinOrder } from "./lib/constants";
 import {
   lookupAndValidatePlayer,
   requireAdmin,
@@ -360,6 +360,216 @@ async function resolveRound(
 }
 
 // ============================================================================
+// Shared Execution Helpers
+// ============================================================================
+
+/** Result returned by executeBan. */
+type BanResult = {
+  mapName: string;
+  turn: number;
+  isComplete: boolean;
+  winnerMapId?: Id<"sessionMaps">;
+  winnerMapName?: string;
+};
+
+/**
+ * Execute an ABBA ban. Shared logic for both player and admin paths.
+ *
+ * Validates it's the correct player's turn, bans the target map, advances
+ * the turn counter, and auto-declares a winner when all bans are complete.
+ *
+ * @param ctx - Mutation context
+ * @param args - Ban parameters including actor context
+ */
+async function executeBan(
+  ctx: MutationCtx,
+  args: {
+    session: Doc<"sessions">;
+    player: Doc<"sessionPlayers">;
+    targetMap: Doc<"sessionMaps">;
+    submittedByAdmin: boolean;
+    actorType: "PLAYER" | "ADMIN";
+    actorId: Id<"sessionPlayers"> | Id<"admins">;
+  }
+): Promise<BanResult> {
+  const { session, player, targetMap, submittedByAdmin, actorType, actorId } =
+    args;
+  const currentTurn = session.currentTurn;
+
+  // Ban the map
+  await ctx.db.patch(targetMap._id, {
+    state: "BANNED",
+    bannedByPlayerId: player._id,
+    bannedAtTurn: currentTurn,
+    ...(submittedByAdmin && { submittedByAdmin: true }),
+  });
+
+  // Advance turn and reset timer
+  const now = Date.now();
+  const newCurrentTurn = currentTurn + 1;
+  await ctx.db.patch(session._id, {
+    currentTurn: newCurrentTurn,
+    updatedAt: now,
+    timerStartedAt: now,
+    timerPausedAt: undefined,
+  });
+
+  // Audit log: MAP_BANNED
+  await logAction(ctx, {
+    sessionId: session._id,
+    action: "MAP_BANNED",
+    actorType,
+    actorId,
+    details: {
+      mapId: targetMap._id,
+      mapName: targetMap.name,
+      teamName: player.teamName,
+      turn: currentTurn,
+      ...(submittedByAdmin && { reason: "ADMIN_VOTE_ON_BEHALF" }),
+    },
+  });
+
+  // Check if all bans are complete
+  const bansNeeded = session.mapPoolSize - 1;
+  if (newCurrentTurn >= bansNeeded) {
+    const remainingMaps = await ctx.db
+      .query("sessionMaps")
+      .withIndex("by_sessionId_and_state", (q) =>
+        q.eq("sessionId", session._id).eq("state", "AVAILABLE")
+      )
+      .collect();
+
+    if (remainingMaps.length !== 1) {
+      console.error(
+        `Data integrity error: expected 1 available map after ${bansNeeded} bans, found ${remainingMaps.length}`
+      );
+      throw new Error(
+        "Data integrity error: unexpected map count after voting"
+      );
+    }
+
+    const winnerMap = remainingMaps[0];
+    await completeSession(ctx, session, winnerMap);
+
+    return {
+      mapName: targetMap.name,
+      turn: currentTurn,
+      isComplete: true,
+      winnerMapId: winnerMap._id,
+      winnerMapName: winnerMap.name,
+    };
+  }
+
+  return {
+    mapName: targetMap.name,
+    turn: currentTurn,
+    isComplete: false,
+  };
+}
+
+/** Result returned by executeVote. */
+type VoteResult = {
+  mapName: string;
+  round: number;
+  allVotesSubmitted: boolean;
+  resolution?: RoundResolution;
+  isComplete: boolean;
+  winnerMapId?: Id<"sessionMaps">;
+  winnerMapName?: string;
+};
+
+/**
+ * Execute a multiplayer vote. Shared logic for both player and admin paths.
+ *
+ * Inserts a vote record, marks the player as voted, and resolves the round
+ * if all players have now voted.
+ *
+ * @param ctx - Mutation context
+ * @param args - Vote parameters including actor context
+ */
+async function executeVote(
+  ctx: MutationCtx,
+  args: {
+    session: Doc<"sessions">;
+    player: Doc<"sessionPlayers">;
+    targetMap: Doc<"sessionMaps">;
+    submittedByAdmin: boolean;
+    actorType: "PLAYER" | "ADMIN";
+    actorId: Id<"sessionPlayers"> | Id<"admins">;
+  }
+): Promise<VoteResult> {
+  const { session, player, targetMap, submittedByAdmin, actorType, actorId } =
+    args;
+  const currentRound = session.currentRound;
+
+  // Insert vote record
+  await ctx.db.insert("votes", {
+    sessionId: session._id,
+    round: currentRound,
+    playerId: player._id,
+    mapId: targetMap._id,
+    submittedAt: Date.now(),
+    submittedByAdmin,
+  });
+
+  // Mark player as voted this round
+  await ctx.db.patch(player._id, { hasVotedThisRound: true });
+
+  // Audit log: VOTE_SUBMITTED
+  await logAction(ctx, {
+    sessionId: session._id,
+    action: "VOTE_SUBMITTED",
+    actorType,
+    actorId,
+    details: {
+      mapId: targetMap._id,
+      mapName: targetMap.name,
+      teamName: player.teamName,
+      round: currentRound,
+      ...(submittedByAdmin && { reason: "ADMIN_VOTE_ON_BEHALF" }),
+    },
+  });
+
+  // Check if all players have voted this round
+  const unvotedPlayer = await ctx.db
+    .query("sessionPlayers")
+    .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+    .filter((q) => q.eq(q.field("hasVotedThisRound"), false))
+    .first();
+  const allVotesSubmitted = unvotedPlayer === null;
+
+  if (allVotesSubmitted) {
+    const resolution = await resolveRound(ctx, session);
+    const isComplete =
+      resolution.outcome === "WINNER" ||
+      resolution.outcome === "RANDOM_WINNER";
+
+    let winnerMapName: string | undefined;
+    if (resolution.winnerMapId) {
+      const winnerMap = await ctx.db.get(resolution.winnerMapId);
+      winnerMapName = winnerMap?.name;
+    }
+
+    return {
+      mapName: targetMap.name,
+      round: currentRound,
+      allVotesSubmitted: true,
+      resolution,
+      isComplete,
+      winnerMapId: resolution.winnerMapId,
+      winnerMapName,
+    };
+  }
+
+  return {
+    mapName: targetMap.name,
+    round: currentRound,
+    allVotesSubmitted: false,
+    isComplete: false,
+  };
+}
+
+// ============================================================================
 // Internal Mutations
 // ============================================================================
 
@@ -431,10 +641,7 @@ export const submitBan = internalMutation({
       .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
       .collect();
 
-    const sortedPlayers = [...allPlayers].sort(
-      (a, b) =>
-        a._creationTime - b._creationTime || a._id.localeCompare(b._id)
-    );
+    const sortedPlayers = sortPlayersByJoinOrder(allPlayers);
 
     const playerIndex = sortedPlayers.findIndex((p) => p._id === player._id);
     if (playerIndex === -1) {
@@ -455,79 +662,22 @@ export const submitBan = internalMutation({
       return { status: "error" as const, error: "MAP_UNAVAILABLE" as const };
     }
 
-    // === Success: execute the ban ===
+    // === Execute ban via shared helper ===
 
-    const currentTurn = session.currentTurn;
-
-    // Ban the map
-    await ctx.db.patch(mapId, {
-      state: "BANNED",
-      bannedByPlayerId: player._id,
-      bannedAtTurn: currentTurn,
-    });
-
-    // Increment turn and reset timer for next player
-    // (On the final ban, completeSession overwrites timer fields with undefined)
-    const now = Date.now();
-    const newCurrentTurn = currentTurn + 1;
-    await ctx.db.patch(session._id, {
-      currentTurn: newCurrentTurn,
-      updatedAt: now,
-      timerStartedAt: now,
-      timerPausedAt: undefined,
-    });
-
-    // Audit log: MAP_BANNED
-    await logAction(ctx, {
-      sessionId: session._id,
-      action: "MAP_BANNED",
+    const result = await executeBan(ctx, {
+      session,
+      player,
+      targetMap,
+      submittedByAdmin: false,
       actorType: "PLAYER",
       actorId: player._id,
-      details: {
-        mapId,
-        mapName: targetMap.name,
-        teamName: player.teamName,
-        turn: currentTurn,
-      },
     });
-
-    // Check if all bans are complete
-    const bansNeeded = session.mapPoolSize - 1;
-    if (newCurrentTurn >= bansNeeded) {
-      // Find the remaining AVAILABLE map
-      const remainingMaps = await ctx.db
-        .query("sessionMaps")
-        .withIndex("by_sessionId_and_state", (q) =>
-          q.eq("sessionId", session._id).eq("state", "AVAILABLE")
-        )
-        .collect();
-
-      if (remainingMaps.length !== 1) {
-        console.error(
-          `Data integrity error: expected 1 available map after ${bansNeeded} bans, found ${remainingMaps.length}`
-        );
-        throw new Error(
-          "Data integrity error: unexpected map count after voting"
-        );
-      }
-
-      const winnerMap = remainingMaps[0];
-
-      // Declare winner and complete session
-      await completeSession(ctx, session, winnerMap);
-
-      return {
-        status: "ok" as const,
-        banned: { mapId, mapName: targetMap.name, turn: currentTurn },
-        isComplete: true,
-        winnerMapId: winnerMap._id,
-      };
-    }
 
     return {
       status: "ok" as const,
-      banned: { mapId, mapName: targetMap.name, turn: currentTurn },
-      isComplete: false,
+      banned: { mapId, mapName: result.mapName, turn: result.turn },
+      isComplete: result.isComplete,
+      winnerMapId: result.winnerMapId,
     };
   },
 });
@@ -605,76 +755,33 @@ export const submitVote = internalMutation({
       return { status: "error" as const, error: "MAP_UNAVAILABLE" as const };
     }
 
-    // === Success: record the vote ===
-
-    const currentRound = session.currentRound;
-
     // Defense-in-depth: check DB for existing vote (supplements hasVotedThisRound flag)
     const existingVote = await ctx.db
       .query("votes")
       .withIndex("by_playerId_and_round", (q) =>
-        q.eq("playerId", player._id).eq("round", currentRound)
+        q.eq("playerId", player._id).eq("round", session.currentRound)
       )
       .first();
     if (existingVote) {
       return { status: "error" as const, error: "ALREADY_VOTED" as const };
     }
 
-    // Insert vote record
-    await ctx.db.insert("votes", {
-      sessionId: session._id,
-      round: currentRound,
-      playerId: player._id,
-      mapId,
-      submittedAt: Date.now(),
+    // === Execute vote via shared helper ===
+
+    const result = await executeVote(ctx, {
+      session,
+      player,
+      targetMap,
       submittedByAdmin: false,
-    });
-
-    // Mark player as voted this round
-    await ctx.db.patch(player._id, {
-      hasVotedThisRound: true,
-    });
-
-    // Audit log: VOTE_SUBMITTED
-    await logAction(ctx, {
-      sessionId: session._id,
-      action: "VOTE_SUBMITTED",
       actorType: "PLAYER",
       actorId: player._id,
-      details: {
-        mapId,
-        mapName: targetMap.name,
-        teamName: player.teamName,
-        round: currentRound,
-      },
     });
-
-    // Check if all players have voted this round
-    const unvotedPlayer = await ctx.db
-      .query("sessionPlayers")
-      .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
-      .filter((q) => q.eq(q.field("hasVotedThisRound"), false))
-      .first();
-    const allVotesSubmitted = unvotedPlayer === null;
-
-    // Auto-resolve round when all votes are in.
-    // Note: No post-resolve session status check needed — Convex mutations are
-    // serialized (single-writer), so no concurrent vote can interleave between
-    // resolveRound completing and this mutation returning.
-    if (allVotesSubmitted) {
-      const resolution = await resolveRound(ctx, session);
-      return {
-        status: "ok" as const,
-        vote: { mapId, mapName: targetMap.name, round: currentRound },
-        allVotesSubmitted: true,
-        resolution,
-      };
-    }
 
     return {
       status: "ok" as const,
-      vote: { mapId, mapName: targetMap.name, round: currentRound },
-      allVotesSubmitted: false,
+      vote: { mapId, mapName: result.mapName, round: result.round },
+      allVotesSubmitted: result.allVotesSubmitted,
+      resolution: result.resolution,
     };
   },
 });
@@ -688,7 +795,8 @@ export const submitVote = internalMutation({
  *
  * Used when a player disconnects or their timer expires. Determines the
  * action from the session format: ABBA → ban, MULTIPLAYER → vote.
- * Reuses the same validation and completion logic as player-facing mutations.
+ * Reuses the same validation and completion logic as player-facing mutations
+ * via executeBan/executeVote shared helpers.
  *
  * @param sessionId - Target session
  * @param playerId - Player to act on behalf of
@@ -701,8 +809,6 @@ export const adminVoteOnBehalf = mutation({
     mapId: v.id("sessionMaps"),
   },
   returns: v.object({
-    success: v.boolean(),
-    format: v.union(v.literal("ABBA"), v.literal("MULTIPLAYER")),
     mapName: v.string(),
     isComplete: v.boolean(),
     winnerMapName: v.optional(v.string()),
@@ -717,6 +823,9 @@ export const adminVoteOnBehalf = mutation({
     if (session.status !== "IN_PROGRESS") {
       throw new ConvexError("Session is not in progress");
     }
+    if (session.expiresAt < Date.now()) {
+      throw new ConvexError("Session has expired");
+    }
 
     const player = await ctx.db.get(args.playerId);
     if (!player || player.sessionId !== session._id) {
@@ -729,217 +838,69 @@ export const adminVoteOnBehalf = mutation({
     // --- Format-specific logic ---
 
     if (session.format === "ABBA") {
-      return await handleABBABan(ctx, admin, session, player, targetMap);
+      // Validate it's this player's turn
+      const allPlayers = await ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+        .collect();
+
+      const sortedPlayers = sortPlayersByJoinOrder(allPlayers);
+
+      const playerIndex = sortedPlayers.findIndex((p) => p._id === player._id);
+      if (playerIndex === -1) {
+        throw new ConvexError("Player not found in session player list");
+      }
+
+      const activePlayerIndex = getActivePlayerIndex(session.currentTurn);
+      if (playerIndex !== activePlayerIndex) {
+        throw new ConvexError("Not this player's turn");
+      }
+
+      const result = await executeBan(ctx, {
+        session,
+        player,
+        targetMap,
+        submittedByAdmin: true,
+        actorType: "ADMIN",
+        actorId: admin._id,
+      });
+
+      return {
+        mapName: result.mapName,
+        isComplete: result.isComplete,
+        winnerMapName: result.winnerMapName,
+      };
     }
 
-    return await handleMultiplayerVote(ctx, admin, session, player, targetMap);
+    // MULTIPLAYER format
+    if (player.hasVotedThisRound) {
+      throw new ConvexError("Player has already voted this round");
+    }
+
+    // Defense-in-depth: check DB for existing vote
+    const existingVote = await ctx.db
+      .query("votes")
+      .withIndex("by_playerId_and_round", (q) =>
+        q.eq("playerId", player._id).eq("round", session.currentRound)
+      )
+      .first();
+    if (existingVote) {
+      throw new ConvexError("Player has already voted this round");
+    }
+
+    const result = await executeVote(ctx, {
+      session,
+      player,
+      targetMap,
+      submittedByAdmin: true,
+      actorType: "ADMIN",
+      actorId: admin._id,
+    });
+
+    return {
+      mapName: result.mapName,
+      isComplete: result.isComplete,
+      winnerMapName: result.winnerMapName,
+    };
   },
 });
-
-/**
- * Handle ABBA ban on behalf of a player.
- * Mirrors submitBan logic: validate turn, ban map, advance turn, check auto-winner.
- */
-async function handleABBABan(
-  ctx: MutationCtx,
-  admin: Doc<"admins">,
-  session: Doc<"sessions">,
-  player: Doc<"sessionPlayers">,
-  targetMap: Doc<"sessionMaps">
-): Promise<{
-  success: boolean;
-  format: "ABBA";
-  mapName: string;
-  isComplete: boolean;
-  winnerMapName?: string;
-}> {
-  // Validate it's this player's turn
-  const allPlayers = await ctx.db
-    .query("sessionPlayers")
-    .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
-    .collect();
-
-  const sortedPlayers = [...allPlayers].sort(
-    (a, b) =>
-      a._creationTime - b._creationTime || a._id.localeCompare(b._id)
-  );
-
-  const playerIndex = sortedPlayers.findIndex((p) => p._id === player._id);
-  if (playerIndex === -1) {
-    throw new ConvexError("Player not found in session player list");
-  }
-
-  const activePlayerIndex = getActivePlayerIndex(session.currentTurn);
-  if (playerIndex !== activePlayerIndex) {
-    throw new ConvexError("Not this player's turn");
-  }
-
-  const currentTurn = session.currentTurn;
-
-  // Ban the map
-  await ctx.db.patch(targetMap._id, {
-    state: "BANNED",
-    bannedByPlayerId: player._id,
-    bannedAtTurn: currentTurn,
-    submittedByAdmin: true,
-  });
-
-  // Advance turn and reset timer
-  const now = Date.now();
-  const newCurrentTurn = currentTurn + 1;
-  await ctx.db.patch(session._id, {
-    currentTurn: newCurrentTurn,
-    updatedAt: now,
-    timerStartedAt: now,
-    timerPausedAt: undefined,
-  });
-
-  // Audit log
-  await logAction(ctx, {
-    sessionId: session._id,
-    action: "MAP_BANNED",
-    actorType: "ADMIN",
-    actorId: admin._id,
-    details: {
-      mapId: targetMap._id,
-      mapName: targetMap.name,
-      teamName: player.teamName,
-      turn: currentTurn,
-      reason: "ADMIN_VOTE_ON_BEHALF",
-    },
-  });
-
-  // Check auto-winner
-  const bansNeeded = session.mapPoolSize - 1;
-  if (newCurrentTurn >= bansNeeded) {
-    const remainingMaps = await ctx.db
-      .query("sessionMaps")
-      .withIndex("by_sessionId_and_state", (q) =>
-        q.eq("sessionId", session._id).eq("state", "AVAILABLE")
-      )
-      .collect();
-
-    if (remainingMaps.length !== 1) {
-      throw new ConvexError(
-        "Data integrity error: unexpected map count after voting"
-      );
-    }
-
-    const winnerMap = remainingMaps[0];
-    await completeSession(ctx, session, winnerMap);
-
-    return {
-      success: true,
-      format: "ABBA",
-      mapName: targetMap.name,
-      isComplete: true,
-      winnerMapName: winnerMap.name,
-    };
-  }
-
-  return {
-    success: true,
-    format: "ABBA",
-    mapName: targetMap.name,
-    isComplete: false,
-  };
-}
-
-/**
- * Handle MULTIPLAYER vote on behalf of a player.
- * Mirrors submitVote logic: validate not voted, insert vote, check round resolution.
- */
-async function handleMultiplayerVote(
-  ctx: MutationCtx,
-  admin: Doc<"admins">,
-  session: Doc<"sessions">,
-  player: Doc<"sessionPlayers">,
-  targetMap: Doc<"sessionMaps">
-): Promise<{
-  success: boolean;
-  format: "MULTIPLAYER";
-  mapName: string;
-  isComplete: boolean;
-  winnerMapName?: string;
-}> {
-  if (player.hasVotedThisRound) {
-    throw new ConvexError("Player has already voted this round");
-  }
-
-  const currentRound = session.currentRound;
-
-  // Defense-in-depth: check DB for existing vote
-  const existingVote = await ctx.db
-    .query("votes")
-    .withIndex("by_playerId_and_round", (q) =>
-      q.eq("playerId", player._id).eq("round", currentRound)
-    )
-    .first();
-  if (existingVote) {
-    throw new ConvexError("Player has already voted this round");
-  }
-
-  // Insert vote
-  await ctx.db.insert("votes", {
-    sessionId: session._id,
-    round: currentRound,
-    playerId: player._id,
-    mapId: targetMap._id,
-    submittedAt: Date.now(),
-    submittedByAdmin: true,
-  });
-
-  // Mark player as voted
-  await ctx.db.patch(player._id, { hasVotedThisRound: true });
-
-  // Audit log
-  await logAction(ctx, {
-    sessionId: session._id,
-    action: "VOTE_SUBMITTED",
-    actorType: "ADMIN",
-    actorId: admin._id,
-    details: {
-      mapId: targetMap._id,
-      mapName: targetMap.name,
-      teamName: player.teamName,
-      round: currentRound,
-      reason: "ADMIN_VOTE_ON_BEHALF",
-    },
-  });
-
-  // Check if all players have voted
-  const unvotedPlayer = await ctx.db
-    .query("sessionPlayers")
-    .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
-    .filter((q) => q.eq(q.field("hasVotedThisRound"), false))
-    .first();
-  const allVotesSubmitted = unvotedPlayer === null;
-
-  if (allVotesSubmitted) {
-    const resolution = await resolveRound(ctx, session);
-    const isComplete =
-      resolution.outcome === "WINNER" ||
-      resolution.outcome === "RANDOM_WINNER";
-    let winnerMapName: string | undefined;
-
-    if (resolution.winnerMapId) {
-      const winnerMap = await ctx.db.get(resolution.winnerMapId);
-      winnerMapName = winnerMap?.name;
-    }
-
-    return {
-      success: true,
-      format: "MULTIPLAYER",
-      mapName: targetMap.name,
-      isComplete,
-      winnerMapName,
-    };
-  }
-
-  return {
-    success: true,
-    format: "MULTIPLAYER",
-    mapName: targetMap.name,
-    isComplete: false,
-  };
-}

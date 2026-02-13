@@ -25,6 +25,7 @@ import {
   MAX_MAP_POOL_SIZE,
   MAX_REASON_LENGTH,
   getActivePlayerIndex,
+  sortPlayersByJoinOrder,
 } from "./lib/constants";
 import { validateName, validateRange } from "./lib/validation";
 import {
@@ -1467,10 +1468,7 @@ export const getSessionByToken = query({
       .map(toSanitizedPlayer);
 
     // Sort players by creation time to get consistent ordering for turn calculation
-    const sortedPlayers = [...allPlayers].sort(
-      (a, b) =>
-        a._creationTime - b._creationTime || a._id.localeCompare(b._id)
-    );
+    const sortedPlayers = sortPlayersByJoinOrder(allPlayers);
     const playerIndex = sortedPlayers.findIndex((p) => p._id === player._id);
     const isYourTurn = computeIsYourTurn(
       session,
