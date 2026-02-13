@@ -14,7 +14,12 @@ import type { Doc, Id } from "./_generated/dataModel";
 import { v } from "convex/values";
 
 import { getActivePlayerIndex } from "./lib/constants";
-import { lookupAndValidatePlayer, type PlayerLookupError } from "./lib/auth";
+import {
+  lookupAndValidatePlayer,
+  type PlayerLookupError,
+} from "./lib/auth";
+import { completeSession } from "./lib/sessionLifecycle";
+import { pickRandom } from "./lib/random";
 import { logAction } from "./audit";
 
 // ============================================================================
@@ -104,48 +109,6 @@ async function validateTargetMap(
     return null;
   }
   return map;
-}
-
-/**
- * Declare a winner map and complete the session.
- *
- * Patches the winning map to WINNER state, updates the session to COMPLETE,
- * and logs the WINNER_DECLARED audit action. Sets isRevoteRound: false for
- * consistency (harmless for ABBA sessions that lack the field).
- *
- * @param ctx - Mutation context
- * @param session - Current session document
- * @param winnerMap - The session map to declare as winner
- * @param auditDetails - Optional extra fields for the WINNER_DECLARED audit log
- */
-async function completeSession(
-  ctx: MutationCtx,
-  session: Doc<"sessions">,
-  winnerMap: Doc<"sessionMaps">,
-  auditDetails?: Record<string, unknown>
-): Promise<void> {
-  const now = Date.now();
-  await ctx.db.patch(winnerMap._id, { state: "WINNER" });
-  await ctx.db.patch(session._id, {
-    winnerMapId: winnerMap._id,
-    status: "COMPLETE",
-    completedAt: now,
-    updatedAt: now,
-    isRevoteRound: false,
-    timerStartedAt: undefined,
-    timerPausedAt: undefined,
-  });
-
-  await logAction(ctx, {
-    sessionId: session._id,
-    action: "WINNER_DECLARED",
-    actorType: "SYSTEM",
-    details: {
-      mapId: winnerMap._id,
-      mapName: winnerMap.name,
-      ...auditDetails,
-    },
-  });
 }
 
 // ============================================================================
@@ -368,10 +331,7 @@ async function resolveRound(
   }
 
   // Random selection (CSPRNG for competitive integrity)
-  const randomBuffer = new Uint32Array(1);
-  crypto.getRandomValues(randomBuffer);
-  const randomIndex = randomBuffer[0] % currentRoundPool.length;
-  const winnerMap = currentRoundPool[randomIndex];
+  const winnerMap = pickRandom(currentRoundPool);
 
   await logAction(ctx, {
     sessionId: session._id,

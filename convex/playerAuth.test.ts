@@ -436,7 +436,7 @@ describe("playerAuth.validateAndLockToken", () => {
       const t = createTestContext();
       const now = Date.now();
       const { token } = await createSessionWithUnactivatedPlayer(t, {
-        tokenExpiresAt: now + 1, // Expires 1ms from now
+        tokenExpiresAt: now + 5000, // Expires 5s from now (enough margin for test execution)
       });
 
       const result = await t.mutation(
