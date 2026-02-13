@@ -115,6 +115,7 @@ export default defineSchema({
     bannedAtTurn: v.optional(v.number()),
     bannedAtRound: v.optional(v.number()),
     voteCount: v.optional(v.number()),
+    submittedByAdmin: v.optional(v.boolean()),
   })
     .index("by_sessionId", ["sessionId"])
     .index("by_sessionId_and_state", ["sessionId", "state"])
