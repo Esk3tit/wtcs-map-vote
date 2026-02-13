@@ -14,6 +14,7 @@ import { v, ConvexError } from "convex/values";
 
 import {
   SESSION_EXPIRY_MS,
+  SESSION_RESET_PATCHES,
   TOKEN_EXPIRY_MS,
   DEFAULT_TURN_TIMER_SECONDS,
   DEFAULT_MAP_POOL_SIZE,
@@ -1256,6 +1257,82 @@ export const endSession = mutation({
 
     // IP cleanup handled by hourly cron clearCompletedSessionIps (convex/crons.ts)
     // TODO: Add immediate IP cleanup scheduling via ctx.scheduler.runAfter (Phase 2)
+
+    return { success: true };
+  },
+});
+
+/**
+ * Reset a completed session for replay. COMPLETE → WAITING.
+ * Clears all voting data, resets maps and players, extends expiration.
+ * Preserves session configuration and player assignments.
+ *
+ * @param sessionId - Session to reset
+ * @returns success flag
+ */
+export const resetSession = mutation({
+  args: { sessionId: v.id("sessions") },
+  returns: v.object({ success: v.boolean() }),
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) throw new ConvexError("Session not found");
+
+    // Only COMPLETE sessions can be reset
+    if (session.status !== "COMPLETE") {
+      throw new ConvexError(
+        `Cannot reset session in ${session.status} state. Only COMPLETE sessions can be reset.`
+      );
+    }
+
+    // 1. Delete all votes for this session
+    const votes = await ctx.db
+      .query("votes")
+      .withIndex("by_sessionId_and_round", (q) =>
+        q.eq("sessionId", args.sessionId)
+      )
+      .collect();
+    await Promise.all(votes.map((vote) => ctx.db.delete(vote._id)));
+
+    // 2. Reset all sessionMaps to AVAILABLE, clear ban metadata
+    const sessionMaps = await ctx.db
+      .query("sessionMaps")
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
+      .collect();
+    await Promise.all(
+      sessionMaps.map((m) =>
+        ctx.db.patch(m._id, {
+          state: "AVAILABLE",
+          bannedByPlayerId: undefined,
+          bannedAtTurn: undefined,
+          bannedAtRound: undefined,
+          voteCount: undefined,
+          submittedByAdmin: undefined,
+        })
+      )
+    );
+
+    // 3. Reset all sessionPlayers vote state
+    const players = await ctx.db
+      .query("sessionPlayers")
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
+      .collect();
+    await Promise.all(
+      players.map((p) => ctx.db.patch(p._id, { hasVotedThisRound: false }))
+    );
+
+    // 4. Transition session: COMPLETE → WAITING with standard reset patches
+    await transitionSession(ctx, session, "WAITING", {
+      auditAction: "SESSION_RESET",
+      actorType: "ADMIN",
+      actorId: admin._id,
+      patches: SESSION_RESET_PATCHES,
+    });
+
+    // 5. Extend expiresAt by 2 weeks (not in SessionStatePatches type)
+    await ctx.db.patch(args.sessionId, {
+      expiresAt: Date.now() + SESSION_EXPIRY_MS,
+    });
 
     return { success: true };
   },

@@ -26,6 +26,7 @@ import { api } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
 import {
   SessionStatus,
+  SESSION_EXPIRY_MS,
   MIN_MAP_POOL_SIZE,
   MAX_MAP_POOL_SIZE,
   TOKEN_EXPIRY_MS,
@@ -6104,5 +6105,276 @@ describe("sessions.forceRandomSelection", () => {
     await expect(
       authT.mutation(api.sessions.forceRandomSelection, { sessionId })
     ).rejects.toThrow(/No available maps to select from/);
+  });
+});
+
+// ============================================================================
+// resetSession Tests (WAR-45)
+// ============================================================================
+
+describe("sessions.resetSession", () => {
+  /** Create a COMPLETE session with players, maps (some BANNED/WINNER), and votes. */
+  async function createCompletedSession() {
+    const { t, authT, adminId } = await createAuthenticatedAdmin();
+
+    const { sessionId, playerIds, mapIds, voteIds } = await t.run(
+      async (ctx) => {
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            status: "COMPLETE",
+            playerCount: 2,
+            mapPoolSize: 3,
+            currentTurn: 4,
+            currentRound: 3,
+            isRevoteRound: true,
+          })
+        );
+
+        // Create master maps
+        const masterMapIds = await Promise.all([
+          ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+          ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+          ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
+        ]);
+
+        // Create session players
+        const playerIds = await Promise.all([
+          ctx.db.insert(
+            "sessionPlayers",
+            sessionPlayerFactory(sessionId, {
+              role: "Captain",
+              teamName: "Team Alpha",
+              hasVotedThisRound: true,
+            })
+          ),
+          ctx.db.insert(
+            "sessionPlayers",
+            sessionPlayerFactory(sessionId, {
+              role: "Vice Captain",
+              teamName: "Team Beta",
+              hasVotedThisRound: true,
+            })
+          ),
+        ]);
+
+        // Create session maps: 2 BANNED + 1 WINNER
+        const mapIds = [
+          await ctx.db.insert(
+            "sessionMaps",
+            sessionMapFactory(sessionId, masterMapIds[0], {
+              name: "Map 1",
+              state: "BANNED",
+              bannedByPlayerId: playerIds[0],
+              bannedAtTurn: 0,
+              bannedAtRound: 1,
+              voteCount: 2,
+              submittedByAdmin: false,
+            })
+          ),
+          await ctx.db.insert(
+            "sessionMaps",
+            sessionMapFactory(sessionId, masterMapIds[1], {
+              name: "Map 2",
+              state: "BANNED",
+              bannedByPlayerId: playerIds[1],
+              bannedAtTurn: 1,
+              bannedAtRound: 1,
+              voteCount: 1,
+            })
+          ),
+          await ctx.db.insert(
+            "sessionMaps",
+            sessionMapFactory(sessionId, masterMapIds[2], {
+              name: "Map 3",
+              state: "WINNER",
+            })
+          ),
+        ];
+
+        // Create votes
+        const voteIds = [
+          await ctx.db.insert(
+            "votes",
+            voteFactory(sessionId, playerIds[0], mapIds[0])
+          ),
+          await ctx.db.insert(
+            "votes",
+            voteFactory(sessionId, playerIds[1], mapIds[1])
+          ),
+        ];
+
+        return { sessionId, playerIds, mapIds, voteIds };
+      }
+    );
+
+    return { t, authT, adminId, sessionId, playerIds, mapIds, voteIds };
+  }
+
+  // --------------------------------------------------------------------------
+  // Happy Path
+  // --------------------------------------------------------------------------
+
+  it("resets COMPLETE session to WAITING with correct field values", async () => {
+    const { t, authT, sessionId } = await createCompletedSession();
+
+    const result = await authT.mutation(api.sessions.resetSession, {
+      sessionId,
+    });
+    expect(result.success).toBe(true);
+
+    const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+    expect(session?.status).toBe("WAITING");
+    expect(session?.currentTurn).toBe(0);
+    expect(session?.currentRound).toBe(1);
+    expect(session?.isRevoteRound).toBe(false);
+    expect(session?.winnerMapId).toBeUndefined();
+    expect(session?.completedAt).toBeUndefined();
+    expect(session?.startedAt).toBeUndefined();
+    expect(session?.timerStartedAt).toBeUndefined();
+    expect(session?.timerPausedAt).toBeUndefined();
+  });
+
+  // --------------------------------------------------------------------------
+  // Data Cleanup
+  // --------------------------------------------------------------------------
+
+  it("deletes all votes for the session", async () => {
+    const { t, authT, sessionId } = await createCompletedSession();
+
+    await authT.mutation(api.sessions.resetSession, { sessionId });
+
+    const votes = await t.run(async (ctx) =>
+      ctx.db
+        .query("votes")
+        .withIndex("by_sessionId_and_round", (q) =>
+          q.eq("sessionId", sessionId)
+        )
+        .collect()
+    );
+    expect(votes).toHaveLength(0);
+  });
+
+  it("resets all sessionMaps to AVAILABLE and clears ban metadata", async () => {
+    const { t, authT, sessionId } = await createCompletedSession();
+
+    await authT.mutation(api.sessions.resetSession, { sessionId });
+
+    const maps = await t.run(async (ctx) =>
+      ctx.db
+        .query("sessionMaps")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+        .collect()
+    );
+
+    expect(maps).toHaveLength(3);
+    for (const map of maps) {
+      expect(map.state).toBe("AVAILABLE");
+      expect(map.bannedByPlayerId).toBeUndefined();
+      expect(map.bannedAtTurn).toBeUndefined();
+      expect(map.bannedAtRound).toBeUndefined();
+      expect(map.voteCount).toBeUndefined();
+      expect(map.submittedByAdmin).toBeUndefined();
+    }
+  });
+
+  it("resets all players hasVotedThisRound to false", async () => {
+    const { t, authT, sessionId } = await createCompletedSession();
+
+    await authT.mutation(api.sessions.resetSession, { sessionId });
+
+    const players = await t.run(async (ctx) =>
+      ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+        .collect()
+    );
+
+    expect(players).toHaveLength(2);
+    for (const player of players) {
+      expect(player.hasVotedThisRound).toBe(false);
+    }
+  });
+
+  // --------------------------------------------------------------------------
+  // Expiration Extension
+  // --------------------------------------------------------------------------
+
+  it("extends expiresAt by 2 weeks from now", async () => {
+    const { t, authT, adminId } = await createAuthenticatedAdmin();
+
+    // Create session with an expired expiresAt
+    const sessionId = await t.run(async (ctx) =>
+      ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, {
+          status: "COMPLETE",
+          expiresAt: Date.now() - 1000, // already expired
+        })
+      )
+    );
+
+    const before = Date.now();
+    await authT.mutation(api.sessions.resetSession, { sessionId });
+    const after = Date.now();
+
+    const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+    expect(session?.expiresAt).toBeGreaterThanOrEqual(
+      before + SESSION_EXPIRY_MS
+    );
+    expect(session?.expiresAt).toBeLessThanOrEqual(after + SESSION_EXPIRY_MS);
+  });
+
+  // --------------------------------------------------------------------------
+  // Validation Errors
+  // --------------------------------------------------------------------------
+
+  it.each(["DRAFT", "WAITING", "IN_PROGRESS", "PAUSED", "EXPIRED"] as const)(
+    "rejects %s session (only COMPLETE allowed)",
+    async (status) => {
+      const { authT, sessionId } =
+        await createAuthenticatedSessionInStatus(status);
+
+      await expect(
+        authT.mutation(api.sessions.resetSession, { sessionId })
+      ).rejects.toThrow(/Cannot reset session in/);
+    }
+  );
+
+  it("throws when session not found", async () => {
+    const { t, authT } = await createAuthenticatedAdmin();
+    const deletedId = await createDeletedSessionId(t);
+
+    await expect(
+      authT.mutation(api.sessions.resetSession, { sessionId: deletedId })
+    ).rejects.toThrow(/Session not found/);
+  });
+
+  it("throws when not authenticated", async () => {
+    const t = createTestContext();
+
+    const sessionId = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert("admins", adminFactory());
+      return ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, { status: "COMPLETE" })
+      );
+    });
+
+    await expect(
+      t.mutation(api.sessions.resetSession, { sessionId })
+    ).rejects.toThrow(/Authentication required/);
+  });
+
+  // --------------------------------------------------------------------------
+  // Audit Logging
+  // --------------------------------------------------------------------------
+
+  it("creates SESSION_RESET audit log", async () => {
+    const { t, authT, sessionId } = await createCompletedSession();
+
+    await authT.mutation(api.sessions.resetSession, { sessionId });
+
+    await expectAuditLog(t, sessionId, "SESSION_RESET");
   });
 });
