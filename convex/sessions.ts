@@ -26,6 +26,7 @@ import {
   MAX_MAP_POOL_SIZE,
   MAX_NAME_LENGTH,
   MAX_REASON_LENGTH,
+  CLONE_NAME_SUFFIX,
   getActivePlayerIndex,
   sortPlayersByJoinOrder,
 } from "./lib/constants";
@@ -44,6 +45,7 @@ import {
   validateTransition,
 } from "./lib/sessionLifecycle";
 import { pickRandom } from "./lib/random";
+import { generateUniqueToken } from "./lib/tokenGeneration";
 
 import { logAction } from "./audit";
 
@@ -716,18 +718,9 @@ export const assignPlayer = mutation({
       throw new ConvexError(`Team "${args.teamName}" not found`);
     }
 
-    // Generate unique token (UUID without dashes)
-    const token = crypto.randomUUID().replace(/-/g, "");
-
-    // Check token uniqueness (Convex indexes don't enforce uniqueness)
-    const existingToken = await ctx.db
-      .query("sessionPlayers")
-      .withIndex("by_token", (q) => q.eq("token", token))
-      .first();
-    if (existingToken) {
-      // Extremely unlikely with UUID, but handle gracefully
-      throw new ConvexError("Token collision - please retry");
-    }
+    // Generate unique token
+    const singleTokenSet = new Set<string>();
+    const token = await generateUniqueToken(ctx, singleTokenSet);
 
     const now = Date.now();
     const playerId = await ctx.db.insert("sessionPlayers", {
@@ -1014,23 +1007,7 @@ export const createSessionFull = mutation({
     const generatedTokens = new Set<string>();
 
     for (const player of validatedPlayers) {
-      // Generate unique token (UUID without dashes)
-      let token = crypto.randomUUID().replace(/-/g, "");
-
-      // Ensure no collision within this batch
-      while (generatedTokens.has(token)) {
-        token = crypto.randomUUID().replace(/-/g, "");
-      }
-      generatedTokens.add(token);
-
-      // Check token uniqueness in database (extremely unlikely with UUID)
-      const existingToken = await ctx.db
-        .query("sessionPlayers")
-        .withIndex("by_token", (q) => q.eq("token", token))
-        .first();
-      if (existingToken) {
-        throw new ConvexError("Token collision - please retry");
-      }
+      const token = await generateUniqueToken(ctx, generatedTokens);
 
       await ctx.db.insert("sessionPlayers", {
         sessionId,
@@ -1376,13 +1353,12 @@ export const cloneSession = mutation({
     ]);
 
     // 3. Build cloned matchName (truncate if needed to fit MAX_NAME_LENGTH)
-    const suffix = " (Copy)";
-    const maxBase = MAX_NAME_LENGTH - suffix.length;
+    const maxBase = MAX_NAME_LENGTH - CLONE_NAME_SUFFIX.length;
     const baseName =
       source.matchName.length > maxBase
         ? source.matchName.slice(0, maxBase)
         : source.matchName;
-    const clonedName = baseName + suffix;
+    const clonedName = baseName + CLONE_NAME_SUFFIX;
 
     // 4. Create new session
     const now = Date.now();
@@ -1400,23 +1376,10 @@ export const cloneSession = mutation({
       expiresAt: now + SESSION_EXPIRY_MS,
     });
 
-    // 5. Clone players with fresh tokens (follows createSessionFull pattern)
+    // 5. Clone players with fresh tokens
     const generatedTokens = new Set<string>();
     for (const player of sourcePlayers) {
-      let token = crypto.randomUUID().replace(/-/g, "");
-      while (generatedTokens.has(token)) {
-        token = crypto.randomUUID().replace(/-/g, "");
-      }
-      generatedTokens.add(token);
-
-      // DB uniqueness check (indexes don't enforce uniqueness)
-      const existing = await ctx.db
-        .query("sessionPlayers")
-        .withIndex("by_token", (q) => q.eq("token", token))
-        .first();
-      if (existing) {
-        throw new ConvexError("Token collision - please retry");
-      }
+      const token = await generateUniqueToken(ctx, generatedTokens);
 
       await ctx.db.insert("sessionPlayers", {
         sessionId: newSessionId,
@@ -1430,6 +1393,8 @@ export const cloneSession = mutation({
     }
 
     // 6. Clone maps from source snapshots (all reset to AVAILABLE)
+    // Intentionally copies name/imageUrl from source sessionMaps rather than
+    // re-fetching from master maps table to preserve historical state.
     await Promise.all(
       sourceMaps.map((map) =>
         ctx.db.insert("sessionMaps", {
