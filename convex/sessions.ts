@@ -24,6 +24,7 @@ import {
   MAX_TURN_TIMER_SECONDS,
   MIN_MAP_POOL_SIZE,
   MAX_MAP_POOL_SIZE,
+  MAX_NAME_LENGTH,
   MAX_REASON_LENGTH,
   getActivePlayerIndex,
   sortPlayersByJoinOrder,
@@ -1339,6 +1340,123 @@ export const resetSession = mutation({
     });
 
     return { success: true };
+  },
+});
+
+/**
+ * Clone a session into a new DRAFT copy. Source can be in any state.
+ * Copies config, players (new tokens), and maps (reset to AVAILABLE).
+ * Does NOT copy votes, audit logs, or timer state.
+ *
+ * @param sessionId - Source session to clone
+ */
+export const cloneSession = mutation({
+  args: {
+    sessionId: v.id("sessions"),
+  },
+  returns: v.object({ newSessionId: v.id("sessions") }),
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+
+    // 1. Read source session
+    const source = await ctx.db.get(args.sessionId);
+    if (!source) throw new ConvexError("Session not found");
+
+    // 2. Read related data in parallel
+    const [sourcePlayers, sourceMaps] = await Promise.all([
+      ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
+        .collect(),
+      ctx.db
+        .query("sessionMaps")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
+        .collect(),
+    ]);
+
+    // 3. Build cloned matchName (truncate if needed to fit MAX_NAME_LENGTH)
+    const suffix = " (Copy)";
+    const maxBase = MAX_NAME_LENGTH - suffix.length;
+    const baseName =
+      source.matchName.length > maxBase
+        ? source.matchName.slice(0, maxBase)
+        : source.matchName;
+    const clonedName = baseName + suffix;
+
+    // 4. Create new session
+    const now = Date.now();
+    const newSessionId = await ctx.db.insert("sessions", {
+      matchName: clonedName,
+      format: source.format,
+      status: "DRAFT",
+      turnTimerSeconds: source.turnTimerSeconds,
+      mapPoolSize: source.mapPoolSize,
+      playerCount: source.playerCount,
+      currentTurn: 0,
+      currentRound: 1,
+      createdBy: admin._id,
+      updatedAt: now,
+      expiresAt: now + SESSION_EXPIRY_MS,
+    });
+
+    // 5. Clone players with fresh tokens (follows createSessionFull pattern)
+    const generatedTokens = new Set<string>();
+    for (const player of sourcePlayers) {
+      let token = crypto.randomUUID().replace(/-/g, "");
+      while (generatedTokens.has(token)) {
+        token = crypto.randomUUID().replace(/-/g, "");
+      }
+      generatedTokens.add(token);
+
+      // DB uniqueness check (indexes don't enforce uniqueness)
+      const existing = await ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_token", (q) => q.eq("token", token))
+        .first();
+      if (existing) {
+        throw new ConvexError("Token collision - please retry");
+      }
+
+      await ctx.db.insert("sessionPlayers", {
+        sessionId: newSessionId,
+        role: player.role,
+        teamName: player.teamName,
+        token,
+        tokenExpiresAt: now + TOKEN_EXPIRY_MS,
+        isConnected: false,
+        hasVotedThisRound: false,
+      });
+    }
+
+    // 6. Clone maps from source snapshots (all reset to AVAILABLE)
+    for (const map of sourceMaps) {
+      await ctx.db.insert("sessionMaps", {
+        sessionId: newSessionId,
+        mapId: map.mapId,
+        name: map.name,
+        imageUrl: map.imageUrl,
+        state: "AVAILABLE",
+      });
+    }
+
+    // 7. Audit log on BOTH sessions
+    await logAction(ctx, {
+      sessionId: args.sessionId,
+      action: "SESSION_CLONED",
+      actorType: "ADMIN",
+      actorId: admin._id,
+      details: { reason: `Cloned to ${newSessionId}` },
+    });
+
+    await logAction(ctx, {
+      sessionId: newSessionId,
+      action: "SESSION_CLONED",
+      actorType: "ADMIN",
+      actorId: admin._id,
+      details: { reason: `Cloned from ${args.sessionId}` },
+    });
+
+    return { newSessionId };
   },
 });
 
