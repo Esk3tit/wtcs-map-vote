@@ -6204,6 +6204,15 @@ describe("sessions.resetSession", () => {
           ),
         ];
 
+        // Seed fields that reset should clear (so assertions aren't vacuous)
+        await ctx.db.patch(sessionId, {
+          winnerMapId: mapIds[2],
+          completedAt: Date.now() - 60_000,
+          startedAt: Date.now() - 120_000,
+          timerStartedAt: Date.now() - 30_000,
+          timerPausedAt: Date.now() - 10_000,
+        });
+
         return { sessionId, playerIds, mapIds, voteIds };
       }
     );
