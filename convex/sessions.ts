@@ -1349,6 +1349,7 @@ export const resetSession = mutation({
  * Does NOT copy votes, audit logs, or timer state.
  *
  * @param sessionId - Source session to clone
+ * @returns Object containing the new session ID
  */
 export const cloneSession = mutation({
   args: {
@@ -1429,32 +1430,35 @@ export const cloneSession = mutation({
     }
 
     // 6. Clone maps from source snapshots (all reset to AVAILABLE)
-    for (const map of sourceMaps) {
-      await ctx.db.insert("sessionMaps", {
-        sessionId: newSessionId,
-        mapId: map.mapId,
-        name: map.name,
-        imageUrl: map.imageUrl,
-        state: "AVAILABLE",
-      });
-    }
+    await Promise.all(
+      sourceMaps.map((map) =>
+        ctx.db.insert("sessionMaps", {
+          sessionId: newSessionId,
+          mapId: map.mapId,
+          name: map.name,
+          imageUrl: map.imageUrl,
+          state: "AVAILABLE",
+        })
+      )
+    );
 
     // 7. Audit log on BOTH sessions
-    await logAction(ctx, {
-      sessionId: args.sessionId,
-      action: "SESSION_CLONED",
-      actorType: "ADMIN",
-      actorId: admin._id,
-      details: { reason: `Cloned to ${newSessionId}` },
-    });
-
-    await logAction(ctx, {
-      sessionId: newSessionId,
-      action: "SESSION_CLONED",
-      actorType: "ADMIN",
-      actorId: admin._id,
-      details: { reason: `Cloned from ${args.sessionId}` },
-    });
+    await Promise.all([
+      logAction(ctx, {
+        sessionId: args.sessionId,
+        action: "SESSION_CLONED",
+        actorType: "ADMIN",
+        actorId: admin._id,
+        details: { reason: `Cloned to ${newSessionId}` },
+      }),
+      logAction(ctx, {
+        sessionId: newSessionId,
+        action: "SESSION_CLONED",
+        actorType: "ADMIN",
+        actorId: admin._id,
+        details: { reason: `Cloned from ${args.sessionId}` },
+      }),
+    ]);
 
     return { newSessionId };
   },

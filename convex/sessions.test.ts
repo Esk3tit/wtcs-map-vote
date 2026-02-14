@@ -6469,10 +6469,11 @@ describe("sessions.cloneSession", () => {
         );
 
         // Seed timer/completion fields so we can verify they aren't cloned
+        const now = Date.now();
         await ctx.db.patch(sessionId, {
-          startedAt: Date.now() - 120_000,
-          timerStartedAt: Date.now() - 30_000,
-          timerPausedAt: Date.now() - 10_000,
+          startedAt: now - 120_000,
+          timerStartedAt: now - 30_000,
+          timerPausedAt: now - 10_000,
           winnerMapId: undefined,
           isRevoteRound: true,
         });
