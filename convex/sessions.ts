@@ -1285,22 +1285,29 @@ export const resetSession = mutation({
       );
     }
 
-    // 1. Delete all votes for this session
-    const votes = await ctx.db
-      .query("votes")
-      .withIndex("by_sessionId_and_round", (q) =>
-        q.eq("sessionId", args.sessionId)
-      )
-      .collect();
-    await Promise.all(votes.map((vote) => ctx.db.delete(vote._id)));
+    // 1. Fetch all related data in parallel
+    const [votes, sessionMaps, players] = await Promise.all([
+      ctx.db
+        .query("votes")
+        .withIndex("by_sessionId_and_round", (q) =>
+          q.eq("sessionId", args.sessionId)
+        )
+        .collect(),
+      ctx.db
+        .query("sessionMaps")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
+        .collect(),
+      ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
+        .collect(),
+    ]);
 
-    // 2. Reset all sessionMaps to AVAILABLE, clear ban metadata
-    const sessionMaps = await ctx.db
-      .query("sessionMaps")
-      .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
-      .collect();
-    await Promise.all(
-      sessionMaps.map((m) =>
+    // 2. Delete votes, reset maps, and reset players in parallel
+    const now = Date.now();
+    await Promise.all([
+      ...votes.map((vote) => ctx.db.delete(vote._id)),
+      ...sessionMaps.map((m) =>
         ctx.db.patch(m._id, {
           state: "AVAILABLE",
           bannedByPlayerId: undefined,
@@ -1309,19 +1316,16 @@ export const resetSession = mutation({
           voteCount: undefined,
           submittedByAdmin: undefined,
         })
-      )
-    );
+      ),
+      ...players.map((p) =>
+        ctx.db.patch(p._id, {
+          hasVotedThisRound: false,
+          tokenExpiresAt: now + TOKEN_EXPIRY_MS,
+        })
+      ),
+    ]);
 
-    // 3. Reset all sessionPlayers vote state
-    const players = await ctx.db
-      .query("sessionPlayers")
-      .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
-      .collect();
-    await Promise.all(
-      players.map((p) => ctx.db.patch(p._id, { hasVotedThisRound: false }))
-    );
-
-    // 4. Transition session: COMPLETE → WAITING with standard reset patches
+    // 3. Transition session: COMPLETE → WAITING with standard reset patches
     await transitionSession(ctx, session, "WAITING", {
       auditAction: "SESSION_RESET",
       actorType: "ADMIN",
@@ -1329,9 +1333,9 @@ export const resetSession = mutation({
       patches: SESSION_RESET_PATCHES,
     });
 
-    // 5. Extend expiresAt by 2 weeks (not in SessionStatePatches type)
+    // 4. Extend expiresAt by 2 weeks (not in SessionStatePatches type)
     await ctx.db.patch(args.sessionId, {
-      expiresAt: Date.now() + SESSION_EXPIRY_MS,
+      expiresAt: now + SESSION_EXPIRY_MS,
     });
 
     return { success: true };

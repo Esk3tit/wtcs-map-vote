@@ -6296,6 +6296,55 @@ describe("sessions.resetSession", () => {
     }
   });
 
+  it("extends player tokenExpiresAt by 24 hours from now", async () => {
+    const { t, authT, adminId } = await createAuthenticatedAdmin();
+
+    // Create session with players whose tokens are already expired
+    const sessionId = await t.run(async (ctx) => {
+      const sid = await ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, { status: "COMPLETE", playerCount: 2 })
+      );
+      await ctx.db.insert(
+        "sessionPlayers",
+        sessionPlayerFactory(sid, {
+          role: "Captain",
+          teamName: "Team A",
+          tokenExpiresAt: Date.now() - 1000, // expired
+        })
+      );
+      await ctx.db.insert(
+        "sessionPlayers",
+        sessionPlayerFactory(sid, {
+          role: "Vice Captain",
+          teamName: "Team B",
+          tokenExpiresAt: Date.now() - 1000, // expired
+        })
+      );
+      return sid;
+    });
+
+    const before = Date.now();
+    await authT.mutation(api.sessions.resetSession, { sessionId });
+    const after = Date.now();
+
+    const players = await t.run(async (ctx) =>
+      ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+        .collect()
+    );
+
+    for (const player of players) {
+      expect(player.tokenExpiresAt).toBeGreaterThanOrEqual(
+        before + TOKEN_EXPIRY_MS
+      );
+      expect(player.tokenExpiresAt).toBeLessThanOrEqual(
+        after + TOKEN_EXPIRY_MS
+      );
+    }
+  });
+
   // --------------------------------------------------------------------------
   // Expiration Extension
   // --------------------------------------------------------------------------
