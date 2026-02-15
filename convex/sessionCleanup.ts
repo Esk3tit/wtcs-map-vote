@@ -256,11 +256,22 @@ export const handleTimerExpiry = internalMutation({
   handler: async (ctx, args) => {
     // Guard: re-read session and verify timer is still expired
     const session = await ctx.db.get(args.sessionId);
-    if (!session) return { processed: false };
-    if (session.status !== "IN_PROGRESS") return { processed: false };
-    if (session.timerStartedAt !== args.expectedTimerStartedAt)
+    if (!session) {
+      console.log(`Timer expiry no-op: session ${args.sessionId} not found`);
       return { processed: false };
-    if (session.timerPausedAt !== undefined) return { processed: false };
+    }
+    if (session.status !== "IN_PROGRESS") {
+      console.log(`Timer expiry no-op: session ${args.sessionId} status is ${session.status}`);
+      return { processed: false };
+    }
+    if (session.timerStartedAt !== args.expectedTimerStartedAt) {
+      console.log(`Timer expiry no-op: session ${args.sessionId} timerStartedAt changed (expected ${args.expectedTimerStartedAt}, got ${session.timerStartedAt})`);
+      return { processed: false };
+    }
+    if (session.timerPausedAt !== undefined) {
+      console.log(`Timer expiry no-op: session ${args.sessionId} timer is paused`);
+      return { processed: false };
+    }
 
     if (args.format === "ABBA") {
       // --- ABBA: auto-ban a random map for the active player ---
@@ -303,6 +314,7 @@ export const handleTimerExpiry = internalMutation({
         actorType: "SYSTEM",
         details: {
           turn: session.currentTurn,
+          teamName: activePlayer.teamName,
           reason: "AUTO_EXPIRED",
         },
       });
@@ -342,28 +354,29 @@ export const handleTimerExpiry = internalMutation({
       actorType: "SYSTEM",
       details: {
         round: session.currentRound,
-        reason: "AUTO_EXPIRED",
+        reason: `AUTO_EXPIRED (${unvotedPlayers.length} unvoted)`,
       },
     });
+
+    // Query available maps once — executeVote only inserts votes and marks players,
+    // it does not ban maps. Maps only change when resolveRound fires on the last vote.
+    const availableMaps = await ctx.db
+      .query("sessionMaps")
+      .withIndex("by_sessionId_and_state", (q) =>
+        q.eq("sessionId", session._id).eq("state", "AVAILABLE")
+      )
+      .collect();
+
+    if (availableMaps.length === 0) {
+      console.error(
+        `Timer expiry: no available maps for auto-vote in session ${session._id}`
+      );
+      return { processed: false };
+    }
 
     // Auto-vote for each unvoted player sequentially
     // The last executeVote triggers resolveRound automatically
     for (const player of unvotedPlayers) {
-      // Re-query available maps each iteration (maps may be banned by resolveRound)
-      const availableMaps = await ctx.db
-        .query("sessionMaps")
-        .withIndex("by_sessionId_and_state", (q) =>
-          q.eq("sessionId", session._id).eq("state", "AVAILABLE")
-        )
-        .collect();
-
-      if (availableMaps.length === 0) {
-        console.error(
-          `Timer expiry: no available maps for auto-vote in session ${session._id}`
-        );
-        break;
-      }
-
       const targetMap = pickRandom(availableMaps);
       await executeVote(ctx, {
         session,

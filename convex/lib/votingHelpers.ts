@@ -9,7 +9,7 @@
 import type { MutationCtx } from "../_generated/server";
 import type { Doc, Id } from "../_generated/dataModel";
 
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 
 import { completeSession } from "./sessionLifecycle";
 import { pickRandom } from "./random";
@@ -480,6 +480,12 @@ export async function executeVote(
 ): Promise<VoteResult> {
   const { session, player, targetMap, submittedByAdmin, actorType, actorId } =
     args;
+
+  // Defense-in-depth: prevent duplicate votes
+  if (player.hasVotedThisRound) {
+    throw new ConvexError("Player has already voted this round");
+  }
+
   const currentRound = session.currentRound;
 
   // Insert vote record

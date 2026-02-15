@@ -1012,7 +1012,9 @@ describe("sessionCleanup.handleTimerExpiry", () => {
       // Verify TIMER_EXPIRED log
       const timerLog = logs.find((l) => l.action === "TIMER_EXPIRED");
       expect(timerLog?.actorType).toBe("SYSTEM");
-      expect(timerLog?.details).toMatchObject({ reason: "AUTO_EXPIRED" });
+      expect(timerLog?.details).toMatchObject({
+        reason: expect.stringContaining("AUTO_EXPIRED"),
+      });
 
       // Verify VOTE_SUBMITTED logs have SYSTEM actor
       const voteLogs = logs.filter((l) => l.action === "VOTE_SUBMITTED");
