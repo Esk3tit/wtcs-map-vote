@@ -2,13 +2,19 @@
  * Session Cleanup Module
  *
  * Handles session lifecycle cleanup tasks including IP address clearing for privacy
- * compliance and stale session expiration. Contains internal mutations designed
- * to be called by cron jobs or other internal processes.
+ * compliance, stale session expiration, and timer expiry handling (WAR-47).
+ * Contains internal mutations designed to be called by cron jobs, schedulers,
+ * or other internal processes.
  */
 
 import { internalMutation } from "./_generated/server";
 
 import { v } from "convex/values";
+
+import { getActivePlayerIndex, sortPlayersByJoinOrder } from "./lib/constants";
+import { executeBan, executeVote } from "./lib/votingHelpers";
+import { pickRandom } from "./lib/random";
+import { logAction } from "./audit";
 
 // ============================================================================
 // Internal Mutations
@@ -219,5 +225,171 @@ export const clearCompletedSessionIps = internalMutation({
       sessionsProcessed,
       ipsClearedCount: totalIpsCleared,
     };
+  },
+});
+
+// ============================================================================
+// Timer Expiration (WAR-47)
+// ============================================================================
+
+/**
+ * Handle timer expiration for a specific session.
+ *
+ * Scheduled via ctx.scheduler.runAt() when a timer starts. Uses guard-based
+ * no-op pattern to handle race conditions — if the player acted before this
+ * fires, the guard detects the changed timerStartedAt and exits cleanly.
+ *
+ * ABBA: auto-bans a random available map for the active player.
+ * MULTIPLAYER: auto-votes a random available map for each unvoted player.
+ *
+ * @param sessionId - Session whose timer expired
+ * @param expectedTimerStartedAt - The timerStartedAt value at scheduling time
+ * @param format - Session format (ABBA or MULTIPLAYER)
+ */
+export const handleTimerExpiry = internalMutation({
+  args: {
+    sessionId: v.id("sessions"),
+    expectedTimerStartedAt: v.number(),
+    format: v.union(v.literal("ABBA"), v.literal("MULTIPLAYER")),
+  },
+  returns: v.object({ processed: v.boolean() }),
+  handler: async (ctx, args) => {
+    // Guard: re-read session and verify timer is still expired
+    const session = await ctx.db.get(args.sessionId);
+    if (!session) {
+      console.log(`Timer expiry no-op: session ${args.sessionId} not found`);
+      return { processed: false };
+    }
+    if (session.status !== "IN_PROGRESS") {
+      console.log(`Timer expiry no-op: session ${args.sessionId} status is ${session.status}`);
+      return { processed: false };
+    }
+    if (session.timerStartedAt !== args.expectedTimerStartedAt) {
+      console.log(`Timer expiry no-op: session ${args.sessionId} timerStartedAt changed (expected ${args.expectedTimerStartedAt}, got ${session.timerStartedAt})`);
+      return { processed: false };
+    }
+    if (session.timerPausedAt !== undefined) {
+      console.log(`Timer expiry no-op: session ${args.sessionId} timer is paused`);
+      return { processed: false };
+    }
+
+    if (args.format === "ABBA") {
+      // --- ABBA: auto-ban a random map for the active player ---
+
+      // Get players sorted by join order to determine active player
+      const allPlayers = await ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+        .collect();
+      const sortedPlayers = sortPlayersByJoinOrder(allPlayers);
+      const activePlayerIndex = getActivePlayerIndex(session.currentTurn);
+      const activePlayer = sortedPlayers[activePlayerIndex];
+
+      if (!activePlayer) {
+        console.error(
+          `Timer expiry: no active player at index ${activePlayerIndex} for session ${session._id}`
+        );
+        return { processed: false };
+      }
+
+      // Get available maps
+      const availableMaps = await ctx.db
+        .query("sessionMaps")
+        .withIndex("by_sessionId_and_state", (q) =>
+          q.eq("sessionId", session._id).eq("state", "AVAILABLE")
+        )
+        .collect();
+
+      if (availableMaps.length === 0) {
+        console.error(
+          `Timer expiry: no available maps for session ${session._id}`
+        );
+        return { processed: false };
+      }
+
+      // Log timer expiry audit event
+      await logAction(ctx, {
+        sessionId: session._id,
+        action: "TIMER_EXPIRED",
+        actorType: "SYSTEM",
+        details: {
+          turn: session.currentTurn,
+          teamName: activePlayer.teamName,
+          reason: "AUTO_EXPIRED",
+        },
+      });
+
+      // Pick random map and execute ban
+      // executeBan handles scheduling the next timer internally
+      const targetMap = pickRandom(availableMaps);
+      await executeBan(ctx, {
+        session,
+        player: activePlayer,
+        targetMap,
+        submittedByAdmin: false,
+        actorType: "SYSTEM",
+      });
+
+      return { processed: true };
+    }
+
+    // --- MULTIPLAYER: auto-vote for all unvoted players ---
+
+    const allPlayers = await ctx.db
+      .query("sessionPlayers")
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+      .collect();
+
+    const unvotedPlayers = allPlayers.filter((p) => !p.hasVotedThisRound);
+
+    if (unvotedPlayers.length === 0) {
+      // All players already voted — round should have resolved
+      return { processed: false };
+    }
+
+    // Log timer expiry audit event
+    await logAction(ctx, {
+      sessionId: session._id,
+      action: "TIMER_EXPIRED",
+      actorType: "SYSTEM",
+      details: {
+        round: session.currentRound,
+        reason: `AUTO_EXPIRED (${unvotedPlayers.length} unvoted)`,
+      },
+    });
+
+    // Query available maps once — executeVote only inserts votes and marks players,
+    // it does not ban maps. Maps only change when resolveRound fires on the last vote.
+    const availableMaps = await ctx.db
+      .query("sessionMaps")
+      .withIndex("by_sessionId_and_state", (q) =>
+        q.eq("sessionId", session._id).eq("state", "AVAILABLE")
+      )
+      .collect();
+
+    if (availableMaps.length === 0) {
+      console.error(
+        `Timer expiry: no available maps for auto-vote in session ${session._id}`
+      );
+      return { processed: false };
+    }
+
+    // Auto-vote for each unvoted player sequentially
+    // The last executeVote triggers resolveRound automatically
+    for (const player of unvotedPlayers) {
+      const targetMap = pickRandom(availableMaps);
+      await executeVote(ctx, {
+        session,
+        player,
+        targetMap,
+        submittedByAdmin: false,
+        actorType: "SYSTEM",
+      });
+    }
+
+    // resolveRound (called by the last executeVote) handles scheduling
+    // the next timer if the round advances or a revote is triggered
+
+    return { processed: true };
   },
 });

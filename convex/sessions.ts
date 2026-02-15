@@ -46,6 +46,7 @@ import {
 } from "./lib/sessionLifecycle";
 import { pickRandom } from "./lib/random";
 import { generateUniqueToken } from "./lib/tokenGeneration";
+import { scheduleTimerExpiry } from "./lib/timerScheduling";
 
 import { logAction } from "./audit";
 
@@ -1129,6 +1130,15 @@ export const startSession = mutation({
       },
     });
 
+    // Schedule timer expiry for first turn/round (WAR-47)
+    await scheduleTimerExpiry(
+      ctx,
+      session._id,
+      now,
+      session.turnTimerSeconds,
+      session.format as "ABBA" | "MULTIPLAYER"
+    );
+
     return { success: true };
   },
 });
@@ -1200,6 +1210,15 @@ export const resumeSession = mutation({
         isRevoteRound: false,
       },
     });
+
+    // Schedule timer expiry with adjusted start time (WAR-47)
+    await scheduleTimerExpiry(
+      ctx,
+      session._id,
+      adjustedTimerStart,
+      session.turnTimerSeconds,
+      session.format as "ABBA" | "MULTIPLAYER"
+    );
 
     return { success: true };
   },
