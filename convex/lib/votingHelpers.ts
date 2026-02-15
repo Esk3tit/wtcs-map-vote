@@ -26,6 +26,7 @@ export type RoundResolution = {
   eliminatedMapIds: Id<"sessionMaps">[];
   remainingCount: number;
   winnerMapId?: Id<"sessionMaps">;
+  winnerMapName?: string;
 };
 
 /** Validator for round resolution object in submitVote return type. */
@@ -39,6 +40,7 @@ export const roundResolutionValidator = v.object({
   eliminatedMapIds: v.array(v.id("sessionMaps")),
   remainingCount: v.number(),
   winnerMapId: v.optional(v.id("sessionMaps")),
+  winnerMapName: v.optional(v.string()),
 });
 
 /** Result returned by executeBan. */
@@ -209,6 +211,7 @@ export async function resolveRound(
       eliminatedMapIds: bannedIds,
       remainingCount: 0,
       winnerMapId: winnerMap._id,
+      winnerMapName: winnerMap.name,
     };
   }
 
@@ -342,6 +345,7 @@ export async function resolveRound(
     eliminatedMapIds: bannedIds,
     remainingCount: 0,
     winnerMapId: winnerMap._id,
+    winnerMapName: winnerMap.name,
   };
 }
 
@@ -521,12 +525,6 @@ export async function executeVote(
       resolution.outcome === "WINNER" ||
       resolution.outcome === "RANDOM_WINNER";
 
-    let winnerMapName: string | undefined;
-    if (resolution.winnerMapId) {
-      const winnerMap = await ctx.db.get(resolution.winnerMapId);
-      winnerMapName = winnerMap?.name;
-    }
-
     return {
       mapName: targetMap.name,
       round: currentRound,
@@ -534,7 +532,7 @@ export async function executeVote(
       resolution,
       isComplete,
       winnerMapId: resolution.winnerMapId,
-      winnerMapName,
+      winnerMapName: resolution.winnerMapName,
     };
   }
 
