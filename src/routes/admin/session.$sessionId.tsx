@@ -1,8 +1,12 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import type { ActorType } from "../../../convex/lib/types";
+import {
+  getActivePlayerIndex,
+  sortPlayersByJoinOrder,
+} from "../../../convex/lib/constants";
 import {
   Card,
   CardContent,
@@ -13,6 +17,24 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   ArrowLeft,
   Copy,
@@ -26,8 +48,16 @@ import {
   User,
   Bot,
   Shield,
+  Play,
+  Pause,
+  Shuffle,
+  RotateCcw,
+  ExternalLink,
+  Hand,
 } from "lucide-react";
 import { useState, useRef, useEffect, useMemo } from "react";
+import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import {
   getStatusColor,
   formatStatus,
@@ -131,12 +161,73 @@ const isValidSessionId = (id: string): boolean => {
   return typeof id === "string" && id.length > 0;
 };
 
+// ============================================================================
+// Confirmation Dialog Config
+// ============================================================================
+
+type ActionName = "finalize" | "start" | "pause" | "resume" | "end" | "forceRandom" | "reset" | "clone" | "voteOnBehalf";
+
+type ConfirmAction = "end" | "forceRandom" | "reset";
+
+const CONFIRM_DIALOG_CONFIG: Record<
+  ConfirmAction,
+  { title: string; description: string; confirmLabel: string; destructive: boolean }
+> = {
+  end: {
+    title: "End Session?",
+    description:
+      "This will force-end the session without declaring a winner. This action cannot be undone.",
+    confirmLabel: "End Session",
+    destructive: true,
+  },
+  forceRandom: {
+    title: "Force Random Selection?",
+    description:
+      "This will randomly select a winning map and immediately complete the session.",
+    confirmLabel: "Force Random",
+    destructive: true,
+  },
+  reset: {
+    title: "Reset Session?",
+    description:
+      "All votes and results will be cleared. Players and maps will be preserved. The session will return to WAITING state.",
+    confirmLabel: "Reset Session",
+    destructive: false,
+  },
+};
+
 function SessionDetailPage() {
   const { sessionId } = Route.useParams();
+  const navigate = useNavigate();
   const isValidId = isValidSessionId(sessionId);
   const typedSessionId = sessionId as Id<"sessions">;
   const [lastCopied, setLastCopied] = useState<"all" | string | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Lifecycle mutation hooks
+  const finalizeMutation = useMutation(api.sessions.finalizeSession);
+  const startMutation = useMutation(api.sessions.startSession);
+  const pauseMutation = useMutation(api.sessions.pauseSession);
+  const resumeMutation = useMutation(api.sessions.resumeSession);
+  const endMutation = useMutation(api.sessions.endSession);
+  const forceRandomMutation = useMutation(api.sessions.forceRandomSelection);
+  const resetMutation = useMutation(api.sessions.resetSession);
+  const cloneMutation = useMutation(api.sessions.cloneSession);
+  const voteOnBehalfMutation = useMutation(api.voting.adminVoteOnBehalf);
+
+  // Loading state: tracks which action is in progress
+  const [actionLoading, setActionLoading] = useState<ActionName | null>(null);
+  const isAnyLoading = actionLoading !== null;
+
+  // Confirmation dialog state
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
+
+  // Vote on behalf dialog state
+  const [voteOnBehalfPlayer, setVoteOnBehalfPlayer] = useState<{
+    _id: Id<"sessionPlayers">;
+    teamName: string;
+  } | null>(null);
+  const [selectedMapId, setSelectedMapId] = useState<Id<"sessionMaps"> | null>(null);
 
   useEffect(() => {
     return () => {
@@ -167,6 +258,25 @@ function SessionDetailPage() {
     await handleCopy(text, "all");
   };
 
+  // Reusable action handler with loading + toast pattern
+  const handleAction = async <T,>(
+    actionName: ActionName,
+    mutation: () => Promise<T>,
+    onSuccess: (result: T) => void | Promise<void>,
+  ) => {
+    setActionLoading(actionName);
+    try {
+      const result = await mutation();
+      await onSuccess(result);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : `Failed to ${actionName}`
+      );
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
   const session = useQuery(
     api.sessions.getSession,
     isValidId ? { sessionId: typedSessionId } : "skip"
@@ -182,6 +292,28 @@ function SessionDetailPage() {
   const playerTeamMap = useMemo(
     () => new Map(session?.players.map((p) => [p._id, p.teamName]) ?? []),
     [session?.players]
+  );
+
+  // Pre-sort players for ABBA turn order (computed once, not per-player)
+  const sortedPlayers = useMemo(
+    () => sortPlayersByJoinOrder(session?.players ?? []),
+    [session?.players]
+  );
+
+  // Active ABBA player (computed once, not per-player)
+  const sessionFormat = session?.format;
+  const sessionStatus = session?.status;
+  const sessionCurrentTurn = session?.currentTurn;
+  const activeAbbaPlayerId = useMemo(() => {
+    if (sessionFormat !== "ABBA" || sessionStatus !== "IN_PROGRESS") return null;
+    const activeIdx = getActivePlayerIndex(sessionCurrentTurn ?? 0);
+    return sortedPlayers[activeIdx]?._id ?? null;
+  }, [sessionFormat, sessionStatus, sessionCurrentTurn, sortedPlayers]);
+
+  // Memoize available maps for vote-on-behalf dialog
+  const availableMaps = useMemo(
+    () => (session?.maps ?? []).filter((m) => m.state === "AVAILABLE"),
+    [session?.maps]
   );
 
   // Invalid session ID state
@@ -236,8 +368,71 @@ function SessionDetailPage() {
   }
 
   const isLive = session.status === "IN_PROGRESS";
-  const canStart =
-    session.status === "WAITING" || session.status === "DRAFT";
+  const isPaused = session.status === "PAUSED";
+  const isLiveOrPaused = isLive || isPaused;
+  const allConnected = session.players.every((p) => p.isConnected);
+
+  // Confirmation dialog handler
+  const handleConfirmAction = async () => {
+    if (!confirmAction) return;
+    const actionName = confirmAction;
+    switch (actionName) {
+      case "end":
+        await handleAction(
+          actionName,
+          () => endMutation({ sessionId: typedSessionId }),
+          () => {
+            toast.success("Session ended");
+            setConfirmAction(null);
+          },
+        );
+        break;
+      case "forceRandom":
+        await handleAction(
+          actionName,
+          () => forceRandomMutation({ sessionId: typedSessionId }),
+          (result) => {
+            toast.success(`Winner selected: ${result.winnerMapName}`);
+            setConfirmAction(null);
+          },
+        );
+        break;
+      case "reset":
+        await handleAction(
+          actionName,
+          () => resetMutation({ sessionId: typedSessionId }),
+          () => {
+            toast.success("Session reset");
+            setConfirmAction(null);
+          },
+        );
+        break;
+      default: {
+        const _exhaustive: never = actionName;
+        throw new Error(`Unhandled confirm action: ${_exhaustive}`);
+      }
+    }
+  };
+
+  // Vote on behalf handler
+  const handleVoteOnBehalf = async () => {
+    if (!voteOnBehalfPlayer || !selectedMapId) return;
+    const teamName = voteOnBehalfPlayer.teamName;
+    await handleAction(
+      "voteOnBehalf",
+      () =>
+        voteOnBehalfMutation({
+          sessionId: typedSessionId,
+          playerId: voteOnBehalfPlayer._id,
+          mapId: selectedMapId,
+        }),
+      () => {
+        toast.success(`Vote submitted for ${teamName}`);
+        setVoteOnBehalfPlayer(null);
+        setSelectedMapId(null);
+      },
+    );
+  };
 
   return (
     <div className="flex-1 flex flex-col">
@@ -271,41 +466,213 @@ function SessionDetailPage() {
               </div>
             </div>
 
-            <div className="flex gap-2">
-              {canStart && (
+            <div className="flex gap-2 flex-wrap">
+              {/* Finalize: DRAFT only */}
+              {session.status === "DRAFT" && (
                 <Button
-                  disabled
+                  disabled={isAnyLoading}
                   className="gap-2 bg-chart-4 hover:bg-chart-4/90"
-                  title="Session control wiring coming soon"
+                  onClick={() =>
+                    handleAction(
+                      "finalize",
+                      () => finalizeMutation({ sessionId: typedSessionId }),
+                      () => { toast.success("Session finalized"); },
+                    )
+                  }
                 >
-                  <CheckCircle2 className="w-4 h-4" />
-                  Start Session
+                  {actionLoading === "finalize" ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="w-4 h-4" />
+                  )}
+                  {actionLoading === "finalize" ? "Finalizing..." : "Finalize"}
                 </Button>
               )}
-              {session.status === "PAUSED" && (
+
+              {/* Start: WAITING only */}
+              {session.status === "WAITING" && (
                 <Button
-                  disabled
-                  className="gap-2"
-                  title="Session control wiring coming soon"
+                  disabled={isAnyLoading || !allConnected}
+                  className="gap-2 bg-chart-4 hover:bg-chart-4/90"
+                  title={
+                    !allConnected
+                      ? "Waiting for all players to connect"
+                      : undefined
+                  }
+                  onClick={() =>
+                    handleAction(
+                      "start",
+                      () => startMutation({ sessionId: typedSessionId }),
+                      () => { toast.success("Session started"); },
+                    )
+                  }
                 >
-                  Resume
+                  {actionLoading === "start" ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Play className="w-4 h-4" />
+                  )}
+                  {actionLoading === "start" ? "Starting..." : "Start Session"}
                 </Button>
               )}
+
+              {/* Pause: IN_PROGRESS only */}
               {isLive && (
                 <Button
-                  disabled
-                  variant="destructive"
+                  variant="secondary"
+                  disabled={isAnyLoading}
                   className="gap-2"
-                  title="Session control wiring coming soon"
+                  onClick={() =>
+                    handleAction(
+                      "pause",
+                      () => pauseMutation({ sessionId: typedSessionId }),
+                      () => { toast.success("Session paused"); },
+                    )
+                  }
+                >
+                  {actionLoading === "pause" ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Pause className="w-4 h-4" />
+                  )}
+                  {actionLoading === "pause" ? "Pausing..." : "Pause"}
+                </Button>
+              )}
+
+              {/* Resume: PAUSED only */}
+              {isPaused && (
+                <Button
+                  disabled={isAnyLoading}
+                  className="gap-2 bg-chart-4 hover:bg-chart-4/90"
+                  onClick={() =>
+                    handleAction(
+                      "resume",
+                      () => resumeMutation({ sessionId: typedSessionId }),
+                      () => { toast.success("Session resumed"); },
+                    )
+                  }
+                >
+                  {actionLoading === "resume" ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Play className="w-4 h-4" />
+                  )}
+                  {actionLoading === "resume" ? "Resuming..." : "Resume"}
+                </Button>
+              )}
+
+              {/* End Session: IN_PROGRESS or PAUSED */}
+              {isLiveOrPaused && (
+                <Button
+                  variant="destructive"
+                  disabled={isAnyLoading}
+                  className="gap-2"
+                  onClick={() => setConfirmAction("end")}
                 >
                   <X className="w-4 h-4" />
                   End Session
+                </Button>
+              )}
+
+              {/* Force Random: IN_PROGRESS or PAUSED */}
+              {isLiveOrPaused && (
+                <Button
+                  variant="destructive"
+                  disabled={isAnyLoading}
+                  className="gap-2"
+                  onClick={() => setConfirmAction("forceRandom")}
+                >
+                  <Shuffle className="w-4 h-4" />
+                  Force Random
+                </Button>
+              )}
+
+              {/* Reset: COMPLETE only */}
+              {session.status === "COMPLETE" && (
+                <Button
+                  variant="secondary"
+                  disabled={isAnyLoading}
+                  className="gap-2"
+                  onClick={() => setConfirmAction("reset")}
+                >
+                  {actionLoading === "reset" ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <RotateCcw className="w-4 h-4" />
+                  )}
+                  {actionLoading === "reset" ? "Resetting..." : "Reset"}
+                </Button>
+              )}
+
+              {/* Clone: all states */}
+              <Button
+                variant="secondary"
+                disabled={isAnyLoading}
+                className="gap-2"
+                onClick={() =>
+                  handleAction(
+                    "clone",
+                    () => cloneMutation({ sessionId: typedSessionId }),
+                    async ({ newSessionId }) => {
+                      toast.success("Session cloned");
+                      await navigate({
+                        to: "/admin/session/$sessionId",
+                        params: { sessionId: newSessionId },
+                      });
+                    },
+                  )
+                }
+              >
+                {actionLoading === "clone" ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Copy className="w-4 h-4" />
+                )}
+                {actionLoading === "clone" ? "Cloning..." : "Clone"}
+              </Button>
+
+              {/* View Results: COMPLETE only */}
+              {session.status === "COMPLETE" && (
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  render={
+                    <Link
+                      to="/results/$sessionId"
+                      params={{ sessionId }}
+                    />
+                  }
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  View Results
                 </Button>
               )}
             </div>
           </div>
         </div>
       </header>
+
+      <ConfirmActionDialog
+        confirmAction={confirmAction}
+        isLoading={isAnyLoading}
+        onConfirm={handleConfirmAction}
+        onCancel={() => setConfirmAction(null)}
+      />
+
+      <VoteOnBehalfDialog
+        voteOnBehalfPlayer={voteOnBehalfPlayer}
+        isLoading={isAnyLoading}
+        actionLoading={actionLoading}
+        availableMaps={availableMaps}
+        selectedMapId={selectedMapId}
+        format={session.format}
+        onSelectMap={setSelectedMapId}
+        onConfirm={handleVoteOnBehalf}
+        onCancel={() => {
+          setVoteOnBehalfPlayer(null);
+          setSelectedMapId(null);
+        }}
+      />
 
       {/* Main Content */}
       <main className="flex-1 px-4 py-6 md:px-8 md:py-8 space-y-6">
@@ -348,6 +715,13 @@ function SessionDetailPage() {
             ) : (
               session.players.map((player) => {
                 const lobbyUrl = buildLobbyUrl(player.token);
+                // Determine if this player is eligible for vote-on-behalf
+                const canVoteOnBehalf =
+                  isLive &&
+                  (session.format === "MULTIPLAYER"
+                    ? !player.hasVotedThisRound
+                    : player._id === activeAbbaPlayerId);
+
                 return (
                   <div
                     key={player._id}
@@ -407,6 +781,35 @@ function SessionDetailPage() {
                           <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
                           Connected
                         </Badge>
+                      )}
+                      {isLiveOrPaused && player.hasVotedThisRound && (
+                        <Badge
+                          variant="outline"
+                          className="gap-1 bg-blue-500/20 text-blue-600 border-blue-500/30"
+                        >
+                          <CheckCircle2 className="w-3 h-3" />
+                          Voted
+                        </Badge>
+                      )}
+                      {canVoteOnBehalf && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={isAnyLoading}
+                          className="gap-1 shrink-0"
+                          onClick={() => {
+                            setSelectedMapId(null);
+                            setVoteOnBehalfPlayer({
+                              _id: player._id,
+                              teamName: player.teamName,
+                            });
+                          }}
+                        >
+                          <Hand className="w-3 h-3" />
+                          {session.format === "ABBA"
+                            ? "Ban on Behalf"
+                            : "Vote on Behalf"}
+                        </Button>
                       )}
                     </div>
                   </div>
@@ -591,5 +994,168 @@ function SessionDetailPage() {
         </Card>
       </main>
     </div>
+  );
+}
+
+// ============================================================================
+// Extracted Dialog Components
+// ============================================================================
+
+function ConfirmActionDialog({
+  confirmAction,
+  isLoading,
+  onConfirm,
+  onCancel,
+}: {
+  confirmAction: ConfirmAction | null;
+  isLoading: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  // Use fallback so content exists during close animation (fading out)
+  const config = CONFIRM_DIALOG_CONFIG[confirmAction ?? "end"];
+
+  return (
+    <AlertDialog
+      open={confirmAction !== null}
+      onOpenChange={(open) => {
+        if (!open && !isLoading) onCancel();
+      }}
+    >
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{config.title}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {config.description}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isLoading}>
+            Cancel
+          </AlertDialogCancel>
+          <AlertDialogAction
+            onClick={onConfirm}
+            disabled={isLoading}
+            variant={config.destructive ? "destructive" : "default"}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              config.confirmLabel
+            )}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
+    </AlertDialog>
+  );
+}
+
+function VoteOnBehalfDialog({
+  voteOnBehalfPlayer,
+  isLoading,
+  actionLoading,
+  availableMaps,
+  selectedMapId,
+  format,
+  onSelectMap,
+  onConfirm,
+  onCancel,
+}: {
+  voteOnBehalfPlayer: { _id: Id<"sessionPlayers">; teamName: string } | null;
+  isLoading: boolean;
+  actionLoading: ActionName | null;
+  availableMaps: { _id: Id<"sessionMaps">; name: string; imageUrl: string }[];
+  selectedMapId: Id<"sessionMaps"> | null;
+  format: "ABBA" | "MULTIPLAYER";
+  onSelectMap: (id: Id<"sessionMaps">) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  // Use fallback so content exists during close animation (fading out)
+  const player = voteOnBehalfPlayer ?? { teamName: "" };
+
+  return (
+    <Dialog
+      open={voteOnBehalfPlayer !== null}
+      onOpenChange={(open) => {
+        if (!open && !isLoading) onCancel();
+      }}
+    >
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>
+            {format === "ABBA" ? "Ban" : "Vote"} on Behalf of{" "}
+            {player.teamName}
+          </DialogTitle>
+          <DialogDescription>
+            Select a map to{" "}
+            {format === "ABBA" ? "ban" : "vote for"} on behalf of
+            this player.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-3 gap-2 max-h-80 overflow-y-auto">
+          {availableMaps.length === 0 && (
+            <p className="col-span-3 text-center text-sm text-muted-foreground py-4">
+              No maps available
+            </p>
+          )}
+          {availableMaps.map((map) => (
+            <button
+              key={map._id}
+              type="button"
+              className={cn(
+                "relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer",
+                selectedMapId === map._id
+                  ? "border-primary ring-2 ring-primary/30"
+                  : "border-border/50 hover:border-primary/50",
+              )}
+              onClick={() => onSelectMap(map._id)}
+            >
+              <img
+                src={map.imageUrl || "/placeholder.svg"}
+                alt={map.name}
+                className="w-full aspect-[3/4] object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+              <div className="absolute bottom-0 left-0 right-0 p-1.5">
+                <p className="text-[10px] font-semibold text-white text-center truncate">
+                  {map.name}
+                </p>
+              </div>
+              {selectedMapId === map._id && (
+                <div className="absolute inset-0 flex items-center justify-center bg-primary/20">
+                  <CheckCircle2 className="w-6 h-6 text-primary" />
+                </div>
+              )}
+            </button>
+          ))}
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            disabled={isLoading}
+            onClick={onCancel}
+          >
+            Cancel
+          </Button>
+          <Button
+            disabled={!selectedMapId || isLoading}
+            onClick={onConfirm}
+          >
+            {actionLoading === "voteOnBehalf" ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Submitting...
+              </>
+            ) : (
+              `Submit ${format === "ABBA" ? "Ban" : "Vote"}`
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
