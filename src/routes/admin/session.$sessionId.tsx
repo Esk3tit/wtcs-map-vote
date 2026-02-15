@@ -1,5 +1,5 @@
-import { createFileRoute, Link } from "@tanstack/react-router";
-import { useQuery } from "convex/react";
+import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
+import { useMutation, useQuery } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import type { ActorType } from "../../../convex/lib/types";
@@ -14,6 +14,24 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
+import {
   ArrowLeft,
   Copy,
   Lock,
@@ -26,8 +44,15 @@ import {
   User,
   Bot,
   Shield,
+  Play,
+  Pause,
+  Shuffle,
+  RotateCcw,
+  ExternalLink,
+  Hand,
 } from "lucide-react";
-import { useState, useRef, useEffect, useMemo } from "react";
+import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { toast } from "sonner";
 import {
   getStatusColor,
   formatStatus,
@@ -131,12 +156,71 @@ const isValidSessionId = (id: string): boolean => {
   return typeof id === "string" && id.length > 0;
 };
 
+// ============================================================================
+// Confirmation Dialog Config
+// ============================================================================
+
+type ConfirmAction = "end" | "forceRandom" | "reset";
+
+const CONFIRM_DIALOG_CONFIG: Record<
+  ConfirmAction,
+  { title: string; description: string; confirmLabel: string; destructive: boolean }
+> = {
+  end: {
+    title: "End Session?",
+    description:
+      "This will force-end the session without declaring a winner. This action cannot be undone.",
+    confirmLabel: "End Session",
+    destructive: true,
+  },
+  forceRandom: {
+    title: "Force Random Selection?",
+    description:
+      "This will randomly select a winning map and immediately complete the session.",
+    confirmLabel: "Force Random",
+    destructive: true,
+  },
+  reset: {
+    title: "Reset Session?",
+    description:
+      "All votes and results will be cleared. Players and maps will be preserved. The session will return to WAITING state.",
+    confirmLabel: "Reset Session",
+    destructive: false,
+  },
+};
+
 function SessionDetailPage() {
   const { sessionId } = Route.useParams();
+  const navigate = useNavigate();
   const isValidId = isValidSessionId(sessionId);
   const typedSessionId = sessionId as Id<"sessions">;
   const [lastCopied, setLastCopied] = useState<"all" | string | null>(null);
   const copyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Lifecycle mutation hooks
+  const finalizeMutation = useMutation(api.sessions.finalizeSession);
+  const startMutation = useMutation(api.sessions.startSession);
+  const pauseMutation = useMutation(api.sessions.pauseSession);
+  const resumeMutation = useMutation(api.sessions.resumeSession);
+  const endMutation = useMutation(api.sessions.endSession);
+  const forceRandomMutation = useMutation(api.sessions.forceRandomSelection);
+  const resetMutation = useMutation(api.sessions.resetSession);
+  const cloneMutation = useMutation(api.sessions.cloneSession);
+  const voteOnBehalfMutation = useMutation(api.voting.adminVoteOnBehalf);
+
+  // Loading state: tracks which action is in progress
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const isAnyLoading = actionLoading !== null;
+
+  // Confirmation dialog state
+  const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
+
+  // Vote on behalf dialog state
+  const [voteOnBehalfPlayer, setVoteOnBehalfPlayer] = useState<{
+    _id: Id<"sessionPlayers">;
+    teamName: string;
+  } | null>(null);
+  const [selectedMapId, setSelectedMapId] = useState<Id<"sessionMaps"> | null>(null);
 
   useEffect(() => {
     return () => {
@@ -166,6 +250,28 @@ function SessionDetailPage() {
       .join("\n");
     await handleCopy(text, "all");
   };
+
+  // Reusable action handler with loading + toast pattern
+  const handleAction = useCallback(
+    async (
+      actionName: string,
+      mutation: () => Promise<unknown>,
+      successMsg: string
+    ) => {
+      setActionLoading(actionName);
+      try {
+        await mutation();
+        toast.success(successMsg);
+      } catch (error) {
+        toast.error(
+          error instanceof Error ? error.message : `Failed to ${actionName}`
+        );
+      } finally {
+        setActionLoading(null);
+      }
+    },
+    []
+  );
 
   const session = useQuery(
     api.sessions.getSession,
@@ -236,8 +342,58 @@ function SessionDetailPage() {
   }
 
   const isLive = session.status === "IN_PROGRESS";
-  const canStart =
-    session.status === "WAITING" || session.status === "DRAFT";
+  const isPaused = session.status === "PAUSED";
+  const isLiveOrPaused = isLive || isPaused;
+  const allConnected = session.players.every((p) => p.isConnected);
+  const availableMaps = session.maps.filter((m) => m.state === "AVAILABLE");
+
+  // Confirmation dialog handler
+  const handleConfirmAction = async () => {
+    if (!confirmAction) return;
+    const actionName = confirmAction;
+    setActionLoading(actionName);
+    try {
+      if (actionName === "end") {
+        await endMutation({ sessionId: typedSessionId });
+        toast.success("Session ended");
+      } else if (actionName === "forceRandom") {
+        const result = await forceRandomMutation({ sessionId: typedSessionId });
+        toast.success(`Winner selected: ${result.winnerMapName}`);
+      } else if (actionName === "reset") {
+        await resetMutation({ sessionId: typedSessionId });
+        toast.success("Session reset");
+      }
+      setConfirmAction(null);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : `Failed to ${actionName}`
+      );
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  // Vote on behalf handler
+  const handleVoteOnBehalf = async () => {
+    if (!voteOnBehalfPlayer || !selectedMapId) return;
+    setActionLoading("voteOnBehalf");
+    try {
+      await voteOnBehalfMutation({
+        sessionId: typedSessionId,
+        playerId: voteOnBehalfPlayer._id,
+        mapId: selectedMapId,
+      });
+      toast.success(`Vote submitted for ${voteOnBehalfPlayer.teamName}`);
+      setVoteOnBehalfPlayer(null);
+      setSelectedMapId(null);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : "Failed to vote on behalf"
+      );
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   return (
     <div className="flex-1 flex flex-col">
@@ -271,41 +427,324 @@ function SessionDetailPage() {
               </div>
             </div>
 
-            <div className="flex gap-2">
-              {canStart && (
+            <div className="flex gap-2 flex-wrap">
+              {/* Finalize: DRAFT only */}
+              {session.status === "DRAFT" && (
                 <Button
-                  disabled
+                  disabled={isAnyLoading}
                   className="gap-2 bg-chart-4 hover:bg-chart-4/90"
-                  title="Session control wiring coming soon"
+                  onClick={() =>
+                    handleAction(
+                      "finalize",
+                      () => finalizeMutation({ sessionId: typedSessionId }),
+                      "Session finalized"
+                    )
+                  }
                 >
-                  <CheckCircle2 className="w-4 h-4" />
-                  Start Session
+                  {actionLoading === "finalize" ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="w-4 h-4" />
+                  )}
+                  {actionLoading === "finalize" ? "Finalizing..." : "Finalize"}
                 </Button>
               )}
-              {session.status === "PAUSED" && (
+
+              {/* Start: WAITING only */}
+              {session.status === "WAITING" && (
                 <Button
-                  disabled
-                  className="gap-2"
-                  title="Session control wiring coming soon"
+                  disabled={isAnyLoading || !allConnected}
+                  className="gap-2 bg-chart-4 hover:bg-chart-4/90"
+                  title={
+                    !allConnected
+                      ? "Waiting for all players to connect"
+                      : undefined
+                  }
+                  onClick={() =>
+                    handleAction(
+                      "start",
+                      () => startMutation({ sessionId: typedSessionId }),
+                      "Session started"
+                    )
+                  }
                 >
-                  Resume
+                  {actionLoading === "start" ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Play className="w-4 h-4" />
+                  )}
+                  {actionLoading === "start" ? "Starting..." : "Start Session"}
                 </Button>
               )}
+
+              {/* Pause: IN_PROGRESS only */}
               {isLive && (
                 <Button
-                  disabled
-                  variant="destructive"
+                  variant="secondary"
+                  disabled={isAnyLoading}
                   className="gap-2"
-                  title="Session control wiring coming soon"
+                  onClick={() =>
+                    handleAction(
+                      "pause",
+                      () => pauseMutation({ sessionId: typedSessionId }),
+                      "Session paused"
+                    )
+                  }
+                >
+                  {actionLoading === "pause" ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Pause className="w-4 h-4" />
+                  )}
+                  {actionLoading === "pause" ? "Pausing..." : "Pause"}
+                </Button>
+              )}
+
+              {/* Resume: PAUSED only */}
+              {isPaused && (
+                <Button
+                  disabled={isAnyLoading}
+                  className="gap-2 bg-chart-4 hover:bg-chart-4/90"
+                  onClick={() =>
+                    handleAction(
+                      "resume",
+                      () => resumeMutation({ sessionId: typedSessionId }),
+                      "Session resumed"
+                    )
+                  }
+                >
+                  {actionLoading === "resume" ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <Play className="w-4 h-4" />
+                  )}
+                  {actionLoading === "resume" ? "Resuming..." : "Resume"}
+                </Button>
+              )}
+
+              {/* End Session: IN_PROGRESS or PAUSED */}
+              {isLiveOrPaused && (
+                <Button
+                  variant="destructive"
+                  disabled={isAnyLoading}
+                  className="gap-2"
+                  onClick={() => setConfirmAction("end")}
                 >
                   <X className="w-4 h-4" />
                   End Session
+                </Button>
+              )}
+
+              {/* Force Random: IN_PROGRESS or PAUSED */}
+              {isLiveOrPaused && (
+                <Button
+                  variant="destructive"
+                  disabled={isAnyLoading}
+                  className="gap-2"
+                  onClick={() => setConfirmAction("forceRandom")}
+                >
+                  <Shuffle className="w-4 h-4" />
+                  Force Random
+                </Button>
+              )}
+
+              {/* Reset: COMPLETE only */}
+              {session.status === "COMPLETE" && (
+                <Button
+                  variant="secondary"
+                  disabled={isAnyLoading}
+                  className="gap-2"
+                  onClick={() => setConfirmAction("reset")}
+                >
+                  {actionLoading === "reset" ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <RotateCcw className="w-4 h-4" />
+                  )}
+                  {actionLoading === "reset" ? "Resetting..." : "Reset"}
+                </Button>
+              )}
+
+              {/* Clone: all states */}
+              <Button
+                variant="secondary"
+                disabled={isAnyLoading}
+                className="gap-2"
+                onClick={async () => {
+                  setActionLoading("clone");
+                  try {
+                    const { newSessionId } = await cloneMutation({
+                      sessionId: typedSessionId,
+                    });
+                    toast.success("Session cloned");
+                    await navigate({
+                      to: "/admin/session/$sessionId",
+                      params: { sessionId: newSessionId },
+                    });
+                  } catch (error) {
+                    toast.error(
+                      error instanceof Error
+                        ? error.message
+                        : "Failed to clone session"
+                    );
+                  } finally {
+                    setActionLoading(null);
+                  }
+                }}
+              >
+                {actionLoading === "clone" ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Copy className="w-4 h-4" />
+                )}
+                {actionLoading === "clone" ? "Cloning..." : "Clone"}
+              </Button>
+
+              {/* View Results: COMPLETE only */}
+              {session.status === "COMPLETE" && (
+                <Button
+                  variant="outline"
+                  className="gap-2"
+                  render={
+                    <Link
+                      to="/results/$sessionId"
+                      params={{ sessionId }}
+                    />
+                  }
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  View Results
                 </Button>
               )}
             </div>
           </div>
         </div>
       </header>
+
+      {/* Confirmation Dialog */}
+      <AlertDialog
+        open={confirmAction !== null}
+        onOpenChange={(open) => {
+          if (!open && !isAnyLoading) setConfirmAction(null);
+        }}
+      >
+        {confirmAction && (
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {CONFIRM_DIALOG_CONFIG[confirmAction].title}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {CONFIRM_DIALOG_CONFIG[confirmAction].description}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isAnyLoading}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={handleConfirmAction}
+                disabled={isAnyLoading}
+                className={
+                  CONFIRM_DIALOG_CONFIG[confirmAction].destructive
+                    ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                    : undefined
+                }
+              >
+                {isAnyLoading ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    Processing...
+                  </>
+                ) : (
+                  CONFIRM_DIALOG_CONFIG[confirmAction].confirmLabel
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        )}
+      </AlertDialog>
+
+      {/* Vote on Behalf Dialog */}
+      <Dialog
+        open={voteOnBehalfPlayer !== null}
+        onOpenChange={(open) => {
+          if (!open && !isAnyLoading) {
+            setVoteOnBehalfPlayer(null);
+            setSelectedMapId(null);
+          }
+        }}
+      >
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {session.format === "ABBA" ? "Ban" : "Vote"} on Behalf of{" "}
+              {voteOnBehalfPlayer?.teamName}
+            </DialogTitle>
+            <DialogDescription>
+              Select a map to{" "}
+              {session.format === "ABBA" ? "ban" : "vote for"} on behalf of
+              this player.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-3 gap-2 max-h-80 overflow-y-auto">
+            {availableMaps.map((map) => (
+              <button
+                key={map._id}
+                type="button"
+                className={`relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
+                  selectedMapId === map._id
+                    ? "border-primary ring-2 ring-primary/30"
+                    : "border-border/50 hover:border-primary/50"
+                }`}
+                onClick={() => setSelectedMapId(map._id)}
+              >
+                <img
+                  src={map.imageUrl || "/placeholder.svg"}
+                  alt={map.name}
+                  className="w-full aspect-[3/4] object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 p-1.5">
+                  <p className="text-[10px] font-semibold text-white text-center truncate">
+                    {map.name}
+                  </p>
+                </div>
+                {selectedMapId === map._id && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-primary/20">
+                    <CheckCircle2 className="w-6 h-6 text-primary" />
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={isAnyLoading}
+              onClick={() => {
+                setVoteOnBehalfPlayer(null);
+                setSelectedMapId(null);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={!selectedMapId || isAnyLoading}
+              onClick={handleVoteOnBehalf}
+            >
+              {actionLoading === "voteOnBehalf" ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                `Submit ${session.format === "ABBA" ? "Ban" : "Vote"}`
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Main Content */}
       <main className="flex-1 px-4 py-6 md:px-8 md:py-8 space-y-6">
@@ -348,6 +787,26 @@ function SessionDetailPage() {
             ) : (
               session.players.map((player) => {
                 const lobbyUrl = buildLobbyUrl(player.token);
+                // Determine if this player is eligible for vote-on-behalf
+                const canVoteOnBehalf =
+                  isLive &&
+                  (session.format === "MULTIPLAYER"
+                    ? !player.hasVotedThisRound
+                    : // ABBA: only the active player
+                      (() => {
+                        const sorted = [...session.players].sort(
+                          (a, b) =>
+                            a._creationTime - b._creationTime ||
+                            a._id.localeCompare(b._id)
+                        );
+                        const ABBA_PATTERN = [0, 1, 1, 0];
+                        const activeIdx =
+                          ABBA_PATTERN[
+                            (session.currentTurn ?? 0) % ABBA_PATTERN.length
+                          ];
+                        return sorted[activeIdx]?._id === player._id;
+                      })());
+
                 return (
                   <div
                     key={player._id}
@@ -407,6 +866,34 @@ function SessionDetailPage() {
                           <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
                           Connected
                         </Badge>
+                      )}
+                      {isLive && player.hasVotedThisRound && (
+                        <Badge
+                          variant="outline"
+                          className="gap-1 bg-blue-500/20 text-blue-600 border-blue-500/30"
+                        >
+                          <CheckCircle2 className="w-3 h-3" />
+                          Voted
+                        </Badge>
+                      )}
+                      {canVoteOnBehalf && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          disabled={isAnyLoading}
+                          className="gap-1 shrink-0"
+                          onClick={() =>
+                            setVoteOnBehalfPlayer({
+                              _id: player._id,
+                              teamName: player.teamName,
+                            })
+                          }
+                        >
+                          <Hand className="w-3 h-3" />
+                          {session.format === "ABBA"
+                            ? "Ban on Behalf"
+                            : "Vote on Behalf"}
+                        </Button>
                       )}
                     </div>
                   </div>
