@@ -326,7 +326,7 @@ export const handleTimerExpiry = internalMutation({
         session,
         player: activePlayer,
         targetMap,
-        submittedByAdmin: true,
+        submittedByAdmin: false,
         actorType: "SYSTEM",
       });
 
@@ -382,7 +382,7 @@ export const handleTimerExpiry = internalMutation({
         session,
         player,
         targetMap,
-        submittedByAdmin: true,
+        submittedByAdmin: false,
         actorType: "SYSTEM",
       });
     }

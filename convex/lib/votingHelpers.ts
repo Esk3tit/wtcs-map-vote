@@ -406,8 +406,11 @@ export async function executeBan(
       mapName: targetMap.name,
       teamName: player.teamName,
       turn: currentTurn,
-      ...(submittedByAdmin && { reason: "ADMIN_VOTE_ON_BEHALF" }),
-      ...(actorType === "SYSTEM" && { reason: "TIMER_EXPIRED" }),
+      reason: actorType === "SYSTEM"
+        ? "TIMER_EXPIRED"
+        : submittedByAdmin
+          ? "ADMIN_VOTE_ON_BEHALF"
+          : undefined,
     },
   });
 
@@ -512,8 +515,11 @@ export async function executeVote(
       mapName: targetMap.name,
       teamName: player.teamName,
       round: currentRound,
-      ...(submittedByAdmin && { reason: "ADMIN_VOTE_ON_BEHALF" }),
-      ...(actorType === "SYSTEM" && { reason: "TIMER_EXPIRED" }),
+      reason: actorType === "SYSTEM"
+        ? "TIMER_EXPIRED"
+        : submittedByAdmin
+          ? "ADMIN_VOTE_ON_BEHALF"
+          : undefined,
     },
   });
 

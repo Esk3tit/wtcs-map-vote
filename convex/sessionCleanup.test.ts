@@ -821,7 +821,7 @@ describe("sessionCleanup.handleTimerExpiry", () => {
       expect(banLog?.details).toMatchObject({ reason: "TIMER_EXPIRED" });
     });
 
-    it("marks ban as submittedByAdmin:true", async () => {
+    it("does not mark ban as submittedByAdmin for system timer actions", async () => {
       const t = createTestContext();
       const timerStartedAt = Date.now();
       const { sessionId } = await createABBATimerSession(t, {
@@ -842,7 +842,7 @@ describe("sessionCleanup.handleTimerExpiry", () => {
           )
           .collect()
       );
-      expect(bannedMaps[0].submittedByAdmin).toBe(true);
+      expect(bannedMaps[0].submittedByAdmin).toBeUndefined();
     });
   });
 
@@ -932,12 +932,12 @@ describe("sessionCleanup.handleTimerExpiry", () => {
       );
       expect(player0Vote?.submittedByAdmin).toBe(false);
 
-      // Other votes should have submittedByAdmin
+      // Other votes should NOT have submittedByAdmin (system timer, not admin)
       const autoVotes = votes.filter(
         (v) => v.playerId !== playerIds[0]
       );
       for (const vote of autoVotes) {
-        expect(vote.submittedByAdmin).toBe(true);
+        expect(vote.submittedByAdmin).toBe(false);
       }
     });
 
@@ -1025,7 +1025,7 @@ describe("sessionCleanup.handleTimerExpiry", () => {
       }
     });
 
-    it("auto-votes mark submittedByAdmin:true on vote records", async () => {
+    it("auto-votes mark submittedByAdmin:false for system timer actions", async () => {
       const t = createTestContext();
       const timerStartedAt = Date.now();
       const { sessionId } = await createMultiplayerTimerSession(t, {
@@ -1049,7 +1049,7 @@ describe("sessionCleanup.handleTimerExpiry", () => {
       );
 
       for (const vote of votes) {
-        expect(vote.submittedByAdmin).toBe(true);
+        expect(vote.submittedByAdmin).toBe(false);
       }
     });
   });
