@@ -4,6 +4,10 @@ import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import type { ActorType } from "../../../convex/lib/types";
 import {
+  getActivePlayerIndex,
+  sortPlayersByJoinOrder,
+} from "../../../convex/lib/constants";
+import {
   Card,
   CardContent,
   CardDescription,
@@ -51,7 +55,7 @@ import {
   ExternalLink,
   Hand,
 } from "lucide-react";
-import { useState, useRef, useEffect, useMemo, useCallback } from "react";
+import { useState, useRef, useEffect, useMemo } from "react";
 import { toast } from "sonner";
 import {
   getStatusColor,
@@ -160,6 +164,8 @@ const isValidSessionId = (id: string): boolean => {
 // Confirmation Dialog Config
 // ============================================================================
 
+type ActionName = "finalize" | "start" | "pause" | "resume" | "end" | "forceRandom" | "reset" | "clone" | "voteOnBehalf";
+
 type ConfirmAction = "end" | "forceRandom" | "reset";
 
 const CONFIRM_DIALOG_CONFIG: Record<
@@ -209,7 +215,7 @@ function SessionDetailPage() {
   const voteOnBehalfMutation = useMutation(api.voting.adminVoteOnBehalf);
 
   // Loading state: tracks which action is in progress
-  const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<ActionName | null>(null);
   const isAnyLoading = actionLoading !== null;
 
   // Confirmation dialog state
@@ -252,26 +258,23 @@ function SessionDetailPage() {
   };
 
   // Reusable action handler with loading + toast pattern
-  const handleAction = useCallback(
-    async <T,>(
-      actionName: string,
-      mutation: () => Promise<T>,
-      onSuccess: (result: T) => void | Promise<void>,
-    ) => {
-      setActionLoading(actionName);
-      try {
-        const result = await mutation();
-        await onSuccess(result);
-      } catch (error) {
-        toast.error(
-          error instanceof Error ? error.message : `Failed to ${actionName}`
-        );
-      } finally {
-        setActionLoading(null);
-      }
-    },
-    []
-  );
+  const handleAction = async <T,>(
+    actionName: ActionName,
+    mutation: () => Promise<T>,
+    onSuccess: (result: T) => void | Promise<void>,
+  ) => {
+    setActionLoading(actionName);
+    try {
+      const result = await mutation();
+      await onSuccess(result);
+    } catch (error) {
+      toast.error(
+        error instanceof Error ? error.message : `Failed to ${actionName}`
+      );
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   const session = useQuery(
     api.sessions.getSession,
@@ -291,13 +294,26 @@ function SessionDetailPage() {
   );
 
   // Pre-sort players for ABBA turn order (computed once, not per-player)
-  const sortedPlayers = useMemo(() => {
-    return [...(session?.players ?? [])].sort(
-      (a, b) =>
-        a._creationTime - b._creationTime ||
-        a._id.localeCompare(b._id)
-    );
-  }, [session?.players]);
+  const sortedPlayers = useMemo(
+    () => sortPlayersByJoinOrder(session?.players ?? []),
+    [session?.players]
+  );
+
+  // Active ABBA player (computed once, not per-player)
+  const sessionFormat = session?.format;
+  const sessionStatus = session?.status;
+  const sessionCurrentTurn = session?.currentTurn;
+  const activeAbbaPlayerId = useMemo(() => {
+    if (sessionFormat !== "ABBA" || sessionStatus !== "IN_PROGRESS") return null;
+    const activeIdx = getActivePlayerIndex(sessionCurrentTurn ?? 0);
+    return sortedPlayers[activeIdx]?._id ?? null;
+  }, [sessionFormat, sessionStatus, sessionCurrentTurn, sortedPlayers]);
+
+  // Memoize available maps for vote-on-behalf dialog
+  const availableMaps = useMemo(
+    () => (session?.maps ?? []).filter((m) => m.state === "AVAILABLE"),
+    [session?.maps]
+  );
 
   // Invalid session ID state
   if (!isValidId) {
@@ -354,39 +370,46 @@ function SessionDetailPage() {
   const isPaused = session.status === "PAUSED";
   const isLiveOrPaused = isLive || isPaused;
   const allConnected = session.players.every((p) => p.isConnected);
-  const availableMaps = session.maps.filter((m) => m.state === "AVAILABLE");
 
   // Confirmation dialog handler
   const handleConfirmAction = async () => {
     if (!confirmAction) return;
     const actionName = confirmAction;
-    if (actionName === "end") {
-      await handleAction(
-        actionName,
-        () => endMutation({ sessionId: typedSessionId }),
-        () => {
-          toast.success("Session ended");
-          setConfirmAction(null);
-        },
-      );
-    } else if (actionName === "forceRandom") {
-      await handleAction(
-        actionName,
-        () => forceRandomMutation({ sessionId: typedSessionId }),
-        (result) => {
-          toast.success(`Winner selected: ${result.winnerMapName}`);
-          setConfirmAction(null);
-        },
-      );
-    } else if (actionName === "reset") {
-      await handleAction(
-        actionName,
-        () => resetMutation({ sessionId: typedSessionId }),
-        () => {
-          toast.success("Session reset");
-          setConfirmAction(null);
-        },
-      );
+    switch (actionName) {
+      case "end":
+        await handleAction(
+          actionName,
+          () => endMutation({ sessionId: typedSessionId }),
+          () => {
+            toast.success("Session ended");
+            setConfirmAction(null);
+          },
+        );
+        break;
+      case "forceRandom":
+        await handleAction(
+          actionName,
+          () => forceRandomMutation({ sessionId: typedSessionId }),
+          (result) => {
+            toast.success(`Winner selected: ${result.winnerMapName}`);
+            setConfirmAction(null);
+          },
+        );
+        break;
+      case "reset":
+        await handleAction(
+          actionName,
+          () => resetMutation({ sessionId: typedSessionId }),
+          () => {
+            toast.success("Session reset");
+            setConfirmAction(null);
+          },
+        );
+        break;
+      default: {
+        const _exhaustive: never = actionName;
+        throw new Error(`Unhandled confirm action: ${_exhaustive}`);
+      }
     }
   };
 
@@ -628,130 +651,27 @@ function SessionDetailPage() {
         </div>
       </header>
 
-      {/* Confirmation Dialog */}
-      <AlertDialog
-        open={confirmAction !== null}
-        onOpenChange={(open) => {
-          if (!open && !isAnyLoading) setConfirmAction(null);
-        }}
-      >
-        {confirmAction && (
-          <AlertDialogContent>
-            <AlertDialogHeader>
-              <AlertDialogTitle>
-                {CONFIRM_DIALOG_CONFIG[confirmAction].title}
-              </AlertDialogTitle>
-              <AlertDialogDescription>
-                {CONFIRM_DIALOG_CONFIG[confirmAction].description}
-              </AlertDialogDescription>
-            </AlertDialogHeader>
-            <AlertDialogFooter>
-              <AlertDialogCancel disabled={isAnyLoading}>
-                Cancel
-              </AlertDialogCancel>
-              <AlertDialogAction
-                onClick={handleConfirmAction}
-                disabled={isAnyLoading}
-                variant={
-                  CONFIRM_DIALOG_CONFIG[confirmAction].destructive
-                    ? "destructive"
-                    : "default"
-                }
-              >
-                {isAnyLoading ? (
-                  <>
-                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    Processing...
-                  </>
-                ) : (
-                  CONFIRM_DIALOG_CONFIG[confirmAction].confirmLabel
-                )}
-              </AlertDialogAction>
-            </AlertDialogFooter>
-          </AlertDialogContent>
-        )}
-      </AlertDialog>
+      <ConfirmActionDialog
+        confirmAction={confirmAction}
+        isLoading={isAnyLoading}
+        onConfirm={handleConfirmAction}
+        onCancel={() => setConfirmAction(null)}
+      />
 
-      {/* Vote on Behalf Dialog */}
-      <Dialog
-        open={voteOnBehalfPlayer !== null}
-        onOpenChange={(open) => {
-          if (!open && !isAnyLoading) {
-            setVoteOnBehalfPlayer(null);
-            setSelectedMapId(null);
-          }
+      <VoteOnBehalfDialog
+        voteOnBehalfPlayer={voteOnBehalfPlayer}
+        isLoading={isAnyLoading}
+        actionLoading={actionLoading}
+        availableMaps={availableMaps}
+        selectedMapId={selectedMapId}
+        format={session.format}
+        onSelectMap={setSelectedMapId}
+        onConfirm={handleVoteOnBehalf}
+        onCancel={() => {
+          setVoteOnBehalfPlayer(null);
+          setSelectedMapId(null);
         }}
-      >
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {session.format === "ABBA" ? "Ban" : "Vote"} on Behalf of{" "}
-              {voteOnBehalfPlayer?.teamName}
-            </DialogTitle>
-            <DialogDescription>
-              Select a map to{" "}
-              {session.format === "ABBA" ? "ban" : "vote for"} on behalf of
-              this player.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-3 gap-2 max-h-80 overflow-y-auto">
-            {availableMaps.map((map) => (
-              <button
-                key={map._id}
-                type="button"
-                className={`relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
-                  selectedMapId === map._id
-                    ? "border-primary ring-2 ring-primary/30"
-                    : "border-border/50 hover:border-primary/50"
-                }`}
-                onClick={() => setSelectedMapId(map._id)}
-              >
-                <img
-                  src={map.imageUrl || "/placeholder.svg"}
-                  alt={map.name}
-                  className="w-full aspect-[3/4] object-cover"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-                <div className="absolute bottom-0 left-0 right-0 p-1.5">
-                  <p className="text-[10px] font-semibold text-white text-center truncate">
-                    {map.name}
-                  </p>
-                </div>
-                {selectedMapId === map._id && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-primary/20">
-                    <CheckCircle2 className="w-6 h-6 text-primary" />
-                  </div>
-                )}
-              </button>
-            ))}
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              disabled={isAnyLoading}
-              onClick={() => {
-                setVoteOnBehalfPlayer(null);
-                setSelectedMapId(null);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              disabled={!selectedMapId || isAnyLoading}
-              onClick={handleVoteOnBehalf}
-            >
-              {actionLoading === "voteOnBehalf" ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Submitting...
-                </>
-              ) : (
-                `Submit ${session.format === "ABBA" ? "Ban" : "Vote"}`
-              )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
+      />
 
       {/* Main Content */}
       <main className="flex-1 px-4 py-6 md:px-8 md:py-8 space-y-6">
@@ -799,15 +719,7 @@ function SessionDetailPage() {
                   isLive &&
                   (session.format === "MULTIPLAYER"
                     ? !player.hasVotedThisRound
-                    : // ABBA: only the active player
-                      (() => {
-                        const ABBA_PATTERN = [0, 1, 1, 0];
-                        const activeIdx =
-                          ABBA_PATTERN[
-                            (session.currentTurn ?? 0) % ABBA_PATTERN.length
-                          ];
-                        return sortedPlayers[activeIdx]?._id === player._id;
-                      })());
+                    : player._id === activeAbbaPlayerId);
 
                 return (
                   <div
@@ -869,7 +781,7 @@ function SessionDetailPage() {
                           Connected
                         </Badge>
                       )}
-                      {isLive && player.hasVotedThisRound && (
+                      {isLiveOrPaused && player.hasVotedThisRound && (
                         <Badge
                           variant="outline"
                           className="gap-1 bg-blue-500/20 text-blue-600 border-blue-500/30"
@@ -1080,5 +992,166 @@ function SessionDetailPage() {
         </Card>
       </main>
     </div>
+  );
+}
+
+// ============================================================================
+// Extracted Dialog Components
+// ============================================================================
+
+function ConfirmActionDialog({
+  confirmAction,
+  isLoading,
+  onConfirm,
+  onCancel,
+}: {
+  confirmAction: ConfirmAction | null;
+  isLoading: boolean;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <AlertDialog
+      open={confirmAction !== null}
+      onOpenChange={(open) => {
+        if (!open && !isLoading) onCancel();
+      }}
+    >
+      {confirmAction && (
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {CONFIRM_DIALOG_CONFIG[confirmAction].title}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {CONFIRM_DIALOG_CONFIG[confirmAction].description}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={isLoading}>
+              Cancel
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={onConfirm}
+              disabled={isLoading}
+              variant={
+                CONFIRM_DIALOG_CONFIG[confirmAction].destructive
+                  ? "destructive"
+                  : "default"
+              }
+            >
+              {isLoading ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Processing...
+                </>
+              ) : (
+                CONFIRM_DIALOG_CONFIG[confirmAction].confirmLabel
+              )}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      )}
+    </AlertDialog>
+  );
+}
+
+function VoteOnBehalfDialog({
+  voteOnBehalfPlayer,
+  isLoading,
+  actionLoading,
+  availableMaps,
+  selectedMapId,
+  format,
+  onSelectMap,
+  onConfirm,
+  onCancel,
+}: {
+  voteOnBehalfPlayer: { _id: Id<"sessionPlayers">; teamName: string } | null;
+  isLoading: boolean;
+  actionLoading: ActionName | null;
+  availableMaps: { _id: Id<"sessionMaps">; name: string; imageUrl: string | null }[];
+  selectedMapId: Id<"sessionMaps"> | null;
+  format: string;
+  onSelectMap: (id: Id<"sessionMaps">) => void;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <Dialog
+      open={voteOnBehalfPlayer !== null}
+      onOpenChange={(open) => {
+        if (!open && !isLoading) onCancel();
+      }}
+    >
+      {voteOnBehalfPlayer && (
+        <DialogContent className="sm:max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {format === "ABBA" ? "Ban" : "Vote"} on Behalf of{" "}
+              {voteOnBehalfPlayer.teamName}
+            </DialogTitle>
+            <DialogDescription>
+              Select a map to{" "}
+              {format === "ABBA" ? "ban" : "vote for"} on behalf of
+              this player.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="grid grid-cols-3 gap-2 max-h-80 overflow-y-auto">
+            {availableMaps.map((map) => (
+              <button
+                key={map._id}
+                type="button"
+                className={`relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
+                  selectedMapId === map._id
+                    ? "border-primary ring-2 ring-primary/30"
+                    : "border-border/50 hover:border-primary/50"
+                }`}
+                onClick={() => onSelectMap(map._id)}
+              >
+                <img
+                  src={map.imageUrl || "/placeholder.svg"}
+                  alt={map.name}
+                  className="w-full aspect-[3/4] object-cover"
+                />
+                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+                <div className="absolute bottom-0 left-0 right-0 p-1.5">
+                  <p className="text-[10px] font-semibold text-white text-center truncate">
+                    {map.name}
+                  </p>
+                </div>
+                {selectedMapId === map._id && (
+                  <div className="absolute inset-0 flex items-center justify-center bg-primary/20">
+                    <CheckCircle2 className="w-6 h-6 text-primary" />
+                  </div>
+                )}
+              </button>
+            ))}
+          </div>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={isLoading}
+              onClick={onCancel}
+            >
+              Cancel
+            </Button>
+            <Button
+              disabled={!selectedMapId || isLoading}
+              onClick={onConfirm}
+            >
+              {actionLoading === "voteOnBehalf" ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  Submitting...
+                </>
+              ) : (
+                `Submit ${format === "ABBA" ? "Ban" : "Vote"}`
+              )}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      )}
+    </Dialog>
   );
 }
