@@ -57,6 +57,7 @@ import {
 } from "lucide-react";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { toast } from "sonner";
+import { cn } from "@/lib/utils";
 import {
   getStatusColor,
   formatStatus,
@@ -1098,15 +1099,21 @@ function VoteOnBehalfDialog({
             </DialogDescription>
           </DialogHeader>
           <div className="grid grid-cols-3 gap-2 max-h-80 overflow-y-auto">
+            {availableMaps.length === 0 && (
+              <p className="col-span-3 text-center text-sm text-muted-foreground py-4">
+                No maps available
+              </p>
+            )}
             {availableMaps.map((map) => (
               <button
                 key={map._id}
                 type="button"
-                className={`relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer ${
+                className={cn(
+                  "relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer",
                   selectedMapId === map._id
                     ? "border-primary ring-2 ring-primary/30"
-                    : "border-border/50 hover:border-primary/50"
-                }`}
+                    : "border-border/50 hover:border-primary/50",
+                )}
                 onClick={() => onSelectMap(map._id)}
               >
                 <img
