@@ -1012,6 +1012,9 @@ function ConfirmActionDialog({
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  // Use fallback so content exists during close animation (fading out)
+  const config = CONFIRM_DIALOG_CONFIG[confirmAction ?? "end"];
+
   return (
     <AlertDialog
       open={confirmAction !== null}
@@ -1019,41 +1022,33 @@ function ConfirmActionDialog({
         if (!open && !isLoading) onCancel();
       }}
     >
-      {confirmAction && (
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {CONFIRM_DIALOG_CONFIG[confirmAction].title}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {CONFIRM_DIALOG_CONFIG[confirmAction].description}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isLoading}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={onConfirm}
-              disabled={isLoading}
-              variant={
-                CONFIRM_DIALOG_CONFIG[confirmAction].destructive
-                  ? "destructive"
-                  : "default"
-              }
-            >
-              {isLoading ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Processing...
-                </>
-              ) : (
-                CONFIRM_DIALOG_CONFIG[confirmAction].confirmLabel
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      )}
+      <AlertDialogContent>
+        <AlertDialogHeader>
+          <AlertDialogTitle>{config.title}</AlertDialogTitle>
+          <AlertDialogDescription>
+            {config.description}
+          </AlertDialogDescription>
+        </AlertDialogHeader>
+        <AlertDialogFooter>
+          <AlertDialogCancel disabled={isLoading}>
+            Cancel
+          </AlertDialogCancel>
+          <AlertDialogAction
+            onClick={onConfirm}
+            disabled={isLoading}
+            variant={config.destructive ? "destructive" : "default"}
+          >
+            {isLoading ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              config.confirmLabel
+            )}
+          </AlertDialogAction>
+        </AlertDialogFooter>
+      </AlertDialogContent>
     </AlertDialog>
   );
 }
@@ -1072,13 +1067,16 @@ function VoteOnBehalfDialog({
   voteOnBehalfPlayer: { _id: Id<"sessionPlayers">; teamName: string } | null;
   isLoading: boolean;
   actionLoading: ActionName | null;
-  availableMaps: { _id: Id<"sessionMaps">; name: string; imageUrl: string | null }[];
+  availableMaps: { _id: Id<"sessionMaps">; name: string; imageUrl: string }[];
   selectedMapId: Id<"sessionMaps"> | null;
-  format: string;
+  format: "ABBA" | "MULTIPLAYER";
   onSelectMap: (id: Id<"sessionMaps">) => void;
   onConfirm: () => void;
   onCancel: () => void;
 }) {
+  // Use fallback so content exists during close animation (fading out)
+  const player = voteOnBehalfPlayer ?? { teamName: "" };
+
   return (
     <Dialog
       open={voteOnBehalfPlayer !== null}
@@ -1086,80 +1084,78 @@ function VoteOnBehalfDialog({
         if (!open && !isLoading) onCancel();
       }}
     >
-      {voteOnBehalfPlayer && (
-        <DialogContent className="sm:max-w-lg">
-          <DialogHeader>
-            <DialogTitle>
-              {format === "ABBA" ? "Ban" : "Vote"} on Behalf of{" "}
-              {voteOnBehalfPlayer.teamName}
-            </DialogTitle>
-            <DialogDescription>
-              Select a map to{" "}
-              {format === "ABBA" ? "ban" : "vote for"} on behalf of
-              this player.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid grid-cols-3 gap-2 max-h-80 overflow-y-auto">
-            {availableMaps.length === 0 && (
-              <p className="col-span-3 text-center text-sm text-muted-foreground py-4">
-                No maps available
-              </p>
-            )}
-            {availableMaps.map((map) => (
-              <button
-                key={map._id}
-                type="button"
-                className={cn(
-                  "relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer",
-                  selectedMapId === map._id
-                    ? "border-primary ring-2 ring-primary/30"
-                    : "border-border/50 hover:border-primary/50",
-                )}
-                onClick={() => onSelectMap(map._id)}
-              >
-                <img
-                  src={map.imageUrl || "/placeholder.svg"}
-                  alt={map.name}
-                  className="w-full aspect-[3/4] object-cover"
-                />
-                <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
-                <div className="absolute bottom-0 left-0 right-0 p-1.5">
-                  <p className="text-[10px] font-semibold text-white text-center truncate">
-                    {map.name}
-                  </p>
-                </div>
-                {selectedMapId === map._id && (
-                  <div className="absolute inset-0 flex items-center justify-center bg-primary/20">
-                    <CheckCircle2 className="w-6 h-6 text-primary" />
-                  </div>
-                )}
-              </button>
-            ))}
-          </div>
-          <DialogFooter>
-            <Button
-              variant="outline"
-              disabled={isLoading}
-              onClick={onCancel}
-            >
-              Cancel
-            </Button>
-            <Button
-              disabled={!selectedMapId || isLoading}
-              onClick={onConfirm}
-            >
-              {actionLoading === "voteOnBehalf" ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  Submitting...
-                </>
-              ) : (
-                `Submit ${format === "ABBA" ? "Ban" : "Vote"}`
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>
+            {format === "ABBA" ? "Ban" : "Vote"} on Behalf of{" "}
+            {player.teamName}
+          </DialogTitle>
+          <DialogDescription>
+            Select a map to{" "}
+            {format === "ABBA" ? "ban" : "vote for"} on behalf of
+            this player.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="grid grid-cols-3 gap-2 max-h-80 overflow-y-auto">
+          {availableMaps.length === 0 && (
+            <p className="col-span-3 text-center text-sm text-muted-foreground py-4">
+              No maps available
+            </p>
+          )}
+          {availableMaps.map((map) => (
+            <button
+              key={map._id}
+              type="button"
+              className={cn(
+                "relative rounded-lg overflow-hidden border-2 transition-all cursor-pointer",
+                selectedMapId === map._id
+                  ? "border-primary ring-2 ring-primary/30"
+                  : "border-border/50 hover:border-primary/50",
               )}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      )}
+              onClick={() => onSelectMap(map._id)}
+            >
+              <img
+                src={map.imageUrl || "/placeholder.svg"}
+                alt={map.name}
+                className="w-full aspect-[3/4] object-cover"
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
+              <div className="absolute bottom-0 left-0 right-0 p-1.5">
+                <p className="text-[10px] font-semibold text-white text-center truncate">
+                  {map.name}
+                </p>
+              </div>
+              {selectedMapId === map._id && (
+                <div className="absolute inset-0 flex items-center justify-center bg-primary/20">
+                  <CheckCircle2 className="w-6 h-6 text-primary" />
+                </div>
+              )}
+            </button>
+          ))}
+        </div>
+        <DialogFooter>
+          <Button
+            variant="outline"
+            disabled={isLoading}
+            onClick={onCancel}
+          >
+            Cancel
+          </Button>
+          <Button
+            disabled={!selectedMapId || isLoading}
+            onClick={onConfirm}
+          >
+            {actionLoading === "voteOnBehalf" ? (
+              <>
+                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                Submitting...
+              </>
+            ) : (
+              `Submit ${format === "ABBA" ? "Ban" : "Vote"}`
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
     </Dialog>
   );
 }
