@@ -11,6 +11,8 @@ import {
   adminFactory,
   sessionFactory,
   sessionPlayerFactory,
+  sessionMapFactory,
+  mapFactory,
   teamFactory,
 } from "./test.factories";
 import { internal } from "./_generated/api";
@@ -449,5 +451,604 @@ describe("sessionCleanup.clearCompletedSessionIps", () => {
     // Verify IP is still present
     const player = await t.run(async (ctx) => ctx.db.get(playerIds[0]));
     expect(player?.ipAddress).toBe("192.168.1.1");
+  });
+});
+
+// ============================================================================
+// handleTimerExpiry Tests (WAR-47)
+// ============================================================================
+
+/**
+ * Creates a full ABBA session in IN_PROGRESS state with 2 players and maps.
+ * Mirrors the pattern from voting.test.ts but returns IDs directly.
+ */
+async function createABBATimerSession(
+  t: TestContext,
+  overrides: {
+    mapPoolSize?: number;
+    currentTurn?: number;
+    timerStartedAt?: number;
+    timerPausedAt?: number;
+    status?: "DRAFT" | "WAITING" | "IN_PROGRESS" | "PAUSED" | "COMPLETE" | "EXPIRED";
+    turnTimerSeconds?: number;
+  } = {}
+) {
+  return await t.run(async (ctx) => {
+    const adminId = await ctx.db.insert("admins", adminFactory());
+    const mapPoolSize = overrides.mapPoolSize ?? 5;
+    const timerStartedAt = overrides.timerStartedAt ?? Date.now();
+    const sessionId = await ctx.db.insert(
+      "sessions",
+      sessionFactory(adminId, {
+        format: "ABBA",
+        status: overrides.status ?? "IN_PROGRESS",
+        mapPoolSize,
+        playerCount: 2,
+        currentTurn: overrides.currentTurn ?? 0,
+        timerStartedAt,
+        timerPausedAt: overrides.timerPausedAt,
+        turnTimerSeconds: overrides.turnTimerSeconds ?? 30,
+      })
+    );
+
+    // Create master maps and session maps
+    const masterMapIds = await Promise.all(
+      Array.from({ length: mapPoolSize }, (_, i) =>
+        ctx.db.insert("maps", mapFactory({ name: `Map ${i + 1}` }))
+      )
+    );
+    const mapIds = await Promise.all(
+      masterMapIds.map((masterMapId, i) =>
+        ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, masterMapId, {
+            name: `Map ${i + 1}`,
+            state: "AVAILABLE",
+          })
+        )
+      )
+    );
+
+    // Create Player A first (consistent _creationTime ordering)
+    const playerAId = await ctx.db.insert(
+      "sessionPlayers",
+      sessionPlayerFactory(sessionId, {
+        role: "PLAYER_A",
+        teamName: "Team Alpha",
+        ipAddress: "10.0.0.1",
+      })
+    );
+
+    // Create Player B second
+    const playerBId = await ctx.db.insert(
+      "sessionPlayers",
+      sessionPlayerFactory(sessionId, {
+        role: "PLAYER_B",
+        teamName: "Team Beta",
+        ipAddress: "10.0.0.2",
+      })
+    );
+
+    return { sessionId, adminId, playerAId, playerBId, mapIds, timerStartedAt };
+  });
+}
+
+/**
+ * Creates a full MULTIPLAYER session in IN_PROGRESS state with N players and maps.
+ */
+async function createMultiplayerTimerSession(
+  t: TestContext,
+  overrides: {
+    mapPoolSize?: number;
+    playerCount?: number;
+    currentRound?: number;
+    isRevoteRound?: boolean;
+    timerStartedAt?: number;
+    timerPausedAt?: number;
+    status?: "DRAFT" | "WAITING" | "IN_PROGRESS" | "PAUSED" | "COMPLETE" | "EXPIRED";
+    turnTimerSeconds?: number;
+    playersVoted?: number[];
+  } = {}
+) {
+  return await t.run(async (ctx) => {
+    const adminId = await ctx.db.insert("admins", adminFactory());
+    const mapPoolSize = overrides.mapPoolSize ?? 5;
+    const playerCount = overrides.playerCount ?? 3;
+    const timerStartedAt = overrides.timerStartedAt ?? Date.now();
+    const sessionId = await ctx.db.insert(
+      "sessions",
+      sessionFactory(adminId, {
+        format: "MULTIPLAYER",
+        status: overrides.status ?? "IN_PROGRESS",
+        mapPoolSize,
+        playerCount,
+        currentRound: overrides.currentRound ?? 1,
+        isRevoteRound: overrides.isRevoteRound ?? false,
+        timerStartedAt,
+        timerPausedAt: overrides.timerPausedAt,
+        turnTimerSeconds: overrides.turnTimerSeconds ?? 30,
+      })
+    );
+
+    // Create master maps and session maps
+    const masterMapIds = await Promise.all(
+      Array.from({ length: mapPoolSize }, (_, i) =>
+        ctx.db.insert("maps", mapFactory({ name: `Map ${i + 1}` }))
+      )
+    );
+    const mapIds = await Promise.all(
+      masterMapIds.map((masterMapId, i) =>
+        ctx.db.insert(
+          "sessionMaps",
+          sessionMapFactory(sessionId, masterMapId, {
+            name: `Map ${i + 1}`,
+            state: "AVAILABLE",
+          })
+        )
+      )
+    );
+
+    // Create players
+    const playersVotedSet = new Set(overrides.playersVoted ?? []);
+    const playerIds: Id<"sessionPlayers">[] = [];
+    for (let i = 0; i < playerCount; i++) {
+      const playerId = await ctx.db.insert(
+        "sessionPlayers",
+        sessionPlayerFactory(sessionId, {
+          role: `PLAYER_${i + 1}`,
+          teamName: `Team ${String.fromCharCode(65 + i)}`,
+          ipAddress: `10.0.0.${i + 1}`,
+          hasVotedThisRound: playersVotedSet.has(i),
+        })
+      );
+      playerIds.push(playerId);
+    }
+
+    return { sessionId, adminId, playerIds, mapIds, timerStartedAt };
+  });
+}
+
+describe("sessionCleanup.handleTimerExpiry", () => {
+  // --------------------------------------------------------------------------
+  // Guard / no-op tests
+  // --------------------------------------------------------------------------
+
+  describe("guard conditions (no-op)", () => {
+    it("returns processed:false when session not found", async () => {
+      const t = createTestContext();
+
+      // Create and delete a session to get a valid but non-existent ID
+      const deletedSessionId = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const id = await ctx.db.insert("sessions", sessionFactory(adminId));
+        await ctx.db.delete(id);
+        return id;
+      });
+
+      const result = await t.mutation(internal.sessionCleanup.handleTimerExpiry, {
+        sessionId: deletedSessionId,
+        expectedTimerStartedAt: Date.now(),
+        format: "ABBA",
+      });
+
+      expect(result).toEqual({ processed: false });
+    });
+
+    it("returns processed:false when session is not IN_PROGRESS", async () => {
+      const t = createTestContext();
+      const timerStartedAt = Date.now();
+      const { sessionId } = await createABBATimerSession(t, {
+        status: "PAUSED",
+        timerStartedAt,
+      });
+
+      const result = await t.mutation(internal.sessionCleanup.handleTimerExpiry, {
+        sessionId,
+        expectedTimerStartedAt: timerStartedAt,
+        format: "ABBA",
+      });
+
+      expect(result).toEqual({ processed: false });
+    });
+
+    it("returns processed:false when timerStartedAt has changed", async () => {
+      const t = createTestContext();
+      const timerStartedAt = Date.now();
+      const { sessionId } = await createABBATimerSession(t, {
+        timerStartedAt,
+      });
+
+      const result = await t.mutation(internal.sessionCleanup.handleTimerExpiry, {
+        sessionId,
+        expectedTimerStartedAt: timerStartedAt - 1000, // Different from actual
+        format: "ABBA",
+      });
+
+      expect(result).toEqual({ processed: false });
+    });
+
+    it("returns processed:false when timer is paused", async () => {
+      const t = createTestContext();
+      const timerStartedAt = Date.now();
+      const { sessionId } = await createABBATimerSession(t, {
+        timerStartedAt,
+        timerPausedAt: Date.now(),
+      });
+
+      const result = await t.mutation(internal.sessionCleanup.handleTimerExpiry, {
+        sessionId,
+        expectedTimerStartedAt: timerStartedAt,
+        format: "ABBA",
+      });
+
+      expect(result).toEqual({ processed: false });
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // ABBA auto-ban tests
+  // --------------------------------------------------------------------------
+
+  describe("ABBA format", () => {
+    it("auto-bans a map for the active player (turn 0 → Player A)", async () => {
+      const t = createTestContext();
+      const timerStartedAt = Date.now();
+      const { sessionId, playerAId } = await createABBATimerSession(t, {
+        timerStartedAt,
+        currentTurn: 0,
+      });
+
+      const result = await t.mutation(internal.sessionCleanup.handleTimerExpiry, {
+        sessionId,
+        expectedTimerStartedAt: timerStartedAt,
+        format: "ABBA",
+      });
+
+      expect(result).toEqual({ processed: true });
+
+      // Verify one map was banned
+      const bannedMaps = await t.run(async (ctx) =>
+        ctx.db
+          .query("sessionMaps")
+          .withIndex("by_sessionId_and_state", (q) =>
+            q.eq("sessionId", sessionId).eq("state", "BANNED")
+          )
+          .collect()
+      );
+      expect(bannedMaps).toHaveLength(1);
+      expect(bannedMaps[0].bannedByPlayerId).toBe(playerAId);
+
+      // Verify session advanced to turn 1
+      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(session?.currentTurn).toBe(1);
+    });
+
+    it("auto-bans for Player B on turn 1", async () => {
+      const t = createTestContext();
+      const timerStartedAt = Date.now();
+      const { sessionId, playerBId } = await createABBATimerSession(t, {
+        timerStartedAt,
+        currentTurn: 1,
+      });
+
+      const result = await t.mutation(internal.sessionCleanup.handleTimerExpiry, {
+        sessionId,
+        expectedTimerStartedAt: timerStartedAt,
+        format: "ABBA",
+      });
+
+      expect(result).toEqual({ processed: true });
+
+      const bannedMaps = await t.run(async (ctx) =>
+        ctx.db
+          .query("sessionMaps")
+          .withIndex("by_sessionId_and_state", (q) =>
+            q.eq("sessionId", sessionId).eq("state", "BANNED")
+          )
+          .collect()
+      );
+      expect(bannedMaps).toHaveLength(1);
+      expect(bannedMaps[0].bannedByPlayerId).toBe(playerBId);
+    });
+
+    it("completes session when last ban is made (mapPoolSize=3, turn 1 of 2 bans)", async () => {
+      const t = createTestContext();
+      const timerStartedAt = Date.now();
+      const { sessionId } = await createABBATimerSession(t, {
+        mapPoolSize: 3,
+        currentTurn: 1,
+        timerStartedAt,
+      });
+
+      // Ban map at turn 0 first via direct DB manipulation
+      await t.run(async (ctx) => {
+        const maps = await ctx.db
+          .query("sessionMaps")
+          .withIndex("by_sessionId_and_state", (q) =>
+            q.eq("sessionId", sessionId).eq("state", "AVAILABLE")
+          )
+          .collect();
+        await ctx.db.patch(maps[0]._id, { state: "BANNED", bannedAtTurn: 0 });
+      });
+
+      const result = await t.mutation(internal.sessionCleanup.handleTimerExpiry, {
+        sessionId,
+        expectedTimerStartedAt: timerStartedAt,
+        format: "ABBA",
+      });
+
+      expect(result).toEqual({ processed: true });
+
+      // Verify session is COMPLETE
+      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(session?.status).toBe("COMPLETE");
+      expect(session?.winnerMapId).toBeDefined();
+    });
+
+    it("logs TIMER_EXPIRED and MAP_BANNED audit events", async () => {
+      const t = createTestContext();
+      const timerStartedAt = Date.now();
+      const { sessionId } = await createABBATimerSession(t, {
+        timerStartedAt,
+        currentTurn: 0,
+      });
+
+      await t.mutation(internal.sessionCleanup.handleTimerExpiry, {
+        sessionId,
+        expectedTimerStartedAt: timerStartedAt,
+        format: "ABBA",
+      });
+
+      const logs = await t.run(async (ctx) =>
+        ctx.db
+          .query("auditLogs")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+          .collect()
+      );
+
+      const actions = logs.map((l) => l.action);
+      expect(actions).toContain("TIMER_EXPIRED");
+      expect(actions).toContain("MAP_BANNED");
+
+      // TIMER_EXPIRED log should have SYSTEM actor and AUTO_EXPIRED reason
+      const timerLog = logs.find((l) => l.action === "TIMER_EXPIRED");
+      expect(timerLog?.actorType).toBe("SYSTEM");
+      expect(timerLog?.details).toMatchObject({ reason: "AUTO_EXPIRED" });
+
+      // MAP_BANNED log should have SYSTEM actor and TIMER_EXPIRED reason
+      const banLog = logs.find((l) => l.action === "MAP_BANNED");
+      expect(banLog?.actorType).toBe("SYSTEM");
+      expect(banLog?.details).toMatchObject({ reason: "TIMER_EXPIRED" });
+    });
+
+    it("marks ban as submittedByAdmin:true", async () => {
+      const t = createTestContext();
+      const timerStartedAt = Date.now();
+      const { sessionId } = await createABBATimerSession(t, {
+        timerStartedAt,
+      });
+
+      await t.mutation(internal.sessionCleanup.handleTimerExpiry, {
+        sessionId,
+        expectedTimerStartedAt: timerStartedAt,
+        format: "ABBA",
+      });
+
+      const bannedMaps = await t.run(async (ctx) =>
+        ctx.db
+          .query("sessionMaps")
+          .withIndex("by_sessionId_and_state", (q) =>
+            q.eq("sessionId", sessionId).eq("state", "BANNED")
+          )
+          .collect()
+      );
+      expect(bannedMaps[0].submittedByAdmin).toBe(true);
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // MULTIPLAYER auto-vote tests
+  // --------------------------------------------------------------------------
+
+  describe("MULTIPLAYER format", () => {
+    it("auto-votes for all unvoted players", async () => {
+      const t = createTestContext();
+      const timerStartedAt = Date.now();
+      const { sessionId, playerIds } = await createMultiplayerTimerSession(t, {
+        timerStartedAt,
+        playerCount: 3,
+      });
+
+      const result = await t.mutation(internal.sessionCleanup.handleTimerExpiry, {
+        sessionId,
+        expectedTimerStartedAt: timerStartedAt,
+        format: "MULTIPLAYER",
+      });
+
+      expect(result).toEqual({ processed: true });
+
+      // Verify vote records were created for all 3 players
+      // (hasVotedThisRound may be reset by resolveRound advancing to next round)
+      const votes = await t.run(async (ctx) =>
+        ctx.db
+          .query("votes")
+          .withIndex("by_sessionId_and_round", (q) =>
+            q.eq("sessionId", sessionId).eq("round", 1)
+          )
+          .collect()
+      );
+      expect(votes).toHaveLength(3);
+
+      // Each player should have exactly one vote
+      const votedPlayerIds = votes.map((v) => v.playerId);
+      for (const playerId of playerIds) {
+        expect(votedPlayerIds).toContain(playerId);
+      }
+    });
+
+    it("only auto-votes for unvoted players, preserves existing votes", async () => {
+      const t = createTestContext();
+      const timerStartedAt = Date.now();
+      const { sessionId, playerIds, mapIds } = await createMultiplayerTimerSession(t, {
+        timerStartedAt,
+        playerCount: 3,
+        playersVoted: [0], // Player 0 already voted
+      });
+
+      // Insert a real vote for player 0
+      await t.run(async (ctx) => {
+        await ctx.db.insert("votes", {
+          sessionId,
+          round: 1,
+          playerId: playerIds[0],
+          mapId: mapIds[0],
+          submittedAt: Date.now(),
+          submittedByAdmin: false,
+        });
+      });
+
+      const result = await t.mutation(internal.sessionCleanup.handleTimerExpiry, {
+        sessionId,
+        expectedTimerStartedAt: timerStartedAt,
+        format: "MULTIPLAYER",
+      });
+
+      expect(result).toEqual({ processed: true });
+
+      // Verify votes: player 0's existing + 2 auto-votes = 3 total
+      const votes = await t.run(async (ctx) =>
+        ctx.db
+          .query("votes")
+          .withIndex("by_sessionId_and_round", (q) =>
+            q.eq("sessionId", sessionId).eq("round", 1)
+          )
+          .collect()
+      );
+      expect(votes).toHaveLength(3);
+
+      // Player 0's vote should NOT have submittedByAdmin
+      const player0Vote = votes.find(
+        (v) => v.playerId === playerIds[0]
+      );
+      expect(player0Vote?.submittedByAdmin).toBe(false);
+
+      // Other votes should have submittedByAdmin
+      const autoVotes = votes.filter(
+        (v) => v.playerId !== playerIds[0]
+      );
+      for (const vote of autoVotes) {
+        expect(vote.submittedByAdmin).toBe(true);
+      }
+    });
+
+    it("returns processed:false when all players already voted", async () => {
+      const t = createTestContext();
+      const timerStartedAt = Date.now();
+      const { sessionId } = await createMultiplayerTimerSession(t, {
+        timerStartedAt,
+        playerCount: 2,
+        playersVoted: [0, 1], // All voted
+      });
+
+      const result = await t.mutation(internal.sessionCleanup.handleTimerExpiry, {
+        sessionId,
+        expectedTimerStartedAt: timerStartedAt,
+        format: "MULTIPLAYER",
+      });
+
+      expect(result).toEqual({ processed: false });
+    });
+
+    it("triggers round resolution when last auto-vote completes", async () => {
+      const t = createTestContext();
+      const timerStartedAt = Date.now();
+      // 3 players, 5 maps — each votes for different map → 3 maps eliminated, 2 remain → next round
+      const { sessionId } = await createMultiplayerTimerSession(t, {
+        timerStartedAt,
+        playerCount: 3,
+        mapPoolSize: 5,
+      });
+
+      await t.mutation(internal.sessionCleanup.handleTimerExpiry, {
+        sessionId,
+        expectedTimerStartedAt: timerStartedAt,
+        format: "MULTIPLAYER",
+      });
+
+      // Verify round resolved — session should have advanced or completed
+      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+      // With 3 players voting for random maps out of 5, at least some maps are banned.
+      // The round should have resolved (currentRound advances or session completes).
+      expect(
+        session?.currentRound !== 1 || session?.status === "COMPLETE"
+      ).toBe(true);
+    });
+
+    it("logs TIMER_EXPIRED and VOTE_SUBMITTED audit events", async () => {
+      const t = createTestContext();
+      const timerStartedAt = Date.now();
+      const { sessionId } = await createMultiplayerTimerSession(t, {
+        timerStartedAt,
+        playerCount: 2,
+      });
+
+      await t.mutation(internal.sessionCleanup.handleTimerExpiry, {
+        sessionId,
+        expectedTimerStartedAt: timerStartedAt,
+        format: "MULTIPLAYER",
+      });
+
+      const logs = await t.run(async (ctx) =>
+        ctx.db
+          .query("auditLogs")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+          .collect()
+      );
+
+      const actions = logs.map((l) => l.action);
+      expect(actions).toContain("TIMER_EXPIRED");
+      expect(actions).toContain("VOTE_SUBMITTED");
+
+      // Verify TIMER_EXPIRED log
+      const timerLog = logs.find((l) => l.action === "TIMER_EXPIRED");
+      expect(timerLog?.actorType).toBe("SYSTEM");
+      expect(timerLog?.details).toMatchObject({ reason: "AUTO_EXPIRED" });
+
+      // Verify VOTE_SUBMITTED logs have SYSTEM actor
+      const voteLogs = logs.filter((l) => l.action === "VOTE_SUBMITTED");
+      expect(voteLogs).toHaveLength(2);
+      for (const log of voteLogs) {
+        expect(log.actorType).toBe("SYSTEM");
+        expect(log.details).toMatchObject({ reason: "TIMER_EXPIRED" });
+      }
+    });
+
+    it("auto-votes mark submittedByAdmin:true on vote records", async () => {
+      const t = createTestContext();
+      const timerStartedAt = Date.now();
+      const { sessionId } = await createMultiplayerTimerSession(t, {
+        timerStartedAt,
+        playerCount: 2,
+      });
+
+      await t.mutation(internal.sessionCleanup.handleTimerExpiry, {
+        sessionId,
+        expectedTimerStartedAt: timerStartedAt,
+        format: "MULTIPLAYER",
+      });
+
+      const votes = await t.run(async (ctx) =>
+        ctx.db
+          .query("votes")
+          .withIndex("by_sessionId_and_round", (q) =>
+            q.eq("sessionId", sessionId).eq("round", 1)
+          )
+          .collect()
+      );
+
+      for (const vote of votes) {
+        expect(vote.submittedByAdmin).toBe(true);
+      }
+    });
   });
 });
