@@ -797,12 +797,13 @@ function SessionDetailPage() {
                           size="sm"
                           disabled={isAnyLoading}
                           className="gap-1 shrink-0"
-                          onClick={() =>
+                          onClick={() => {
+                            setSelectedMapId(null);
                             setVoteOnBehalfPlayer({
                               _id: player._id,
                               teamName: player.teamName,
-                            })
-                          }
+                            });
+                          }}
                         >
                           <Hand className="w-3 h-3" />
                           {session.format === "ABBA"
