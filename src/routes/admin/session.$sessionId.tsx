@@ -253,15 +253,15 @@ function SessionDetailPage() {
 
   // Reusable action handler with loading + toast pattern
   const handleAction = useCallback(
-    async (
+    async <T,>(
       actionName: string,
-      mutation: () => Promise<unknown>,
-      successMsg: string
+      mutation: () => Promise<T>,
+      onSuccess: (result: T) => void | Promise<void>,
     ) => {
       setActionLoading(actionName);
       try {
-        await mutation();
-        toast.success(successMsg);
+        const result = await mutation();
+        await onSuccess(result);
       } catch (error) {
         toast.error(
           error instanceof Error ? error.message : `Failed to ${actionName}`
@@ -289,6 +289,15 @@ function SessionDetailPage() {
     () => new Map(session?.players.map((p) => [p._id, p.teamName]) ?? []),
     [session?.players]
   );
+
+  // Pre-sort players for ABBA turn order (computed once, not per-player)
+  const sortedPlayers = useMemo(() => {
+    return [...(session?.players ?? [])].sort(
+      (a, b) =>
+        a._creationTime - b._creationTime ||
+        a._id.localeCompare(b._id)
+    );
+  }, [session?.players]);
 
   // Invalid session ID state
   if (!isValidId) {
@@ -351,48 +360,54 @@ function SessionDetailPage() {
   const handleConfirmAction = async () => {
     if (!confirmAction) return;
     const actionName = confirmAction;
-    setActionLoading(actionName);
-    try {
-      if (actionName === "end") {
-        await endMutation({ sessionId: typedSessionId });
-        toast.success("Session ended");
-      } else if (actionName === "forceRandom") {
-        const result = await forceRandomMutation({ sessionId: typedSessionId });
-        toast.success(`Winner selected: ${result.winnerMapName}`);
-      } else if (actionName === "reset") {
-        await resetMutation({ sessionId: typedSessionId });
-        toast.success("Session reset");
-      }
-      setConfirmAction(null);
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : `Failed to ${actionName}`
+    if (actionName === "end") {
+      await handleAction(
+        actionName,
+        () => endMutation({ sessionId: typedSessionId }),
+        () => {
+          toast.success("Session ended");
+          setConfirmAction(null);
+        },
       );
-    } finally {
-      setActionLoading(null);
+    } else if (actionName === "forceRandom") {
+      await handleAction(
+        actionName,
+        () => forceRandomMutation({ sessionId: typedSessionId }),
+        (result) => {
+          toast.success(`Winner selected: ${result.winnerMapName}`);
+          setConfirmAction(null);
+        },
+      );
+    } else if (actionName === "reset") {
+      await handleAction(
+        actionName,
+        () => resetMutation({ sessionId: typedSessionId }),
+        () => {
+          toast.success("Session reset");
+          setConfirmAction(null);
+        },
+      );
     }
   };
 
   // Vote on behalf handler
   const handleVoteOnBehalf = async () => {
     if (!voteOnBehalfPlayer || !selectedMapId) return;
-    setActionLoading("voteOnBehalf");
-    try {
-      await voteOnBehalfMutation({
-        sessionId: typedSessionId,
-        playerId: voteOnBehalfPlayer._id,
-        mapId: selectedMapId,
-      });
-      toast.success(`Vote submitted for ${voteOnBehalfPlayer.teamName}`);
-      setVoteOnBehalfPlayer(null);
-      setSelectedMapId(null);
-    } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : "Failed to vote on behalf"
-      );
-    } finally {
-      setActionLoading(null);
-    }
+    const teamName = voteOnBehalfPlayer.teamName;
+    await handleAction(
+      "voteOnBehalf",
+      () =>
+        voteOnBehalfMutation({
+          sessionId: typedSessionId,
+          playerId: voteOnBehalfPlayer._id,
+          mapId: selectedMapId,
+        }),
+      () => {
+        toast.success(`Vote submitted for ${teamName}`);
+        setVoteOnBehalfPlayer(null);
+        setSelectedMapId(null);
+      },
+    );
   };
 
   return (
@@ -437,7 +452,7 @@ function SessionDetailPage() {
                     handleAction(
                       "finalize",
                       () => finalizeMutation({ sessionId: typedSessionId }),
-                      "Session finalized"
+                      () => { toast.success("Session finalized"); },
                     )
                   }
                 >
@@ -464,7 +479,7 @@ function SessionDetailPage() {
                     handleAction(
                       "start",
                       () => startMutation({ sessionId: typedSessionId }),
-                      "Session started"
+                      () => { toast.success("Session started"); },
                     )
                   }
                 >
@@ -487,7 +502,7 @@ function SessionDetailPage() {
                     handleAction(
                       "pause",
                       () => pauseMutation({ sessionId: typedSessionId }),
-                      "Session paused"
+                      () => { toast.success("Session paused"); },
                     )
                   }
                 >
@@ -509,7 +524,7 @@ function SessionDetailPage() {
                     handleAction(
                       "resume",
                       () => resumeMutation({ sessionId: typedSessionId }),
-                      "Session resumed"
+                      () => { toast.success("Session resumed"); },
                     )
                   }
                 >
@@ -570,27 +585,19 @@ function SessionDetailPage() {
                 variant="secondary"
                 disabled={isAnyLoading}
                 className="gap-2"
-                onClick={async () => {
-                  setActionLoading("clone");
-                  try {
-                    const { newSessionId } = await cloneMutation({
-                      sessionId: typedSessionId,
-                    });
-                    toast.success("Session cloned");
-                    await navigate({
-                      to: "/admin/session/$sessionId",
-                      params: { sessionId: newSessionId },
-                    });
-                  } catch (error) {
-                    toast.error(
-                      error instanceof Error
-                        ? error.message
-                        : "Failed to clone session"
-                    );
-                  } finally {
-                    setActionLoading(null);
-                  }
-                }}
+                onClick={() =>
+                  handleAction(
+                    "clone",
+                    () => cloneMutation({ sessionId: typedSessionId }),
+                    async ({ newSessionId }) => {
+                      toast.success("Session cloned");
+                      await navigate({
+                        to: "/admin/session/$sessionId",
+                        params: { sessionId: newSessionId },
+                      });
+                    },
+                  )
+                }
               >
                 {actionLoading === "clone" ? (
                   <Loader2 className="w-4 h-4 animate-spin" />
@@ -645,10 +652,10 @@ function SessionDetailPage() {
               <AlertDialogAction
                 onClick={handleConfirmAction}
                 disabled={isAnyLoading}
-                className={
+                variant={
                   CONFIRM_DIALOG_CONFIG[confirmAction].destructive
-                    ? "bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                    : undefined
+                    ? "destructive"
+                    : "default"
                 }
               >
                 {isAnyLoading ? (
@@ -794,17 +801,12 @@ function SessionDetailPage() {
                     ? !player.hasVotedThisRound
                     : // ABBA: only the active player
                       (() => {
-                        const sorted = [...session.players].sort(
-                          (a, b) =>
-                            a._creationTime - b._creationTime ||
-                            a._id.localeCompare(b._id)
-                        );
                         const ABBA_PATTERN = [0, 1, 1, 0];
                         const activeIdx =
                           ABBA_PATTERN[
                             (session.currentTurn ?? 0) % ABBA_PATTERN.length
                           ];
-                        return sorted[activeIdx]?._id === player._id;
+                        return sortedPlayers[activeIdx]?._id === player._id;
                       })());
 
                 return (
