@@ -30,6 +30,7 @@ import {
   MIN_MAP_POOL_SIZE,
   MAX_MAP_POOL_SIZE,
   TOKEN_EXPIRY_MS,
+  MAX_NAME_LENGTH,
   MAX_REASON_LENGTH,
 } from "./lib/constants";
 
@@ -6434,5 +6435,616 @@ describe("sessions.resetSession", () => {
     await authT.mutation(api.sessions.resetSession, { sessionId });
 
     await expectAuditLog(t, sessionId, "SESSION_RESET");
+  });
+});
+
+// ============================================================================
+// cloneSession Tests (WAR-46)
+// ============================================================================
+
+describe("sessions.cloneSession", () => {
+  /**
+   * Create a session with players and maps suitable for clone testing.
+   * Source session is IN_PROGRESS with BANNED/WINNER maps and votes.
+   */
+  async function createSessionForCloning(
+    statusOverride: SessionStatus = "IN_PROGRESS"
+  ) {
+    const { t, authT, adminId } = await createAuthenticatedAdmin();
+
+    const { sessionId, playerIds, mapIds, voteIds } = await t.run(
+      async (ctx) => {
+        const sessionId = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            status: statusOverride,
+            matchName: "Grand Final",
+            format: "ABBA",
+            turnTimerSeconds: 45,
+            mapPoolSize: 3,
+            playerCount: 2,
+            currentTurn: 3,
+            currentRound: 2,
+          })
+        );
+
+        // Seed timer/completion fields so we can verify they aren't cloned
+        const now = Date.now();
+        await ctx.db.patch(sessionId, {
+          startedAt: now - 120_000,
+          timerStartedAt: now - 30_000,
+          timerPausedAt: now - 10_000,
+          winnerMapId: undefined,
+          isRevoteRound: true,
+        });
+
+        // Create master maps
+        const masterMapIds = await Promise.all([
+          ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+          ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+          ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
+        ]);
+
+        // Create session players
+        const playerIds = await Promise.all([
+          ctx.db.insert(
+            "sessionPlayers",
+            sessionPlayerFactory(sessionId, {
+              role: "Captain",
+              teamName: "Team Alpha",
+              isConnected: true,
+              hasVotedThisRound: true,
+            })
+          ),
+          ctx.db.insert(
+            "sessionPlayers",
+            sessionPlayerFactory(sessionId, {
+              role: "Vice Captain",
+              teamName: "Team Beta",
+              isConnected: true,
+              hasVotedThisRound: true,
+            })
+          ),
+        ]);
+
+        // Create session maps: 1 BANNED, 1 WINNER, 1 AVAILABLE
+        const mapIds = [
+          await ctx.db.insert(
+            "sessionMaps",
+            sessionMapFactory(sessionId, masterMapIds[0], {
+              name: "Map 1",
+              state: "BANNED",
+              bannedByPlayerId: playerIds[0],
+              bannedAtTurn: 0,
+              bannedAtRound: 1,
+            })
+          ),
+          await ctx.db.insert(
+            "sessionMaps",
+            sessionMapFactory(sessionId, masterMapIds[1], {
+              name: "Map 2",
+              state: "WINNER",
+            })
+          ),
+          await ctx.db.insert(
+            "sessionMaps",
+            sessionMapFactory(sessionId, masterMapIds[2], {
+              name: "Map 3",
+              state: "AVAILABLE",
+            })
+          ),
+        ];
+
+        // Create votes
+        const voteIds = [
+          await ctx.db.insert(
+            "votes",
+            voteFactory(sessionId, playerIds[0], mapIds[0])
+          ),
+          await ctx.db.insert(
+            "votes",
+            voteFactory(sessionId, playerIds[1], mapIds[1])
+          ),
+        ];
+
+        return { sessionId, playerIds, mapIds, voteIds };
+      }
+    );
+
+    return { t, authT, adminId, sessionId, playerIds, mapIds, voteIds };
+  }
+
+  // --------------------------------------------------------------------------
+  // Happy Path
+  // --------------------------------------------------------------------------
+
+  it("clones session into new DRAFT with ' (Copy)' suffix", async () => {
+    const { t, authT, sessionId } = await createSessionForCloning();
+
+    const result = await authT.mutation(api.sessions.cloneSession, {
+      sessionId,
+    });
+
+    expect(result.newSessionId).toBeDefined();
+    expect(result.newSessionId).not.toBe(sessionId);
+
+    const newSession = await t.run(async (ctx) =>
+      ctx.db.get(result.newSessionId)
+    );
+    expect(newSession?.status).toBe("DRAFT");
+    expect(newSession?.matchName).toBe("Grand Final (Copy)");
+  });
+
+  it("copies config fields: format, turnTimerSeconds, mapPoolSize, playerCount", async () => {
+    const { t, authT, sessionId } = await createSessionForCloning();
+
+    const result = await authT.mutation(api.sessions.cloneSession, {
+      sessionId,
+    });
+
+    const newSession = await t.run(async (ctx) =>
+      ctx.db.get(result.newSessionId)
+    );
+    expect(newSession).toMatchObject({
+      format: "ABBA",
+      turnTimerSeconds: 45,
+      mapPoolSize: 3,
+      playerCount: 2,
+    });
+  });
+
+  it("sets createdBy to current admin (not source creator)", async () => {
+    const { t, authT, adminId, sessionId } = await createSessionForCloning();
+
+    const result = await authT.mutation(api.sessions.cloneSession, {
+      sessionId,
+    });
+
+    const newSession = await t.run(async (ctx) =>
+      ctx.db.get(result.newSessionId)
+    );
+    expect(newSession?.createdBy).toBe(adminId);
+  });
+
+  it("sets fresh expiresAt (2 weeks from now)", async () => {
+    const { t, authT, sessionId } = await createSessionForCloning();
+
+    const before = Date.now();
+    const result = await authT.mutation(api.sessions.cloneSession, {
+      sessionId,
+    });
+    const after = Date.now();
+
+    const newSession = await t.run(async (ctx) =>
+      ctx.db.get(result.newSessionId)
+    );
+    expect(newSession?.expiresAt).toBeGreaterThanOrEqual(
+      before + SESSION_EXPIRY_MS
+    );
+    expect(newSession?.expiresAt).toBeLessThanOrEqual(
+      after + SESSION_EXPIRY_MS
+    );
+  });
+
+  // --------------------------------------------------------------------------
+  // Player Cloning
+  // --------------------------------------------------------------------------
+
+  it("creates new players with same roles and teamNames", async () => {
+    const { t, authT, sessionId } = await createSessionForCloning();
+
+    const result = await authT.mutation(api.sessions.cloneSession, {
+      sessionId,
+    });
+
+    const players = await t.run(async (ctx) =>
+      ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) =>
+          q.eq("sessionId", result.newSessionId)
+        )
+        .collect()
+    );
+
+    expect(players).toHaveLength(2);
+    const roles = players.map((p) => p.role).sort();
+    const teams = players.map((p) => p.teamName).sort();
+    expect(roles).toEqual(["Captain", "Vice Captain"]);
+    expect(teams).toEqual(["Team Alpha", "Team Beta"]);
+  });
+
+  it("generates unique tokens different from source", async () => {
+    const { t, authT, sessionId } = await createSessionForCloning();
+
+    // Get source tokens
+    const sourceTokens = await t.run(async (ctx) =>
+      ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+        .collect()
+    );
+    const sourceTokenSet = new Set(sourceTokens.map((p) => p.token));
+
+    const result = await authT.mutation(api.sessions.cloneSession, {
+      sessionId,
+    });
+
+    const clonedPlayers = await t.run(async (ctx) =>
+      ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) =>
+          q.eq("sessionId", result.newSessionId)
+        )
+        .collect()
+    );
+
+    // All tokens should be unique and different from source
+    const clonedTokens = clonedPlayers.map((p) => p.token);
+    const uniqueTokens = new Set(clonedTokens);
+    expect(uniqueTokens.size).toBe(clonedTokens.length);
+    for (const token of clonedTokens) {
+      expect(sourceTokenSet.has(token)).toBe(false);
+    }
+  });
+
+  it("sets isConnected=false and hasVotedThisRound=false", async () => {
+    const { t, authT, sessionId } = await createSessionForCloning();
+
+    const result = await authT.mutation(api.sessions.cloneSession, {
+      sessionId,
+    });
+
+    const players = await t.run(async (ctx) =>
+      ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) =>
+          q.eq("sessionId", result.newSessionId)
+        )
+        .collect()
+    );
+
+    for (const player of players) {
+      expect(player.isConnected).toBe(false);
+      expect(player.hasVotedThisRound).toBe(false);
+    }
+  });
+
+  it("sets tokenExpiresAt to 24 hours from now", async () => {
+    const { t, authT, sessionId } = await createSessionForCloning();
+
+    const before = Date.now();
+    const result = await authT.mutation(api.sessions.cloneSession, {
+      sessionId,
+    });
+    const after = Date.now();
+
+    const players = await t.run(async (ctx) =>
+      ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) =>
+          q.eq("sessionId", result.newSessionId)
+        )
+        .collect()
+    );
+
+    for (const player of players) {
+      expect(player.tokenExpiresAt).toBeGreaterThanOrEqual(
+        before + TOKEN_EXPIRY_MS
+      );
+      expect(player.tokenExpiresAt).toBeLessThanOrEqual(
+        after + TOKEN_EXPIRY_MS
+      );
+    }
+  });
+
+  // --------------------------------------------------------------------------
+  // Map Cloning
+  // --------------------------------------------------------------------------
+
+  it("creates sessionMaps with same mapId, name, imageUrl from source", async () => {
+    const { t, authT, sessionId } = await createSessionForCloning();
+
+    // Get source maps for comparison
+    const sourceMaps = await t.run(async (ctx) =>
+      ctx.db
+        .query("sessionMaps")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+        .collect()
+    );
+
+    const result = await authT.mutation(api.sessions.cloneSession, {
+      sessionId,
+    });
+
+    const clonedMaps = await t.run(async (ctx) =>
+      ctx.db
+        .query("sessionMaps")
+        .withIndex("by_sessionId", (q) =>
+          q.eq("sessionId", result.newSessionId)
+        )
+        .collect()
+    );
+
+    expect(clonedMaps).toHaveLength(sourceMaps.length);
+    const sourceMapData = sourceMaps
+      .map((m) => ({ mapId: m.mapId, name: m.name, imageUrl: m.imageUrl }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    const clonedMapData = clonedMaps
+      .map((m) => ({ mapId: m.mapId, name: m.name, imageUrl: m.imageUrl }))
+      .sort((a, b) => a.name.localeCompare(b.name));
+    expect(clonedMapData).toEqual(sourceMapData);
+  });
+
+  it("resets all map states to AVAILABLE (even BANNED/WINNER sources)", async () => {
+    const { t, authT, sessionId } = await createSessionForCloning();
+
+    const result = await authT.mutation(api.sessions.cloneSession, {
+      sessionId,
+    });
+
+    const clonedMaps = await t.run(async (ctx) =>
+      ctx.db
+        .query("sessionMaps")
+        .withIndex("by_sessionId", (q) =>
+          q.eq("sessionId", result.newSessionId)
+        )
+        .collect()
+    );
+
+    expect(clonedMaps).toHaveLength(3);
+    for (const map of clonedMaps) {
+      expect(map.state).toBe("AVAILABLE");
+      expect(map.bannedByPlayerId).toBeUndefined();
+      expect(map.bannedAtTurn).toBeUndefined();
+      expect(map.bannedAtRound).toBeUndefined();
+      expect(map.voteCount).toBeUndefined();
+      expect(map.submittedByAdmin).toBeUndefined();
+    }
+  });
+
+  // --------------------------------------------------------------------------
+  // Data Isolation
+  // --------------------------------------------------------------------------
+
+  it("does NOT copy votes to new session", async () => {
+    const { t, authT, sessionId } = await createSessionForCloning();
+
+    const result = await authT.mutation(api.sessions.cloneSession, {
+      sessionId,
+    });
+
+    const votes = await t.run(async (ctx) =>
+      ctx.db
+        .query("votes")
+        .withIndex("by_sessionId_and_round", (q) =>
+          q.eq("sessionId", result.newSessionId)
+        )
+        .collect()
+    );
+    expect(votes).toHaveLength(0);
+  });
+
+  it("new session has currentTurn=0, currentRound=1", async () => {
+    const { t, authT, sessionId } = await createSessionForCloning();
+
+    const result = await authT.mutation(api.sessions.cloneSession, {
+      sessionId,
+    });
+
+    const newSession = await t.run(async (ctx) =>
+      ctx.db.get(result.newSessionId)
+    );
+    expect(newSession?.currentTurn).toBe(0);
+    expect(newSession?.currentRound).toBe(1);
+  });
+
+  it("new session has no timer state or completion fields", async () => {
+    const { t, authT, sessionId } = await createSessionForCloning();
+
+    const result = await authT.mutation(api.sessions.cloneSession, {
+      sessionId,
+    });
+
+    const newSession = await t.run(async (ctx) =>
+      ctx.db.get(result.newSessionId)
+    );
+    expect(newSession?.timerStartedAt).toBeUndefined();
+    expect(newSession?.timerPausedAt).toBeUndefined();
+    expect(newSession?.winnerMapId).toBeUndefined();
+    expect(newSession?.completedAt).toBeUndefined();
+    expect(newSession?.startedAt).toBeUndefined();
+    expect(newSession?.isRevoteRound).toBeUndefined();
+  });
+
+  it("source session is unmodified after clone", async () => {
+    const { t, authT, sessionId } = await createSessionForCloning();
+
+    // Snapshot source before clone
+    const sourceBefore = await t.run(async (ctx) => ctx.db.get(sessionId));
+
+    await authT.mutation(api.sessions.cloneSession, { sessionId });
+
+    const sourceAfter = await t.run(async (ctx) => ctx.db.get(sessionId));
+    expect(sourceAfter?.status).toBe(sourceBefore?.status);
+    expect(sourceAfter?.matchName).toBe(sourceBefore?.matchName);
+    expect(sourceAfter?.currentTurn).toBe(sourceBefore?.currentTurn);
+    expect(sourceAfter?.currentRound).toBe(sourceBefore?.currentRound);
+  });
+
+  // --------------------------------------------------------------------------
+  // Any Source Status
+  // --------------------------------------------------------------------------
+
+  it.each([
+    "DRAFT",
+    "WAITING",
+    "IN_PROGRESS",
+    "PAUSED",
+    "COMPLETE",
+    "EXPIRED",
+  ] as const)("clones from %s status successfully", async (status) => {
+    const { t, authT, sessionId } = await createSessionForCloning(status);
+
+    const result = await authT.mutation(api.sessions.cloneSession, {
+      sessionId,
+    });
+
+    expect(result.newSessionId).toBeDefined();
+    const newSession = await t.run(async (ctx) =>
+      ctx.db.get(result.newSessionId)
+    );
+    expect(newSession?.status).toBe("DRAFT");
+  });
+
+  // --------------------------------------------------------------------------
+  // Edge Cases
+  // --------------------------------------------------------------------------
+
+  it("truncates matchName when source + ' (Copy)' exceeds MAX_NAME_LENGTH", async () => {
+    const { t, authT, adminId } = await createAuthenticatedAdmin();
+    const longName = "A".repeat(MAX_NAME_LENGTH);
+
+    const sessionId = await t.run(async (ctx) =>
+      ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, { matchName: longName })
+      )
+    );
+
+    const result = await authT.mutation(api.sessions.cloneSession, {
+      sessionId,
+    });
+
+    const newSession = await t.run(async (ctx) =>
+      ctx.db.get(result.newSessionId)
+    );
+    expect(newSession?.matchName).toBe("A".repeat(93) + " (Copy)");
+    expect(newSession?.matchName.length).toBe(MAX_NAME_LENGTH);
+  });
+
+  it("clones session with 0 players (empty DRAFT)", async () => {
+    const { t, authT, adminId } = await createAuthenticatedAdmin();
+
+    const sessionId = await t.run(async (ctx) =>
+      ctx.db.insert("sessions", sessionFactory(adminId, { playerCount: 2 }))
+    );
+
+    const result = await authT.mutation(api.sessions.cloneSession, {
+      sessionId,
+    });
+
+    expect(result.newSessionId).toBeDefined();
+    const players = await t.run(async (ctx) =>
+      ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) =>
+          q.eq("sessionId", result.newSessionId)
+        )
+        .collect()
+    );
+    expect(players).toHaveLength(0);
+  });
+
+  it("clones session with 0 maps (empty DRAFT)", async () => {
+    const { t, authT, adminId } = await createAuthenticatedAdmin();
+
+    const sessionId = await t.run(async (ctx) =>
+      ctx.db.insert("sessions", sessionFactory(adminId, { mapPoolSize: 3 }))
+    );
+
+    const result = await authT.mutation(api.sessions.cloneSession, {
+      sessionId,
+    });
+
+    expect(result.newSessionId).toBeDefined();
+    const maps = await t.run(async (ctx) =>
+      ctx.db
+        .query("sessionMaps")
+        .withIndex("by_sessionId", (q) =>
+          q.eq("sessionId", result.newSessionId)
+        )
+        .collect()
+    );
+    expect(maps).toHaveLength(0);
+  });
+
+  // --------------------------------------------------------------------------
+  // Audit Logging
+  // --------------------------------------------------------------------------
+
+  it("creates SESSION_CLONED audit log on source session", async () => {
+    const { t, authT, sessionId } = await createSessionForCloning();
+
+    await authT.mutation(api.sessions.cloneSession, { sessionId });
+
+    await expectAuditLog(t, sessionId, "SESSION_CLONED");
+  });
+
+  it("creates SESSION_CLONED audit log on new session", async () => {
+    const { t, authT, sessionId } = await createSessionForCloning();
+
+    const result = await authT.mutation(api.sessions.cloneSession, {
+      sessionId,
+    });
+
+    await expectAuditLog(t, result.newSessionId, "SESSION_CLONED");
+  });
+
+  it("audit details contain cross-reference session IDs", async () => {
+    const { t, authT, sessionId } = await createSessionForCloning();
+
+    const result = await authT.mutation(api.sessions.cloneSession, {
+      sessionId,
+    });
+
+    // Source audit log should reference new session
+    const sourceLog = await expectAuditLog(
+      t,
+      sessionId,
+      "SESSION_CLONED",
+      (log) => {
+        const details = log.details as { reason?: string } | undefined;
+        expect(details?.reason).toContain(result.newSessionId);
+      }
+    );
+    expect(sourceLog).toBeDefined();
+
+    // New session audit log should reference source session
+    const newLog = await expectAuditLog(
+      t,
+      result.newSessionId,
+      "SESSION_CLONED",
+      (log) => {
+        const details = log.details as { reason?: string } | undefined;
+        expect(details?.reason).toContain(sessionId);
+      }
+    );
+    expect(newLog).toBeDefined();
+  });
+
+  // --------------------------------------------------------------------------
+  // Validation Errors
+  // --------------------------------------------------------------------------
+
+  it("throws when session not found", async () => {
+    const { t, authT } = await createAuthenticatedAdmin();
+    const deletedId = await createDeletedSessionId(t);
+
+    await expect(
+      authT.mutation(api.sessions.cloneSession, { sessionId: deletedId })
+    ).rejects.toThrow(/Session not found/);
+  });
+
+  it("throws when not authenticated", async () => {
+    const t = createTestContext();
+
+    const sessionId = await t.run(async (ctx) => {
+      const adminId = await ctx.db.insert("admins", adminFactory());
+      return ctx.db.insert("sessions", sessionFactory(adminId));
+    });
+
+    await expect(
+      t.mutation(api.sessions.cloneSession, { sessionId })
+    ).rejects.toThrow(/Authentication required/);
   });
 });
