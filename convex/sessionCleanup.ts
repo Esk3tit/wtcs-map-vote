@@ -425,6 +425,10 @@ export const checkHeartbeatTimeouts = internalMutation({
     let disconnectedPlayerCount = 0;
     let pausedSessionCount = 0;
 
+    // NOTE: Collects all IN_PROGRESS sessions in a single transaction.
+    // Safe for current scale (~10 concurrent sessions). If the system grows
+    // beyond ~100 concurrent sessions, consider paginating with .take(N)
+    // and scheduling follow-up cron runs for remaining sessions.
     const sessions = await ctx.db
       .query("sessions")
       .withIndex("by_status", (q) => q.eq("status", "IN_PROGRESS"))
@@ -449,6 +453,8 @@ export const checkHeartbeatTimeouts = internalMutation({
         await ctx.db.patch(player._id, { isConnected: false });
         disconnectedPlayerCount++;
 
+        // Log per-player (not batched) to match existing audit patterns and enable
+        // per-player filtering. Acceptable write volume at current scale.
         await logAction(ctx, {
           sessionId: session._id,
           action: "PLAYER_DISCONNECTED",
@@ -465,7 +471,8 @@ export const checkHeartbeatTimeouts = internalMutation({
         }
       }
 
-      // Auto-pause with fresh session read to prevent stale-state rollback
+      // Re-read session to guard against concurrent state changes (e.g., another
+      // mutation completing the session) between the initial query and this point.
       if (sessionNeedsPause) {
         const freshSession = await ctx.db.get(session._id);
         if (freshSession && freshSession.status === "IN_PROGRESS") {

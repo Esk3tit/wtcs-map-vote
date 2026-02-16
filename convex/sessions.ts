@@ -1211,6 +1211,22 @@ export const resumeSession = mutation({
       },
     });
 
+    // Reset disconnected players' connection state so the heartbeat cron
+    // doesn't immediately re-pause. Players get a full timeout window to
+    // re-establish their heartbeat after resume (WAR-49).
+    const players = await ctx.db
+      .query("sessionPlayers")
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+      .collect();
+    for (const player of players) {
+      if (!player.isConnected) {
+        await ctx.db.patch(player._id, {
+          isConnected: true,
+          lastHeartbeat: undefined,
+        });
+      }
+    }
+
     // Schedule timer expiry with adjusted start time (WAR-47)
     await scheduleTimerExpiry(
       ctx,

@@ -1158,6 +1158,54 @@ describe("sessionCleanup.checkHeartbeatTimeouts", () => {
       expect(result.disconnectedPlayerCount).toBe(0);
     });
 
+    it("does not disconnect player at exact threshold boundary", async () => {
+      const t = createTestContext();
+      const { playerAId } = await createABBATimerSession(t);
+
+      // Set lastHeartbeat to exactly now - HEARTBEAT_TIMEOUT_MS (boundary case)
+      // The >= check means exactly-at-boundary is "still alive"
+      const now = Date.now();
+      await t.run(async (ctx) => {
+        await ctx.db.patch(playerAId, {
+          isConnected: true,
+          lastHeartbeat: now - HEARTBEAT_TIMEOUT_MS,
+        });
+      });
+
+      const result = await t.mutation(
+        internal.sessionCleanup.checkHeartbeatTimeouts,
+        {}
+      );
+
+      expect(result.disconnectedPlayerCount).toBe(0);
+
+      const player = await t.run(async (ctx) => ctx.db.get(playerAId));
+      expect(player?.isConnected).toBe(true);
+    });
+
+    it("disconnects player 1ms past threshold boundary", async () => {
+      const t = createTestContext();
+      const { playerAId } = await createABBATimerSession(t);
+
+      const now = Date.now();
+      await t.run(async (ctx) => {
+        await ctx.db.patch(playerAId, {
+          isConnected: true,
+          lastHeartbeat: now - HEARTBEAT_TIMEOUT_MS - 1,
+        });
+      });
+
+      const result = await t.mutation(
+        internal.sessionCleanup.checkHeartbeatTimeouts,
+        {}
+      );
+
+      expect(result.disconnectedPlayerCount).toBe(1);
+
+      const player = await t.run(async (ctx) => ctx.db.get(playerAId));
+      expect(player?.isConnected).toBe(false);
+    });
+
     it("logs PLAYER_DISCONNECTED audit event", async () => {
       const t = createTestContext();
       const staleTime = Date.now() - HEARTBEAT_TIMEOUT_MS - 1000;
@@ -1320,6 +1368,72 @@ describe("sessionCleanup.checkHeartbeatTimeouts", () => {
 
       const session = await t.run(async (ctx) => ctx.db.get(sessionId));
       expect(session?.status).toBe("IN_PROGRESS");
+    });
+
+    it("disconnects multiple players simultaneously and pauses session once", async () => {
+      const t = createTestContext();
+      const staleTime = Date.now() - HEARTBEAT_TIMEOUT_MS - 1000;
+      const { playerIds, sessionId } = await createMultiplayerTimerSession(t, {
+        playerCount: 3,
+      });
+
+      // Set 2 players as stale (connected with old heartbeat, unvoted)
+      // Keep player 2 fresh
+      await t.run(async (ctx) => {
+        await ctx.db.patch(playerIds[0], {
+          isConnected: true,
+          lastHeartbeat: staleTime,
+          hasVotedThisRound: false,
+        });
+        await ctx.db.patch(playerIds[1], {
+          isConnected: true,
+          lastHeartbeat: staleTime,
+          hasVotedThisRound: false,
+        });
+        await ctx.db.patch(playerIds[2], {
+          isConnected: true,
+          lastHeartbeat: Date.now(),
+          hasVotedThisRound: false,
+        });
+      });
+
+      const result = await t.mutation(
+        internal.sessionCleanup.checkHeartbeatTimeouts,
+        {}
+      );
+
+      // Both stale players should be disconnected
+      expect(result.disconnectedPlayerCount).toBe(2);
+      // Session should be paused exactly once
+      expect(result.pausedSessionCount).toBe(1);
+
+      // Verify session status is PAUSED
+      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(session?.status).toBe("PAUSED");
+
+      // Verify player states
+      const players = await t.run(async (ctx) =>
+        Promise.all(playerIds.map((id) => ctx.db.get(id)))
+      );
+      expect(players[0]?.isConnected).toBe(false);
+      expect(players[1]?.isConnected).toBe(false);
+      expect(players[2]?.isConnected).toBe(true);
+
+      // Verify 2 PLAYER_DISCONNECTED audit logs exist
+      const auditLogs = await t.run(async (ctx) =>
+        ctx.db
+          .query("auditLogs")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+          .collect()
+      );
+
+      const disconnectLogs = auditLogs.filter(
+        (l) => l.action === "PLAYER_DISCONNECTED"
+      );
+      expect(disconnectLogs).toHaveLength(2);
+      for (const log of disconnectLogs) {
+        expect(log.actorType).toBe("SYSTEM");
+      }
     });
   });
 
