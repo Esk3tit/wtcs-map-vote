@@ -17,6 +17,7 @@ import {
 import { TokenErrorPage } from "@/components/session/TokenErrorPage";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
 import { SITE_URL } from "@/lib/convexHttp";
+import { cn } from "@/lib/utils";
 import { Check, Lock, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -70,51 +71,81 @@ function getVotingErrorMessage(error: VotingErrorCode): string {
   }
 }
 
-// Helper function to calculate remaining time from server timestamp
+// Helper function to calculate remaining time from server timestamp.
+// When paused, freezes elapsed time at the pause moment instead of using Date.now().
 function calculateRemainingTime(
   turnTimerSeconds: number,
-  timerStartedAt: number | undefined
+  timerStartedAt: number | undefined,
+  timerPausedAt: number | undefined
 ): number {
   if (!timerStartedAt) return turnTimerSeconds;
-  const elapsed = Math.floor((Date.now() - timerStartedAt) / 1000);
+  const now = timerPausedAt ?? Date.now();
+  const elapsed = Math.floor((now - timerStartedAt) / 1000);
   return Math.max(0, turnTimerSeconds - elapsed);
 }
 
-// Separate Timer component that calculates remaining time from server timestamp
+// Separate Timer component that calculates remaining time from server timestamp.
+// Displays M:SS format with warning colors at 10s (amber) and 5s (red + pulse).
 function CountdownTimer({
   turnTimerSeconds,
   timerStartedAt,
+  timerPausedAt,
   isActive,
 }: {
   turnTimerSeconds: number;
   timerStartedAt: number | undefined;
+  timerPausedAt: number | undefined;
   isActive: boolean;
 }) {
   const [remaining, setRemaining] = useState(() =>
-    calculateRemainingTime(turnTimerSeconds, timerStartedAt)
+    calculateRemainingTime(turnTimerSeconds, timerStartedAt, timerPausedAt)
   );
 
+  // Recalculate when server state changes (new turn, pause, resume)
   useEffect(() => {
-    // Recalculate when timerStartedAt changes (e.g., new turn starts)
-    setRemaining(calculateRemainingTime(turnTimerSeconds, timerStartedAt));
-  }, [turnTimerSeconds, timerStartedAt]);
+    setRemaining(
+      calculateRemainingTime(turnTimerSeconds, timerStartedAt, timerPausedAt)
+    );
+  }, [turnTimerSeconds, timerStartedAt, timerPausedAt]);
 
+  // Tick interval — only when active, not paused, and timer started
   useEffect(() => {
-    if (!isActive || !timerStartedAt) return;
+    if (!isActive || !timerStartedAt || timerPausedAt !== undefined) return;
 
     const timer = setInterval(() => {
-      setRemaining(calculateRemainingTime(turnTimerSeconds, timerStartedAt));
+      const next = calculateRemainingTime(
+        turnTimerSeconds,
+        timerStartedAt,
+        timerPausedAt
+      );
+      setRemaining(next);
+      if (next <= 0) clearInterval(timer);
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [isActive, timerStartedAt, turnTimerSeconds]);
+  }, [isActive, timerStartedAt, timerPausedAt, turnTimerSeconds]);
 
   // Show placeholder when timer hasn't started
   if (!timerStartedAt) {
     return <span>--:--</span>;
   }
 
-  return <span>0:{remaining.toString().padStart(2, "0")}</span>;
+  // Format as M:SS (max timer is 300s = 5:00)
+  const mins = Math.floor(remaining / 60);
+  const secs = String(remaining % 60).padStart(2, "0");
+
+  return (
+    <span
+      className={cn(
+        remaining <= 5 && "text-red-500 animate-pulse",
+        remaining > 5 && remaining <= 10 && "text-amber-500"
+      )}
+      role="timer"
+      aria-label={`${remaining} seconds remaining`}
+    >
+      {mins}:{secs}
+    </span>
+  );
 }
 
 function PlayerVotingPage() {
@@ -366,6 +397,7 @@ function PlayerVotingPage() {
               key={`${session.currentTurn}-${session.currentRound}`}
               turnTimerSeconds={session.turnTimerSeconds}
               timerStartedAt={session.timerStartedAt}
+              timerPausedAt={session.timerPausedAt}
               isActive={session.status === "IN_PROGRESS"}
             />
           </div>
