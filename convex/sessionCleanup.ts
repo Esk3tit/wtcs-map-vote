@@ -459,7 +459,7 @@ export const checkHeartbeatTimeouts = internalMutation({
         // MULTIPLAYER: pause only if disconnected player hasn't voted this round
         if (session.format === "ABBA") {
           sessionNeedsPause = true;
-        } else if (!player.hasVotedThisRound) {
+        } else if (session.format === "MULTIPLAYER" && !player.hasVotedThisRound) {
           sessionNeedsPause = true;
         }
       }

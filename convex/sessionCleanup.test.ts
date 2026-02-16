@@ -1362,11 +1362,15 @@ describe("sessionCleanup.checkHeartbeatTimeouts", () => {
       expect(s2?.status).toBe("IN_PROGRESS");
     });
 
-    it("skips pause if session status changed during processing", async () => {
+    it("does not process non-IN_PROGRESS sessions", async () => {
       const t = createTestContext();
       const staleTime = Date.now() - HEARTBEAT_TIMEOUT_MS - 1000;
 
-      // Create an ABBA session but set it to COMPLETE (simulating a race)
+      // Create an ABBA session in COMPLETE status — excluded by the by_status
+      // index query, so it never enters the per-session loop.
+      // Note: The true mid-processing race (session completes between disconnect
+      // mark and pause) is guarded by the freshSession re-read (line 468) but
+      // is impractical to reproduce in a single-threaded unit test.
       const { playerAId } = await createABBATimerSession(t, {
         status: "COMPLETE",
       });
@@ -1379,7 +1383,6 @@ describe("sessionCleanup.checkHeartbeatTimeouts", () => {
         });
       });
 
-      // Session is COMPLETE, so it won't be picked up by the by_status query
       const result = await t.mutation(
         internal.sessionCleanup.checkHeartbeatTimeouts,
         {}
