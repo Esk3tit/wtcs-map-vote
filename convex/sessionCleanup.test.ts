@@ -1114,6 +1114,29 @@ describe("sessionCleanup.checkHeartbeatTimeouts", () => {
       expect(player?.isConnected).toBe(true);
     });
 
+    it("skips connected player with undefined lastHeartbeat", async () => {
+      const t = createTestContext();
+      const { playerAId } = await createABBATimerSession(t);
+
+      // Player is connected but has never completed a heartbeat cycle
+      await t.run(async (ctx) => {
+        await ctx.db.patch(playerAId, {
+          isConnected: true,
+          lastHeartbeat: undefined,
+        });
+      });
+
+      const result = await t.mutation(
+        internal.sessionCleanup.checkHeartbeatTimeouts,
+        {}
+      );
+
+      expect(result.disconnectedPlayerCount).toBe(0);
+
+      const player = await t.run(async (ctx) => ctx.db.get(playerAId));
+      expect(player?.isConnected).toBe(true);
+    });
+
     it("skips already disconnected players", async () => {
       const t = createTestContext();
       const staleTime = Date.now() - HEARTBEAT_TIMEOUT_MS - 1000;
