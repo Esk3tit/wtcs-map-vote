@@ -49,6 +49,7 @@ export function sortPlayersByJoinOrder<T extends { _creationTime: number; _id: s
 
 // Player heartbeat constants
 export const HEARTBEAT_SKIP_MS = 15_000; // Skip DB write if heartbeat is still fresh
+export const HEARTBEAT_TIMEOUT_MS = 30_000; // 30 seconds — must be > HEARTBEAT_SKIP_MS
 
 // Type-safe active session statuses (validated against schema)
 export type SessionStatus = Doc<"sessions">["status"];

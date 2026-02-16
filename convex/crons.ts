@@ -35,4 +35,14 @@ crons.interval(
   {}
 );
 
+// Run every 30 seconds to detect disconnected players (WAR-49)
+// Players that haven't sent a heartbeat within HEARTBEAT_TIMEOUT_MS are marked disconnected
+// Sessions are auto-paused if a critical player disconnects
+crons.interval(
+  "check heartbeat timeouts",
+  { seconds: 30 },
+  internal.sessionCleanup.checkHeartbeatTimeouts,
+  {}
+);
+
 export default crons;
