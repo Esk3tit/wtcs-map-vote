@@ -411,7 +411,7 @@ export const handleTimerExpiry = internalMutation({
  * - MULTIPLAYER: only unvoted player disconnect pauses
  *
  * Designed to be called by a 30-second interval cron.
- * Worst-case detection latency: ~60 seconds (30s timeout + 30s cron interval).
+ * Worst-case detection latency: ~90 seconds (60s timeout + 30s cron interval).
  */
 export const checkHeartbeatTimeouts = internalMutation({
   args: {},

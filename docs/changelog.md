@@ -10,7 +10,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - **`checkHeartbeatTimeouts` internal mutation** (WAR-49) — Cron-triggered disconnect detection that runs every 30 seconds to scan IN_PROGRESS sessions for stale heartbeats
-- **`HEARTBEAT_TIMEOUT_MS` constant** — 30-second timeout (2x `HEARTBEAT_SKIP_MS`) to avoid false positives when heartbeat writes are skipped
+- **`HEARTBEAT_TIMEOUT_MS` constant** — 60-second timeout (2× client `HEARTBEAT_INTERVAL_MS`) to tolerate one missed heartbeat and avoid false positives
 - **Auto-pause on disconnect** — ABBA: pauses for ANY player disconnect (both must be present); MULTIPLAYER: pauses only for unvoted player disconnect
 - **Fresh session read before pause** — Prevents stale-state rollback if session was completed by another mutation during processing
 - **`PLAYER_DISCONNECTED` audit events** — Logged with `actorType: "SYSTEM"` for each newly disconnected player
@@ -18,7 +18,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Technical Notes
 - Uses `transitionSession` directly instead of `pauseSession` mutation (which requires admin auth context)
-- Detection latency: worst case ~60 seconds (30s timeout + 30s cron interval)
+- Detection latency: worst case ~90 seconds (60s timeout + 30s cron interval)
 - Reconnection handled implicitly by heartbeat endpoint (`playerAuth.ts`) setting `isConnected: true`; admin must manually resume paused session
 
 ---
