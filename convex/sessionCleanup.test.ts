@@ -1506,7 +1506,7 @@ describe("sessionCleanup.checkHeartbeatTimeouts", () => {
       // Create an ABBA session in COMPLETE status — excluded by the by_status
       // index query, so it never enters the per-session loop.
       // Note: The true mid-processing race (session completes between disconnect
-      // mark and pause) is guarded by the freshSession re-read (line 468) but
+      // mark and pause) is guarded by the freshSession re-read (line 478) but
       // is impractical to reproduce in a single-threaded unit test.
       const { playerAId } = await createABBATimerSession(t, {
         status: "COMPLETE",

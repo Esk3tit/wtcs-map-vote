@@ -12,8 +12,7 @@ import { internalMutation } from "./_generated/server";
 
 import { v } from "convex/values";
 
-import { getActivePlayerIndex, sortPlayersByJoinOrder } from "./lib/constants";
-import { HEARTBEAT_TIMEOUT_MS } from "./lib/constants";
+import { getActivePlayerIndex, sortPlayersByJoinOrder, HEARTBEAT_TIMEOUT_MS } from "./lib/constants";
 import { executeBan, executeVote } from "./lib/votingHelpers";
 import { transitionSession } from "./lib/sessionLifecycle";
 import { pickRandom } from "./lib/random";
@@ -472,8 +471,9 @@ export const checkHeartbeatTimeouts = internalMutation({
         }
       }
 
-      // Re-read session to guard against concurrent state changes (e.g., another
-      // mutation completing the session) between the initial query and this point.
+      // Re-read session to see this mutation's own writes (player disconnects above)
+      // and as a defensive habit for future-proofing. Convex OCC already prevents
+      // true concurrent conflicts by retrying the entire transaction on conflict.
       if (sessionNeedsPause) {
         const freshSession = await ctx.db.get(session._id);
         if (freshSession && freshSession.status === "IN_PROGRESS") {
