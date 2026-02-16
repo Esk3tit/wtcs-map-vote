@@ -1162,13 +1162,13 @@ describe("sessionCleanup.checkHeartbeatTimeouts", () => {
       const t = createTestContext();
       const { playerAId } = await createABBATimerSession(t);
 
-      // Set lastHeartbeat to exactly now - HEARTBEAT_TIMEOUT_MS (boundary case)
-      // The >= check means exactly-at-boundary is "still alive"
+      // Set lastHeartbeat comfortably within the threshold to verify "still alive".
+      // Add a 500ms buffer to absorb Date.now() drift between test and mutation handler.
       const now = Date.now();
       await t.run(async (ctx) => {
         await ctx.db.patch(playerAId, {
           isConnected: true,
-          lastHeartbeat: now - HEARTBEAT_TIMEOUT_MS,
+          lastHeartbeat: now - HEARTBEAT_TIMEOUT_MS + 500,
         });
       });
 

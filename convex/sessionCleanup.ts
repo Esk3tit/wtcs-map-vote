@@ -12,7 +12,8 @@ import { internalMutation } from "./_generated/server";
 
 import { v } from "convex/values";
 
-import { getActivePlayerIndex, sortPlayersByJoinOrder, HEARTBEAT_TIMEOUT_MS } from "./lib/constants";
+import { getActivePlayerIndex, sortPlayersByJoinOrder } from "./lib/constants";
+import { HEARTBEAT_TIMEOUT_MS } from "./lib/constants";
 import { executeBan, executeVote } from "./lib/votingHelpers";
 import { transitionSession } from "./lib/sessionLifecycle";
 import { pickRandom } from "./lib/random";
