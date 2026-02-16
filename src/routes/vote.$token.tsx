@@ -17,6 +17,7 @@ import {
 import { TokenErrorPage } from "@/components/session/TokenErrorPage";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
 import { SITE_URL } from "@/lib/convexHttp";
+import { cn } from "@/lib/utils";
 import { Check, Lock, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -133,17 +134,12 @@ function CountdownTimer({
   const mins = Math.floor(remaining / 60);
   const secs = String(remaining % 60).padStart(2, "0");
 
-  // Warning colors: amber at <=10s, red + pulse at <=5s
-  const colorClass =
-    remaining <= 5
-      ? "text-red-500 animate-pulse"
-      : remaining <= 10
-        ? "text-amber-500"
-        : "";
-
   return (
     <span
-      className={colorClass}
+      className={cn(
+        remaining <= 5 && "text-red-500 animate-pulse",
+        remaining > 5 && remaining <= 10 && "text-amber-500"
+      )}
       role="timer"
       aria-label={`${remaining} seconds remaining`}
     >
