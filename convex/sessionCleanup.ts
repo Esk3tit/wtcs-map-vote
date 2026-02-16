@@ -441,8 +441,9 @@ export const checkHeartbeatTimeouts = internalMutation({
       for (const player of players) {
         if (!player.isConnected) continue;
 
-        const lastBeat = player.lastHeartbeat ?? 0;
-        if (lastBeat >= now - HEARTBEAT_TIMEOUT_MS) continue;
+        // Skip players that haven't completed a heartbeat cycle yet
+        if (player.lastHeartbeat === undefined) continue;
+        if (player.lastHeartbeat >= now - HEARTBEAT_TIMEOUT_MS) continue;
 
         await ctx.db.patch(player._id, { isConnected: false });
         disconnectedPlayerCount++;

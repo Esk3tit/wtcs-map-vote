@@ -17,6 +17,7 @@ import {
 } from "./test.factories";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
+import { HEARTBEAT_TIMEOUT_MS } from "./lib/constants";
 
 // ============================================================================
 // Test Helpers
@@ -1060,8 +1061,6 @@ describe("sessionCleanup.handleTimerExpiry", () => {
 // ============================================================================
 
 describe("sessionCleanup.checkHeartbeatTimeouts", () => {
-  const HEARTBEAT_TIMEOUT_MS = 30_000;
-
   // --------------------------------------------------------------------------
   // Detection tests
   // --------------------------------------------------------------------------
