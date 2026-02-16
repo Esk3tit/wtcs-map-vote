@@ -2,7 +2,7 @@
  * Session Cleanup Tests
  *
  * Tests for session cleanup internal mutations: clearSessionIpAddresses,
- * expireStaleSessions, and clearCompletedSessionIps.
+ * expireStaleSessions, clearCompletedSessionIps, and checkHeartbeatTimeouts.
  */
 
 import { describe, it, expect } from "vitest";
@@ -17,6 +17,7 @@ import {
 } from "./test.factories";
 import { internal } from "./_generated/api";
 import { Id } from "./_generated/dataModel";
+import { HEARTBEAT_TIMEOUT_MS } from "./lib/constants";
 
 // ============================================================================
 // Test Helpers
@@ -1051,6 +1052,481 @@ describe("sessionCleanup.handleTimerExpiry", () => {
       for (const vote of votes) {
         expect(vote.submittedByAdmin).toBe(false);
       }
+    });
+  });
+});
+
+// ============================================================================
+// checkHeartbeatTimeouts Tests (WAR-49)
+// ============================================================================
+
+describe("sessionCleanup.checkHeartbeatTimeouts", () => {
+  // --------------------------------------------------------------------------
+  // Detection tests
+  // --------------------------------------------------------------------------
+
+  describe("detection", () => {
+    it("marks stale connected player as disconnected", async () => {
+      const t = createTestContext();
+      const staleTime = Date.now() - HEARTBEAT_TIMEOUT_MS - 1000;
+      const { playerAId } = await createABBATimerSession(t);
+
+      // Set player A as connected with a stale heartbeat
+      await t.run(async (ctx) => {
+        await ctx.db.patch(playerAId, {
+          isConnected: true,
+          lastHeartbeat: staleTime,
+        });
+      });
+
+      const result = await t.mutation(
+        internal.sessionCleanup.checkHeartbeatTimeouts,
+        {}
+      );
+
+      expect(result.disconnectedPlayerCount).toBe(1);
+
+      // Verify player is now disconnected
+      const player = await t.run(async (ctx) => ctx.db.get(playerAId));
+      expect(player?.isConnected).toBe(false);
+    });
+
+    it("skips players with fresh heartbeats", async () => {
+      const t = createTestContext();
+      const freshTime = Date.now() - 5000; // 5 seconds ago (well within timeout)
+      const { playerAId } = await createABBATimerSession(t);
+
+      await t.run(async (ctx) => {
+        await ctx.db.patch(playerAId, {
+          isConnected: true,
+          lastHeartbeat: freshTime,
+        });
+      });
+
+      const result = await t.mutation(
+        internal.sessionCleanup.checkHeartbeatTimeouts,
+        {}
+      );
+
+      expect(result.disconnectedPlayerCount).toBe(0);
+
+      const player = await t.run(async (ctx) => ctx.db.get(playerAId));
+      expect(player?.isConnected).toBe(true);
+    });
+
+    it("skips connected player with undefined lastHeartbeat", async () => {
+      const t = createTestContext();
+      const { playerAId } = await createABBATimerSession(t);
+
+      // Player is connected but has never completed a heartbeat cycle
+      await t.run(async (ctx) => {
+        await ctx.db.patch(playerAId, {
+          isConnected: true,
+          lastHeartbeat: undefined,
+        });
+      });
+
+      const result = await t.mutation(
+        internal.sessionCleanup.checkHeartbeatTimeouts,
+        {}
+      );
+
+      expect(result.disconnectedPlayerCount).toBe(0);
+
+      const player = await t.run(async (ctx) => ctx.db.get(playerAId));
+      expect(player?.isConnected).toBe(true);
+    });
+
+    it("skips already disconnected players", async () => {
+      const t = createTestContext();
+      const staleTime = Date.now() - HEARTBEAT_TIMEOUT_MS - 1000;
+      const { playerAId } = await createABBATimerSession(t);
+
+      // Player is already disconnected (isConnected: false) with stale heartbeat
+      await t.run(async (ctx) => {
+        await ctx.db.patch(playerAId, {
+          isConnected: false,
+          lastHeartbeat: staleTime,
+        });
+      });
+
+      const result = await t.mutation(
+        internal.sessionCleanup.checkHeartbeatTimeouts,
+        {}
+      );
+
+      expect(result.disconnectedPlayerCount).toBe(0);
+    });
+
+    it("does not disconnect player at exact threshold boundary", async () => {
+      const t = createTestContext();
+      const { playerAId } = await createABBATimerSession(t);
+
+      // Set lastHeartbeat comfortably within the threshold to verify "still alive".
+      // Add a 500ms buffer to absorb Date.now() drift between test and mutation handler.
+      const now = Date.now();
+      await t.run(async (ctx) => {
+        await ctx.db.patch(playerAId, {
+          isConnected: true,
+          lastHeartbeat: now - HEARTBEAT_TIMEOUT_MS + 500,
+        });
+      });
+
+      const result = await t.mutation(
+        internal.sessionCleanup.checkHeartbeatTimeouts,
+        {}
+      );
+
+      expect(result.disconnectedPlayerCount).toBe(0);
+
+      const player = await t.run(async (ctx) => ctx.db.get(playerAId));
+      expect(player?.isConnected).toBe(true);
+    });
+
+    it("disconnects player 1ms past threshold boundary", async () => {
+      const t = createTestContext();
+      const { playerAId } = await createABBATimerSession(t);
+
+      const now = Date.now();
+      await t.run(async (ctx) => {
+        await ctx.db.patch(playerAId, {
+          isConnected: true,
+          lastHeartbeat: now - HEARTBEAT_TIMEOUT_MS - 1,
+        });
+      });
+
+      const result = await t.mutation(
+        internal.sessionCleanup.checkHeartbeatTimeouts,
+        {}
+      );
+
+      expect(result.disconnectedPlayerCount).toBe(1);
+
+      const player = await t.run(async (ctx) => ctx.db.get(playerAId));
+      expect(player?.isConnected).toBe(false);
+    });
+
+    it("logs PLAYER_DISCONNECTED audit event", async () => {
+      const t = createTestContext();
+      const staleTime = Date.now() - HEARTBEAT_TIMEOUT_MS - 1000;
+      const { playerAId, sessionId } = await createABBATimerSession(t);
+
+      await t.run(async (ctx) => {
+        await ctx.db.patch(playerAId, {
+          isConnected: true,
+          lastHeartbeat: staleTime,
+        });
+      });
+
+      await t.mutation(internal.sessionCleanup.checkHeartbeatTimeouts, {});
+
+      const auditLogs = await t.run(async (ctx) =>
+        ctx.db
+          .query("auditLogs")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+          .collect()
+      );
+
+      const disconnectLog = auditLogs.find(
+        (l) => l.action === "PLAYER_DISCONNECTED"
+      );
+      expect(disconnectLog).toBeDefined();
+      expect(disconnectLog?.actorType).toBe("SYSTEM");
+      expect(disconnectLog?.details?.teamName).toBe("Team Alpha");
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // ABBA auto-pause tests
+  // --------------------------------------------------------------------------
+
+  describe("ABBA auto-pause", () => {
+    it("auto-pauses when any player disconnects", async () => {
+      const t = createTestContext();
+      const staleTime = Date.now() - HEARTBEAT_TIMEOUT_MS - 1000;
+      const { playerBId, sessionId } = await createABBATimerSession(t);
+
+      // Player B disconnects (not the active turn player at turn 0)
+      await t.run(async (ctx) => {
+        await ctx.db.patch(playerBId, {
+          isConnected: true,
+          lastHeartbeat: staleTime,
+        });
+      });
+
+      const result = await t.mutation(
+        internal.sessionCleanup.checkHeartbeatTimeouts,
+        {}
+      );
+
+      expect(result.pausedSessionCount).toBe(1);
+
+      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(session?.status).toBe("PAUSED");
+    });
+
+    it("sets timerPausedAt after auto-pause", async () => {
+      const t = createTestContext();
+      const staleTime = Date.now() - HEARTBEAT_TIMEOUT_MS - 1000;
+      const { playerAId, sessionId } = await createABBATimerSession(t);
+
+      await t.run(async (ctx) => {
+        await ctx.db.patch(playerAId, {
+          isConnected: true,
+          lastHeartbeat: staleTime,
+        });
+      });
+
+      await t.mutation(internal.sessionCleanup.checkHeartbeatTimeouts, {});
+
+      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(session?.timerPausedAt).toBeDefined();
+      expect(typeof session?.timerPausedAt).toBe("number");
+    });
+
+    it("logs SESSION_PAUSED with reason PLAYER_DISCONNECT", async () => {
+      const t = createTestContext();
+      const staleTime = Date.now() - HEARTBEAT_TIMEOUT_MS - 1000;
+      const { playerAId, sessionId } = await createABBATimerSession(t);
+
+      await t.run(async (ctx) => {
+        await ctx.db.patch(playerAId, {
+          isConnected: true,
+          lastHeartbeat: staleTime,
+        });
+      });
+
+      await t.mutation(internal.sessionCleanup.checkHeartbeatTimeouts, {});
+
+      const auditLogs = await t.run(async (ctx) =>
+        ctx.db
+          .query("auditLogs")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+          .collect()
+      );
+
+      const pauseLog = auditLogs.find((l) => l.action === "SESSION_PAUSED");
+      expect(pauseLog).toBeDefined();
+      expect(pauseLog?.actorType).toBe("SYSTEM");
+      expect(pauseLog?.details?.reason).toBe("PLAYER_DISCONNECT");
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // MULTIPLAYER auto-pause tests
+  // --------------------------------------------------------------------------
+
+  describe("MULTIPLAYER auto-pause", () => {
+    it("auto-pauses when unvoted player disconnects", async () => {
+      const t = createTestContext();
+      const staleTime = Date.now() - HEARTBEAT_TIMEOUT_MS - 1000;
+      const { playerIds, sessionId } = await createMultiplayerTimerSession(t);
+
+      // Player 0 is connected with stale heartbeat and has NOT voted
+      await t.run(async (ctx) => {
+        await ctx.db.patch(playerIds[0], {
+          isConnected: true,
+          lastHeartbeat: staleTime,
+          hasVotedThisRound: false,
+        });
+      });
+
+      const result = await t.mutation(
+        internal.sessionCleanup.checkHeartbeatTimeouts,
+        {}
+      );
+
+      expect(result.pausedSessionCount).toBe(1);
+
+      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(session?.status).toBe("PAUSED");
+    });
+
+    it("does NOT pause when already-voted player disconnects", async () => {
+      const t = createTestContext();
+      const staleTime = Date.now() - HEARTBEAT_TIMEOUT_MS - 1000;
+      const { playerIds, sessionId } = await createMultiplayerTimerSession(t);
+
+      // Player 0 is connected with stale heartbeat but has already voted
+      await t.run(async (ctx) => {
+        await ctx.db.patch(playerIds[0], {
+          isConnected: true,
+          lastHeartbeat: staleTime,
+          hasVotedThisRound: true,
+        });
+      });
+
+      const result = await t.mutation(
+        internal.sessionCleanup.checkHeartbeatTimeouts,
+        {}
+      );
+
+      // Player should still be marked disconnected
+      expect(result.disconnectedPlayerCount).toBe(1);
+      // But session should NOT be paused
+      expect(result.pausedSessionCount).toBe(0);
+
+      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(session?.status).toBe("IN_PROGRESS");
+    });
+
+    it("disconnects multiple players simultaneously and pauses session once", async () => {
+      const t = createTestContext();
+      const staleTime = Date.now() - HEARTBEAT_TIMEOUT_MS - 1000;
+      const { playerIds, sessionId } = await createMultiplayerTimerSession(t, {
+        playerCount: 3,
+      });
+
+      // Set 2 players as stale (connected with old heartbeat, unvoted)
+      // Keep player 2 fresh
+      await t.run(async (ctx) => {
+        await ctx.db.patch(playerIds[0], {
+          isConnected: true,
+          lastHeartbeat: staleTime,
+          hasVotedThisRound: false,
+        });
+        await ctx.db.patch(playerIds[1], {
+          isConnected: true,
+          lastHeartbeat: staleTime,
+          hasVotedThisRound: false,
+        });
+        await ctx.db.patch(playerIds[2], {
+          isConnected: true,
+          lastHeartbeat: Date.now(),
+          hasVotedThisRound: false,
+        });
+      });
+
+      const result = await t.mutation(
+        internal.sessionCleanup.checkHeartbeatTimeouts,
+        {}
+      );
+
+      // Both stale players should be disconnected
+      expect(result.disconnectedPlayerCount).toBe(2);
+      // Session should be paused exactly once
+      expect(result.pausedSessionCount).toBe(1);
+
+      // Verify session status is PAUSED
+      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(session?.status).toBe("PAUSED");
+
+      // Verify player states
+      const players = await t.run(async (ctx) =>
+        Promise.all(playerIds.map((id) => ctx.db.get(id)))
+      );
+      expect(players[0]?.isConnected).toBe(false);
+      expect(players[1]?.isConnected).toBe(false);
+      expect(players[2]?.isConnected).toBe(true);
+
+      // Verify 2 PLAYER_DISCONNECTED audit logs exist
+      const auditLogs = await t.run(async (ctx) =>
+        ctx.db
+          .query("auditLogs")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+          .collect()
+      );
+
+      const disconnectLogs = auditLogs.filter(
+        (l) => l.action === "PLAYER_DISCONNECTED"
+      );
+      expect(disconnectLogs).toHaveLength(2);
+      for (const log of disconnectLogs) {
+        expect(log.actorType).toBe("SYSTEM");
+      }
+    });
+  });
+
+  // --------------------------------------------------------------------------
+  // Edge cases
+  // --------------------------------------------------------------------------
+
+  describe("edge cases", () => {
+    it("returns zeros when no IN_PROGRESS sessions exist", async () => {
+      const t = createTestContext();
+
+      const result = await t.mutation(
+        internal.sessionCleanup.checkHeartbeatTimeouts,
+        {}
+      );
+
+      expect(result).toEqual({
+        checkedSessionCount: 0,
+        disconnectedPlayerCount: 0,
+        pausedSessionCount: 0,
+      });
+    });
+
+    it("handles multiple sessions with correct counts", async () => {
+      const t = createTestContext();
+      const staleTime = Date.now() - HEARTBEAT_TIMEOUT_MS - 1000;
+
+      // Session 1: ABBA with a stale player (should pause)
+      const session1 = await createABBATimerSession(t);
+
+      // Session 2: ABBA with all players fresh (should not pause)
+      const session2 = await createABBATimerSession(t);
+
+      // Make session 1 player A stale
+      await t.run(async (ctx) => {
+        await ctx.db.patch(session1.playerAId, {
+          isConnected: true,
+          lastHeartbeat: staleTime,
+        });
+      });
+
+      // Make session 2 player A fresh
+      await t.run(async (ctx) => {
+        await ctx.db.patch(session2.playerAId, {
+          isConnected: true,
+          lastHeartbeat: Date.now(),
+        });
+      });
+
+      const result = await t.mutation(
+        internal.sessionCleanup.checkHeartbeatTimeouts,
+        {}
+      );
+
+      expect(result.checkedSessionCount).toBe(2);
+      expect(result.disconnectedPlayerCount).toBe(1);
+      expect(result.pausedSessionCount).toBe(1);
+
+      // Verify only session 1 is paused
+      const s1 = await t.run(async (ctx) => ctx.db.get(session1.sessionId));
+      const s2 = await t.run(async (ctx) => ctx.db.get(session2.sessionId));
+      expect(s1?.status).toBe("PAUSED");
+      expect(s2?.status).toBe("IN_PROGRESS");
+    });
+
+    it("does not process non-IN_PROGRESS sessions", async () => {
+      const t = createTestContext();
+      const staleTime = Date.now() - HEARTBEAT_TIMEOUT_MS - 1000;
+
+      // Create an ABBA session in COMPLETE status — excluded by the by_status
+      // index query, so it never enters the per-session loop.
+      // Note: The true mid-processing race (session completes between disconnect
+      // mark and pause) is guarded by the freshSession re-read (line 478) but
+      // is impractical to reproduce in a single-threaded unit test.
+      const { playerAId } = await createABBATimerSession(t, {
+        status: "COMPLETE",
+      });
+
+      // Player has stale heartbeat
+      await t.run(async (ctx) => {
+        await ctx.db.patch(playerAId, {
+          isConnected: true,
+          lastHeartbeat: staleTime,
+        });
+      });
+
+      const result = await t.mutation(
+        internal.sessionCleanup.checkHeartbeatTimeouts,
+        {}
+      );
+
+      expect(result.checkedSessionCount).toBe(0);
+      expect(result.pausedSessionCount).toBe(0);
     });
   });
 });

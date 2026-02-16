@@ -2,7 +2,7 @@
 
 Current progress and next steps for the WTCS Map Vote project.
 
-**Last Updated:** February 11, 2026
+**Last Updated:** February 15, 2026
 
 ---
 
@@ -135,27 +135,37 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] Multiplayer vote confirmation UI — golden border on voted map, "Your vote" label, playerVotedMapId query (WAR-37, PR #57)
 - [x] Voting unit tests for coverage gaps — session expiry, revote audit, cross-round isolation (WAR-20, PR #58)
 
-### Phase 5: Session Lifecycle (IN PROGRESS)
+### Phase 5: Session Lifecycle (COMPLETE)
 - [x] Centralized state transition map and helpers (WAR-37, PR #59)
 - [x] `VALID_TRANSITIONS` map, `validateTransition`, `guardFinalize`, `guardStart`, `transitionSession`
 - [x] `SessionStatePatches` type, `TransitionOptions` interface, `SESSION_RESET_PATCHES`
 - [x] 60 unit tests for transition validation, guards, and atomic transitions
 - [x] Session lifecycle mutations — finalize, start, pause, resume, end (WAR-38–41, PR #60)
 - [x] 39 unit tests for lifecycle mutations (700 total tests)
+- [x] Timer management in voting mutations (WAR-42, PR #61) — timer reset on turn/round advances
+- [x] `forceRandomSelection` admin mutation (WAR-43, PR #62) — CSPRNG random winner selection
+- [x] `adminVoteOnBehalf` mutation (WAR-44, PR #63) — admin ban/vote on behalf of players
+- [x] `resetSession` mutation (WAR-45, PR #64) — COMPLETE→WAITING session reset for replay
+- [x] `cloneSession` mutation (WAR-46, PR #65) — duplicate session configuration into new DRAFT
+- [x] Timer expiration scheduled function (WAR-47, PR #66) — per-session auto-ban/auto-vote on timeout
+- [x] Shared voting helpers extracted (`convex/lib/votingHelpers.ts`, `convex/lib/timerScheduling.ts`)
+- [x] Admin session control buttons wired (WAR-48, PR #67) — all action buttons functional with confirmation dialogs
+- [x] Disconnect detection and auto-pause (WAR-49, PR #68) — heartbeat timeout cron with auto-pause
 
 ---
 
 ## Next Steps
-
-### Session Lifecycle — Remaining (Priority: High)
-   - [ ] Session reset mutation — COMPLETE→WAITING with reset patches (WAR-45)
-   - [ ] Timer expiration handling (scheduled functions)
 
 ### Real-Time Features
    - [ ] Session state subscription
    - [ ] Map state updates during voting
    - [ ] Player connection status
    - [ ] Timer synchronization
+
+### Player-Facing UI
+   - [ ] Wire player lobby to real-time session state
+   - [ ] Wire player voting page to real-time map/timer state
+   - [ ] Player reconnection UI (auto-reconnect on heartbeat resume)
 
 ### Future Work
 

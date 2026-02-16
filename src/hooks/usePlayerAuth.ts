@@ -2,9 +2,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { SITE_URL } from "@/lib/convexHttp";
 
 // Heartbeat interval in milliseconds.
-// SYNC: Must be greater than HEARTBEAT_SKIP_MS (convex/lib/constants.ts, currently 15s)
-// to avoid every heartbeat being skipped by the server's freshness check.
-// If the server adds a staleness timeout, this interval must be shorter than that threshold.
+// INVARIANT: Must be < server HEARTBEAT_TIMEOUT_MS (convex/lib/constants.ts, currently 60s).
+// The server timeout should be at least 2× this value to tolerate one missed heartbeat.
 const HEARTBEAT_INTERVAL_MS = 30_000;
 
 type AuthStatus = "loading" | "authenticated" | "error";
@@ -90,7 +89,6 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
           // Start heartbeat
           heartbeatRef.current = setInterval(async () => {
             if (controller.signal.aborted) return;
-            if (document.visibilityState === "hidden") return;
             try {
               const hbRes = await fetch(`${SITE_URL}/api/player/heartbeat`, {
                 method: "POST",

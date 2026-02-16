@@ -6,6 +6,59 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.14.0] - 2026-02-15 - Phase 5: Disconnect Detection & Auto-Pause (WAR-49, PR #68)
+
+### Added
+- **`checkHeartbeatTimeouts` internal mutation** (WAR-49) — Cron-triggered disconnect detection that runs every 30 seconds to scan IN_PROGRESS sessions for stale heartbeats
+- **`HEARTBEAT_TIMEOUT_MS` constant** — 60-second timeout (2× client `HEARTBEAT_INTERVAL_MS`) to tolerate one missed heartbeat and avoid false positives
+- **Auto-pause on disconnect** — ABBA: pauses for ANY player disconnect (both must be present); MULTIPLAYER: pauses only for unvoted player disconnect
+- **Fresh session read before pause** — Prevents stale-state rollback if session was completed by another mutation during processing
+- **`PLAYER_DISCONNECTED` audit events** — Logged with `actorType: "SYSTEM"` for each newly disconnected player
+- **10 unit tests** — Detection (marks stale, skips fresh, skips already disconnected, logs audit), ABBA auto-pause (any disconnect, timerPausedAt, audit reason), MULTIPLAYER auto-pause (unvoted pauses, voted doesn't), edge cases (no sessions, multiple sessions, status change guard)
+
+### Technical Notes
+- Uses `transitionSession` directly instead of `pauseSession` mutation (which requires admin auth context)
+- Detection latency: worst case ~90 seconds (60s timeout + 30s cron interval)
+- Reconnection handled implicitly by heartbeat endpoint (`playerAuth.ts`) setting `isConnected: true`; admin must manually resume paused session
+
+---
+
+## [0.13.0] - 2026-02-15 - Phase 5: Admin Session Controls & Timer Expiration (WAR-47–48, PRs #66–67)
+
+### Added
+- **Timer expiration scheduled function** (WAR-47, PR #66) — Per-session timer expiration via `ctx.scheduler.runAt()` with guard-based no-op pattern for race condition safety
+  - ABBA: auto-bans random available map for idle player on timeout
+  - MULTIPLAYER: auto-votes random map for each unvoted player on timeout
+  - Guard checks: session status, `timerStartedAt` match, `timerPausedAt` absence
+  - Timers scheduled at all 5 start points: `startSession`, `resumeSession`, `executeBan`, `resolveRound` (ROUND_ADVANCED), `resolveRound` (REVOTE)
+  - 15 unit tests for guard no-ops, ABBA auto-ban, and MULTIPLAYER auto-vote scenarios
+- **Shared voting helpers** (`convex/lib/votingHelpers.ts`) — Extracted `executeBan`, `executeVote`, `resolveRound`, `validateTargetMap` from `convex/voting.ts` for reuse by timer expiry and admin vote-on-behalf
+- **Timer scheduling helper** (`convex/lib/timerScheduling.ts`) — `scheduleTimerExpiry` wraps `ctx.scheduler.runAt()` with proper format/timestamp args
+- **Admin session control buttons wired** (WAR-48, PR #67) — All admin action buttons on session detail page now functional:
+  - Finalize (DRAFT → WAITING), Start (WAITING → IN_PROGRESS), Pause/Resume toggle
+  - End Session and Force Random Selection with confirmation dialogs
+  - Reset (COMPLETE → WAITING) and Clone (any state → new DRAFT) with confirmation
+  - Vote/Ban on Behalf with map selection dialog for disconnected/timed-out players
+  - View Results link for completed sessions
+  - Loading states, toast notifications, and error handling throughout
+
+---
+
+## [0.12.0] - 2026-02-13 - Phase 5: Session Management Mutations (WAR-42–46, PRs #61–65)
+
+### Added
+- **Timer management in voting mutations** (WAR-42, PR #61) — Reset `timerStartedAt` on turn/round advances and clear timer fields on session completion so player UI countdown works beyond the first turn/round
+- **`forceRandomSelection` mutation** (WAR-43, PR #62) — Admin action to randomly select a winner from remaining available maps, immediately completing an active or paused session. Uses CSPRNG for competitive integrity. Logs `RANDOM_SELECTION` and `WINNER_DECLARED` audit events
+- **`adminVoteOnBehalf` mutation** (WAR-44, PR #63) — Allow admins to submit a ban (ABBA) or vote (MULTIPLAYER) on behalf of a disconnected or timed-out player. Adds `submittedByAdmin` field to `sessionMaps` schema
+- **`resetSession` mutation** (WAR-45, PR #64) — Session reset for replay. Clears all voting data (votes, map ban metadata, player vote state) and returns COMPLETE → WAITING while preserving configuration and player assignments. Extends `expiresAt` by 2 weeks
+- **`cloneSession` mutation** (WAR-46, PR #65) — Duplicates a session's configuration into a new DRAFT session. Copies players (fresh tokens) and maps (reset to AVAILABLE) but NOT votes, audit logs, or timer state. Source can be in any status
+- **~100 unit tests** across WAR-42–46 covering timer resets, force random selection, admin vote-on-behalf for both formats, session reset with data cleanup, clone with data isolation
+
+### Changed
+- **`sessionMaps` schema** — Added optional `submittedByAdmin` boolean field (WAR-44)
+
+---
+
 ## [0.11.0] - 2026-02-11 - Phase 5: Session Lifecycle Mutations (WAR-38–41, PR #60)
 
 ### Added

@@ -2,7 +2,8 @@
  * Session Cleanup Module
  *
  * Handles session lifecycle cleanup tasks including IP address clearing for privacy
- * compliance, stale session expiration, and timer expiry handling (WAR-47).
+ * compliance, stale session expiration, timer expiry handling (WAR-47), and
+ * disconnect detection with auto-pause (WAR-49).
  * Contains internal mutations designed to be called by cron jobs, schedulers,
  * or other internal processes.
  */
@@ -11,9 +12,11 @@ import { internalMutation } from "./_generated/server";
 
 import { v } from "convex/values";
 
-import { getActivePlayerIndex, sortPlayersByJoinOrder } from "./lib/constants";
+import { getActivePlayerIndex, sortPlayersByJoinOrder, HEARTBEAT_TIMEOUT_MS } from "./lib/constants";
 import { executeBan, executeVote } from "./lib/votingHelpers";
+import { transitionSession } from "./lib/sessionLifecycle";
 import { pickRandom } from "./lib/random";
+
 import { logAction } from "./audit";
 
 // ============================================================================
@@ -391,5 +394,110 @@ export const handleTimerExpiry = internalMutation({
     // the next timer if the round advances or a revote is triggered
 
     return { processed: true };
+  },
+});
+
+// ============================================================================
+// Disconnect Detection (WAR-49)
+// ============================================================================
+
+/**
+ * Check for player heartbeat timeouts and auto-pause sessions.
+ *
+ * Scans all IN_PROGRESS sessions for players whose heartbeat has gone stale
+ * (older than HEARTBEAT_TIMEOUT_MS). Marks them as disconnected and auto-pauses
+ * the session when a critical player disconnects:
+ * - ABBA: any player disconnect pauses (both must be present)
+ * - MULTIPLAYER: only unvoted player disconnect pauses
+ *
+ * Designed to be called by a 30-second interval cron.
+ * Worst-case detection latency: ~90 seconds (60s timeout + 30s cron interval).
+ */
+export const checkHeartbeatTimeouts = internalMutation({
+  args: {},
+  returns: v.object({
+    checkedSessionCount: v.number(),
+    disconnectedPlayerCount: v.number(),
+    pausedSessionCount: v.number(),
+  }),
+  handler: async (ctx) => {
+    const now = Date.now();
+    let disconnectedPlayerCount = 0;
+    let pausedSessionCount = 0;
+
+    // NOTE: Collects all IN_PROGRESS sessions in a single transaction.
+    // Safe for current scale (~10 concurrent sessions). If the system grows
+    // beyond ~100 concurrent sessions, consider paginating with .take(N)
+    // and scheduling follow-up cron runs for remaining sessions.
+    const sessions = await ctx.db
+      .query("sessions")
+      .withIndex("by_status", (q) => q.eq("status", "IN_PROGRESS"))
+      .collect();
+
+    for (const session of sessions) {
+      const players = await ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+        .collect();
+
+      let sessionNeedsPause = false;
+
+      // Mark stale connected players as disconnected
+      for (const player of players) {
+        if (!player.isConnected) continue;
+
+        // Skip players that haven't completed a heartbeat cycle yet
+        if (player.lastHeartbeat === undefined) continue;
+        if (player.lastHeartbeat >= now - HEARTBEAT_TIMEOUT_MS) continue;
+
+        await ctx.db.patch(player._id, { isConnected: false });
+        disconnectedPlayerCount++;
+
+        // Log per-player (not batched) to match existing audit patterns and enable
+        // per-player filtering. Acceptable write volume at current scale.
+        await logAction(ctx, {
+          sessionId: session._id,
+          action: "PLAYER_DISCONNECTED",
+          actorType: "SYSTEM",
+          details: { teamName: player.teamName },
+        });
+
+        // ABBA: pause for any disconnect (both players must be present)
+        // MULTIPLAYER: pause only if disconnected player hasn't voted this round
+        if (session.format === "ABBA") {
+          sessionNeedsPause = true;
+        } else if (session.format === "MULTIPLAYER" && !player.hasVotedThisRound) {
+          sessionNeedsPause = true;
+        }
+      }
+
+      // Re-read session to see this mutation's own writes (player disconnects above)
+      // and as a defensive habit for future-proofing. Convex OCC already prevents
+      // true concurrent conflicts by retrying the entire transaction on conflict.
+      if (sessionNeedsPause) {
+        const freshSession = await ctx.db.get(session._id);
+        if (freshSession && freshSession.status === "IN_PROGRESS") {
+          await transitionSession(ctx, freshSession, "PAUSED", {
+            auditAction: "SESSION_PAUSED",
+            actorType: "SYSTEM",
+            patches: { timerPausedAt: now },
+            auditDetails: { reason: "PLAYER_DISCONNECT" },
+          });
+          pausedSessionCount++;
+        }
+      }
+    }
+
+    if (disconnectedPlayerCount > 0) {
+      console.log(
+        `Heartbeat check: ${disconnectedPlayerCount} player(s) disconnected, ${pausedSessionCount} session(s) paused`
+      );
+    }
+
+    return {
+      checkedSessionCount: sessions.length,
+      disconnectedPlayerCount,
+      pausedSessionCount,
+    };
   },
 });
