@@ -244,7 +244,7 @@ it("creates a map", async () => {
 
 Invoke with `/dev-browser` or use the Skill tool. The skill provides browser automation with persistent page state for navigating, clicking, filling forms, taking screenshots, and testing web apps. Navigate to `http://localhost:5173` (ensure dev server is running).
 
-Use the Google Chrome browser with the dev-browser extension relay since we need to bypass Google OAuth which isn't possible with Chrome For Test
+Use Google Chrome with the dev-browser extension relay to bypass Google OAuth, as Chrome For Testing does not support OAuth authentication.
 
 ### Convex MCP (Backend Testing)
 
@@ -425,4 +425,5 @@ No additional GitHub Actions deploy job needed - Netlify manages both frontend h
 When using `/workflows:plan`, `/superpowers:write-plan`, or similar planning commands, write plan files to `docs/plans/<plan-name>.md`. These are temporary working documents and should not be committed to the repository.
 
 ## Agent Usage Guidelines
-Do NOT run agents in background (ex. when running /workflows:review command run it in the foreground process)
+
+Do NOT run agents in the background. For example, when running the `/workflows:review` command, execute it in the foreground and wait for completion.
