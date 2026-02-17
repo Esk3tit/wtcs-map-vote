@@ -153,6 +153,47 @@ const formatPlayerRole = (role: string, format: string): string => {
 };
 
 // ============================================================================
+// Player Ready Badge (self-contained timer to avoid full-page re-renders)
+// ============================================================================
+
+/**
+ * Displays a ready/not-ready badge for a player in the WAITING state.
+ * Manages its own 1-second timer so the parent component does not re-render.
+ */
+function PlayerReadyBadge({ readyAt }: { readyAt?: number }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, []);
+
+  const isPlayerReady = readyAt != null && now - readyAt < READY_EXPIRY_MS;
+  const secondsAgo = readyAt != null ? Math.floor((now - readyAt) / 1000) : null;
+
+  if (isPlayerReady) {
+    return (
+      <Badge
+        variant="outline"
+        className="gap-1 bg-green-500/20 text-green-600 border-green-500/30"
+      >
+        <CheckCircle2 className="w-3 h-3" />
+        Ready ({secondsAgo}s ago)
+      </Badge>
+    );
+  }
+
+  return (
+    <Badge
+      variant="outline"
+      className="bg-muted text-muted-foreground border-border"
+    >
+      Not ready
+    </Badge>
+  );
+}
+
+// ============================================================================
 // Main Component
 // ============================================================================
 
@@ -317,14 +358,7 @@ function SessionDetailPage() {
     [session?.maps]
   );
 
-  // Tick every second when WAITING so ready badges stay current
   const isWaiting = session?.status === "WAITING";
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!isWaiting) return;
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [isWaiting]);
 
   // Invalid session ID state
   if (!isValidId) {
@@ -792,27 +826,9 @@ function SessionDetailPage() {
                           Connected
                         </Badge>
                       )}
-                      {isWaiting && (() => {
-                        const readyAt = player.readyAt;
-                        const isPlayerReady = readyAt != null && now - readyAt < READY_EXPIRY_MS;
-                        const secondsAgo = readyAt != null ? Math.floor((now - readyAt) / 1000) : null;
-                        return isPlayerReady ? (
-                          <Badge
-                            variant="outline"
-                            className="gap-1 bg-green-500/20 text-green-600 border-green-500/30"
-                          >
-                            <CheckCircle2 className="w-3 h-3" />
-                            Ready ({secondsAgo}s ago)
-                          </Badge>
-                        ) : (
-                          <Badge
-                            variant="outline"
-                            className="bg-muted text-muted-foreground border-border"
-                          >
-                            Not ready
-                          </Badge>
-                        );
-                      })()}
+                      {isWaiting && (
+                        <PlayerReadyBadge readyAt={player.readyAt} />
+                      )}
                       {isLiveOrPaused && player.hasVotedThisRound && (
                         <Badge
                           variant="outline"

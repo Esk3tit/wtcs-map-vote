@@ -267,7 +267,9 @@ export const playerReady = internalMutation({
       };
     }
 
-    // Require token to be activated first
+    // Activation and IP-match checks are intentionally post-delegation:
+    // lookupAndValidatePlayer handles token/expiry/session checks but not
+    // these caller-specific guards (cf. playerHeartbeat which checks inline).
     if (!player.ipAddress) {
       return {
         status: "error" as const,
@@ -275,7 +277,6 @@ export const playerReady = internalMutation({
       };
     }
 
-    // Verify IP matches
     if (player.ipAddress !== ipAddress) {
       return { status: "error" as const, error: "IP_MISMATCH" as const };
     }

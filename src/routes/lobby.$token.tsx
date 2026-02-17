@@ -9,18 +9,13 @@ import { ReadyCountdown } from "@/components/session/ReadyCountdown";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
 import { SITE_URL } from "@/lib/convexHttp";
 import { READY_EXPIRY_MS } from "../../convex/lib/constants";
+import { toast } from "sonner";
 import { Lock, Loader2, Clock, CheckCircle2 } from "lucide-react";
 import { useEffect, useState, useCallback } from "react";
 
 export const Route = createFileRoute("/lobby/$token")({
   component: PlayerLobbyPage,
 });
-
-/** Check if a readyAt timestamp is still within the expiry window. */
-function isReady(readyAt: number | undefined): boolean {
-  if (!readyAt) return false;
-  return Date.now() - readyAt < READY_EXPIRY_MS;
-}
 
 function PlayerLobbyPage() {
   const { token } = Route.useParams();
@@ -35,19 +30,31 @@ function PlayerLobbyPage() {
     auth.status === "authenticated" ? { token } : "skip"
   );
 
+  // Tick every second when WAITING so ready badges stay current
+  const isWaiting = data?.status === "valid" && data.session.status === "WAITING";
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!isWaiting) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [isWaiting]);
+
   // Ready button state
   const [readyLoading, setReadyLoading] = useState(false);
 
   const handleReady = useCallback(async () => {
     setReadyLoading(true);
     try {
-      await fetch(`${SITE_URL}/api/player/ready`, {
+      const res = await fetch(`${SITE_URL}/api/player/ready`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
       });
+      if (!res.ok) {
+        toast.error("Failed to ready up. Please try again.");
+      }
     } catch {
-      // Non-fatal — reactive query will show current state
+      toast.error("Network error. Please try again.");
     } finally {
       setReadyLoading(false);
     }
@@ -103,7 +110,7 @@ function PlayerLobbyPage() {
   }
 
   const { player, session, maps, otherPlayers } = data;
-  const playerIsReady = isReady(player.readyAt);
+  const playerIsReady = player.readyAt != null && now - player.readyAt < READY_EXPIRY_MS;
   const showReadyButton = session.status === "WAITING";
 
   // Get waiting message based on status
@@ -233,7 +240,7 @@ function PlayerLobbyPage() {
           <Card className="p-4 bg-card/50">
             <div className="space-y-3">
               {otherPlayers.map((otherPlayer) => {
-                const otherIsReady = isReady(otherPlayer.readyAt);
+                const otherIsReady = otherPlayer.readyAt != null && now - otherPlayer.readyAt < READY_EXPIRY_MS;
                 return (
                   <div
                     key={otherPlayer._id}
