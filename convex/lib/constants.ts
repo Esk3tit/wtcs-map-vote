@@ -82,6 +82,16 @@ export const EDITABLE_STATUSES: ReadonlySet<SessionStatus> = new Set([
   "WAITING",
 ]);
 
+/** Statuses in which the map pool can be set (DRAFT only). */
+export const DRAFT_ONLY_STATUSES: ReadonlySet<SessionStatus> = new Set([
+  "DRAFT",
+]);
+
+/** Statuses from which a session can be reset (COMPLETE only). */
+export const RESETTABLE_STATUSES: ReadonlySet<SessionStatus> = new Set([
+  "COMPLETE",
+]);
+
 /**
  * Valid session state transitions.
  * Maps each status to the set of statuses it can transition to.

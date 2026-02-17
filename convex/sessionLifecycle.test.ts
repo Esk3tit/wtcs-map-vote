@@ -3,6 +3,7 @@
  *
  * Comprehensive tests for the centralized session state transition system:
  * - validateTransition: valid and invalid transitions
+ * - requireSessionStatus: allowed-state guard for non-transition checks
  * - guardFinalize: player count and map count preconditions
  * - guardStart: player connectivity preconditions
  * - transitionSession: atomic validate + patch + audit

@@ -30,7 +30,9 @@ import {
   getActivePlayerIndex,
   sortPlayersByJoinOrder,
   DELETABLE_STATUSES,
+  DRAFT_ONLY_STATUSES,
   EDITABLE_STATUSES,
+  RESETTABLE_STATUSES,
 } from "./lib/constants";
 import { validateName, validateRange } from "./lib/validation";
 import {
@@ -752,7 +754,7 @@ export const setSessionMaps = mutation({
     }
 
     // Only allow in DRAFT state
-    requireSessionStatus(session, new Set(["DRAFT"] as const), "set maps");
+    requireSessionStatus(session, DRAFT_ONLY_STATUSES, "set maps");
 
     // Validate map count matches session config
     if (args.mapIds.length !== session.mapPoolSize) {
@@ -1279,7 +1281,7 @@ export const resetSession = mutation({
     if (!session) throw new ConvexError("Session not found");
 
     // Only COMPLETE sessions can be reset
-    requireSessionStatus(session, new Set(["COMPLETE"] as const), "reset session");
+    requireSessionStatus(session, RESETTABLE_STATUSES, "reset session");
 
     // 1. Fetch all related data in parallel
     const [votes, sessionMaps, players] = await Promise.all([
