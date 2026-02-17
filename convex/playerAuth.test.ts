@@ -809,7 +809,7 @@ describe("playerAuth.playerReady", () => {
         });
 
       // Set a recent readyAt (within READY_SKIP_MS threshold)
-      const recentReadyAt = Date.now() - 2_000; // 2 seconds ago
+      const recentReadyAt = Date.now() - Math.floor(READY_SKIP_MS / 2); // halfway through skip window
       await t.run(async (ctx) =>
         ctx.db.patch(playerId, { readyAt: recentReadyAt })
       );

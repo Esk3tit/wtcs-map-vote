@@ -1123,9 +1123,9 @@ export const startSession = mutation({
       .query("sessionPlayers")
       .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
       .collect();
-    for (const player of players) {
-      await ctx.db.patch(player._id, { readyAt: undefined });
-    }
+    await Promise.all(
+      players.map((player) => ctx.db.patch(player._id, { readyAt: undefined }))
+    );
 
     // Schedule timer expiry for first turn/round (WAR-47)
     await scheduleTimerExpiry(
