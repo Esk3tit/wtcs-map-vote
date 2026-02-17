@@ -76,6 +76,12 @@ export const DELETABLE_STATUSES: ReadonlySet<SessionStatus> = new Set([
   "EXPIRED",
 ]);
 
+/** Statuses in which session configuration (name, timer, players, format) can be modified. */
+export const EDITABLE_STATUSES: ReadonlySet<SessionStatus> = new Set([
+  "DRAFT",
+  "WAITING",
+]);
+
 /**
  * Valid session state transitions.
  * Maps each status to the set of statuses it can transition to.

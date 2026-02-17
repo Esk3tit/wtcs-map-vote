@@ -115,6 +115,31 @@ export async function guardStart(
   }
 }
 
+/**
+ * Assert that a session is in one of the allowed statuses.
+ * Throws ConvexError with a descriptive message if not.
+ *
+ * Use for "allowed state" checks (non-transition guards), e.g. "can only
+ * assign players in DRAFT or WAITING". For actual state transitions, use
+ * validateTransition() or transitionSession() instead.
+ *
+ * @param session - Current session document
+ * @param allowed - Set of allowed statuses
+ * @param action - Human-readable action name for error message
+ */
+export function requireSessionStatus(
+  session: Doc<"sessions">,
+  allowed: ReadonlySet<SessionStatus>,
+  action: string
+): void {
+  if (!allowed.has(session.status)) {
+    const allowedList = [...allowed].join(" or ");
+    throw new ConvexError(
+      `Cannot ${action} in ${session.status} state. Only ${allowedList} sessions allowed.`
+    );
+  }
+}
+
 // ============================================================================
 // Types
 // ============================================================================

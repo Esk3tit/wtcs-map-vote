@@ -30,6 +30,7 @@ import {
   getActivePlayerIndex,
   sortPlayersByJoinOrder,
   DELETABLE_STATUSES,
+  EDITABLE_STATUSES,
 } from "./lib/constants";
 import { validateName, validateRange } from "./lib/validation";
 import {
@@ -42,6 +43,7 @@ import {
   completeSession,
   guardFinalize,
   guardStart,
+  requireSessionStatus,
   transitionSession,
   validateTransition,
 } from "./lib/sessionLifecycle";
@@ -545,11 +547,7 @@ export const updateSession = mutation({
     }
 
     // Only allow updates in DRAFT or WAITING states
-    if (session.status !== "DRAFT" && session.status !== "WAITING") {
-      throw new ConvexError(
-        `Cannot update session in ${session.status} state. Only DRAFT and WAITING sessions can be modified.`
-      );
-    }
+    requireSessionStatus(session, EDITABLE_STATUSES, "update session");
 
     const updates: Partial<Doc<"sessions">> = {
       updatedAt: Date.now(),
@@ -667,11 +665,7 @@ export const assignPlayer = mutation({
     }
 
     // Only allow in DRAFT or WAITING states
-    if (session.status !== "DRAFT" && session.status !== "WAITING") {
-      throw new ConvexError(
-        `Cannot assign players in ${session.status} state. Only DRAFT and WAITING sessions allow player assignment.`
-      );
-    }
+    requireSessionStatus(session, EDITABLE_STATUSES, "assign players");
 
     // Check player count limit
     const existingPlayers = await ctx.db
@@ -758,11 +752,7 @@ export const setSessionMaps = mutation({
     }
 
     // Only allow in DRAFT state
-    if (session.status !== "DRAFT") {
-      throw new ConvexError(
-        `Cannot set maps in ${session.status} state. Maps can only be set while session is in DRAFT.`
-      );
-    }
+    requireSessionStatus(session, new Set(["DRAFT"] as const), "set maps");
 
     // Validate map count matches session config
     if (args.mapIds.length !== session.mapPoolSize) {
@@ -1289,11 +1279,7 @@ export const resetSession = mutation({
     if (!session) throw new ConvexError("Session not found");
 
     // Only COMPLETE sessions can be reset
-    if (session.status !== "COMPLETE") {
-      throw new ConvexError(
-        `Cannot reset session in ${session.status} state. Only COMPLETE sessions can be reset.`
-      );
-    }
+    requireSessionStatus(session, new Set(["COMPLETE"] as const), "reset session");
 
     // 1. Fetch all related data in parallel
     const [votes, sessionMaps, players] = await Promise.all([

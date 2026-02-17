@@ -21,10 +21,12 @@ import type { SessionStatus } from "./lib/constants";
 import { VALID_TRANSITIONS, SESSION_RESET_PATCHES } from "./lib/constants";
 import {
   validateTransition,
+  requireSessionStatus,
   guardFinalize,
   guardStart,
   transitionSession,
 } from "./lib/sessionLifecycle";
+import { EDITABLE_STATUSES } from "./lib/constants";
 
 // ============================================================================
 // Test Helpers
@@ -734,5 +736,80 @@ describe("transitionSession", () => {
         });
       }
     );
+  });
+});
+
+// ============================================================================
+// requireSessionStatus
+// ============================================================================
+
+describe("requireSessionStatus", () => {
+  /** Minimal session stub for pure-function tests. */
+  const stubSession = (status: SessionStatus) =>
+    ({ status }) as import("./_generated/dataModel").Doc<"sessions">;
+
+  describe("passes for allowed statuses", () => {
+    it("passes when status is in the allowed set", () => {
+      expect(() =>
+        requireSessionStatus(stubSession("DRAFT"), EDITABLE_STATUSES, "update session")
+      ).not.toThrow();
+    });
+
+    it("passes for second member of set", () => {
+      expect(() =>
+        requireSessionStatus(stubSession("WAITING"), EDITABLE_STATUSES, "assign players")
+      ).not.toThrow();
+    });
+
+    it("passes for single-status set", () => {
+      const completeOnly: ReadonlySet<SessionStatus> = new Set(["COMPLETE"]);
+      expect(() =>
+        requireSessionStatus(stubSession("COMPLETE"), completeOnly, "reset session")
+      ).not.toThrow();
+    });
+  });
+
+  describe("throws for disallowed statuses", () => {
+    it.each([
+      ["IN_PROGRESS", "update session"],
+      ["PAUSED", "assign players"],
+      ["COMPLETE", "update session"],
+      ["EXPIRED", "set maps"],
+    ] as const)(
+      "throws for %s when calling %s",
+      (status, action) => {
+        expect(() =>
+          requireSessionStatus(stubSession(status), EDITABLE_STATUSES, action)
+        ).toThrow(/Cannot .+ in .+ state/);
+      }
+    );
+
+    it("throws for DRAFT when only COMPLETE is allowed", () => {
+      const completeOnly: ReadonlySet<SessionStatus> = new Set(["COMPLETE"]);
+      expect(() =>
+        requireSessionStatus(stubSession("DRAFT"), completeOnly, "reset session")
+      ).toThrow(/Cannot reset session in DRAFT state/);
+    });
+  });
+
+  describe("error messages", () => {
+    it("includes the action name and current status", () => {
+      expect(() =>
+        requireSessionStatus(stubSession("IN_PROGRESS"), EDITABLE_STATUSES, "update session")
+      ).toThrow(/Cannot update session in IN_PROGRESS state/);
+    });
+
+    it("lists allowed statuses", () => {
+      expect(() =>
+        requireSessionStatus(stubSession("EXPIRED"), EDITABLE_STATUSES, "assign players")
+      ).toThrow(/Only DRAFT or WAITING sessions allowed/);
+    });
+
+    it("lists single allowed status", () => {
+      const draftOnly: ReadonlySet<SessionStatus> = new Set(["DRAFT"]);
+      expect(() =>
+        requireSessionStatus(stubSession("WAITING"), draftOnly, "set maps")
+      ).toThrow(/Only DRAFT sessions allowed/);
+    });
   });
 });
