@@ -93,6 +93,7 @@ export default defineSchema({
     isConnected: v.boolean(),
     lastHeartbeat: v.optional(v.number()),
     hasVotedThisRound: v.boolean(),
+    readyAt: v.optional(v.number()),
   })
     .index("by_sessionId", ["sessionId"])
     .index("by_token", ["token"])

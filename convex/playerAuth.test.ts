@@ -13,7 +13,7 @@ import {
 } from "./test.factories";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { HEARTBEAT_SKIP_MS } from "./lib/constants";
+import { HEARTBEAT_SKIP_MS, READY_EXPIRY_MS, READY_SKIP_MS } from "./lib/constants";
 
 // ============================================================================
 // Test Helpers
@@ -747,6 +747,221 @@ describe("playerAuth.playerHeartbeat", () => {
       // Should have reconnected (isConnected should be true)
       const player = await t.run(async (ctx) => ctx.db.get(playerId));
       expect(player?.isConnected).toBe(true);
+    });
+  });
+});
+
+// ============================================================================
+// playerReady Tests
+// ============================================================================
+
+describe("playerAuth.playerReady", () => {
+  describe("success cases", () => {
+    it("sets readyAt on activated player in WAITING session", async () => {
+      const t = createTestContext();
+      const { token, playerId } =
+        await createSessionWithActivatedPlayer(t, "10.0.0.1", {
+          sessionStatus: "WAITING",
+        });
+
+      const before = Date.now();
+      const result = await t.mutation(internal.playerAuth.playerReady, {
+        token,
+        ipAddress: "10.0.0.1",
+      });
+
+      expect(result).toEqual({ status: "ok" });
+
+      const player = await t.run(async (ctx) => ctx.db.get(playerId));
+      expect(player?.readyAt).toBeGreaterThanOrEqual(before);
+    });
+
+    it("can re-ready after expiry (overwrites readyAt)", async () => {
+      const t = createTestContext();
+      const { token, playerId } =
+        await createSessionWithActivatedPlayer(t, "10.0.0.1", {
+          sessionStatus: "WAITING",
+        });
+
+      // Set an expired readyAt
+      const expiredTime = Date.now() - READY_EXPIRY_MS - 1000;
+      await t.run(async (ctx) =>
+        ctx.db.patch(playerId, { readyAt: expiredTime })
+      );
+
+      const before = Date.now();
+      const result = await t.mutation(internal.playerAuth.playerReady, {
+        token,
+        ipAddress: "10.0.0.1",
+      });
+
+      expect(result).toEqual({ status: "ok" });
+
+      const player = await t.run(async (ctx) => ctx.db.get(playerId));
+      expect(player?.readyAt).toBeGreaterThanOrEqual(before);
+    });
+
+    it("skips write if readyAt is still fresh", async () => {
+      const t = createTestContext();
+      const { token, playerId } =
+        await createSessionWithActivatedPlayer(t, "10.0.0.1", {
+          sessionStatus: "WAITING",
+        });
+
+      // Set a recent readyAt (within READY_SKIP_MS threshold)
+      const recentReadyAt = Date.now() - Math.floor(READY_SKIP_MS / 2); // halfway through skip window
+      await t.run(async (ctx) =>
+        ctx.db.patch(playerId, { readyAt: recentReadyAt })
+      );
+
+      const result = await t.mutation(internal.playerAuth.playerReady, {
+        token,
+        ipAddress: "10.0.0.1",
+      });
+
+      expect(result).toEqual({ status: "ok" });
+
+      // readyAt should remain unchanged (skip write)
+      const player = await t.run(async (ctx) => ctx.db.get(playerId));
+      expect(player?.readyAt).toBe(recentReadyAt);
+    });
+
+    it("updates readyAt when beyond READY_SKIP_MS threshold", async () => {
+      const t = createTestContext();
+      const { token, playerId } =
+        await createSessionWithActivatedPlayer(t, "10.0.0.1", {
+          sessionStatus: "WAITING",
+        });
+
+      // Set a stale readyAt (beyond READY_SKIP_MS threshold)
+      const staleReadyAt = Date.now() - READY_SKIP_MS - 1000;
+      await t.run(async (ctx) =>
+        ctx.db.patch(playerId, { readyAt: staleReadyAt })
+      );
+
+      const before = Date.now();
+      const result = await t.mutation(internal.playerAuth.playerReady, {
+        token,
+        ipAddress: "10.0.0.1",
+      });
+
+      expect(result).toEqual({ status: "ok" });
+
+      // readyAt should be updated
+      const player = await t.run(async (ctx) => ctx.db.get(playerId));
+      expect(player?.readyAt).toBeGreaterThanOrEqual(before);
+    });
+  });
+
+  describe("session state guard", () => {
+    it.each([
+      "DRAFT" as const,
+      "IN_PROGRESS" as const,
+      "PAUSED" as const,
+      "COMPLETE" as const,
+      "EXPIRED" as const,
+    ])("rejects playerReady in %s state", async (sessionStatus) => {
+      const t = createTestContext();
+      const { token } =
+        await createSessionWithActivatedPlayer(t, "10.0.0.1", {
+          sessionStatus,
+        });
+
+      const result = await t.mutation(internal.playerAuth.playerReady, {
+        token,
+        ipAddress: "10.0.0.1",
+      });
+
+      expect(result).toEqual({
+        status: "error",
+        error: "SESSION_NOT_WAITING",
+      });
+    });
+  });
+
+  describe("error cases", () => {
+    it("returns INVALID_TOKEN for non-existent token", async () => {
+      const t = createTestContext();
+
+      const result = await t.mutation(internal.playerAuth.playerReady, {
+        token: "nonexistent-token",
+        ipAddress: "10.0.0.1",
+      });
+
+      expect(result).toEqual({
+        status: "error",
+        error: "INVALID_TOKEN",
+      });
+    });
+
+    it("returns TOKEN_EXPIRED for expired token", async () => {
+      const t = createTestContext();
+      const { token } = await createSessionWithUnactivatedPlayer(t, {
+        tokenExpiresAt: Date.now() - 1000,
+      });
+
+      const result = await t.mutation(internal.playerAuth.playerReady, {
+        token,
+        ipAddress: "10.0.0.1",
+      });
+
+      expect(result).toEqual({
+        status: "error",
+        error: "TOKEN_EXPIRED",
+      });
+    });
+
+    it("returns TOKEN_NOT_ACTIVATED for unactivated token", async () => {
+      const t = createTestContext();
+      const { token } = await createSessionWithUnactivatedPlayer(t, {
+        sessionStatus: "WAITING",
+      });
+
+      const result = await t.mutation(internal.playerAuth.playerReady, {
+        token,
+        ipAddress: "10.0.0.1",
+      });
+
+      expect(result).toEqual({
+        status: "error",
+        error: "TOKEN_NOT_ACTIVATED",
+      });
+    });
+
+    it("returns IP_MISMATCH when IP differs", async () => {
+      const t = createTestContext();
+      const { token } =
+        await createSessionWithActivatedPlayer(t, "10.0.0.1", {
+          sessionStatus: "WAITING",
+        });
+
+      const result = await t.mutation(internal.playerAuth.playerReady, {
+        token,
+        ipAddress: "10.0.0.99",
+      });
+
+      expect(result).toEqual({
+        status: "error",
+        error: "IP_MISMATCH",
+      });
+    });
+
+    it("returns INVALID_IP for empty IP address", async () => {
+      const t = createTestContext();
+      const { token } =
+        await createSessionWithActivatedPlayer(t, "10.0.0.1", {
+          sessionStatus: "WAITING",
+        });
+
+      const result = await t.mutation(internal.playerAuth.playerReady, {
+        token,
+        ipAddress: "",
+      });
+
+      expect(result).toEqual({
+        status: "error",
+        error: "INVALID_IP",
+      });
     });
   });
 });

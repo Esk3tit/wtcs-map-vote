@@ -5,8 +5,10 @@ import type { Id } from "../../../convex/_generated/dataModel";
 import type { ActorType } from "../../../convex/lib/types";
 import {
   getActivePlayerIndex,
+  READY_EXPIRY_MS,
   sortPlayersByJoinOrder,
 } from "../../../convex/lib/constants";
+import { isReadyActive } from "@/lib/ready";
 import {
   Card,
   CardContent,
@@ -150,6 +152,52 @@ const formatPlayerRole = (role: string, format: string): string => {
   const num = role.replace("PLAYER_", "");
   return `Player ${num}`;
 };
+
+// ============================================================================
+// Player Ready Badge (self-contained timer to avoid full-page re-renders)
+// ============================================================================
+
+/**
+ * Displays a ready/not-ready badge for a player in the WAITING state.
+ * Manages its own 1-second timer so the parent component does not re-render.
+ */
+function PlayerReadyBadge({ readyAt }: { readyAt?: number }) {
+  const [now, setNow] = useState(() => Date.now());
+
+  useEffect(() => {
+    if (readyAt == null) return;
+    const timer = setInterval(() => {
+      const next = Date.now();
+      setNow(next);
+      if (next - readyAt >= READY_EXPIRY_MS) clearInterval(timer);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [readyAt]);
+
+  const isPlayerReady = isReadyActive(readyAt, now);
+  const secondsAgo = readyAt != null ? Math.max(0, Math.floor((now - readyAt) / 1000)) : null;
+
+  if (isPlayerReady) {
+    return (
+      <Badge
+        variant="outline"
+        className="gap-1 bg-green-500/20 text-green-600 border-green-500/30"
+      >
+        <CheckCircle2 className="w-3 h-3" />
+        Ready ({secondsAgo}s ago)
+      </Badge>
+    );
+  }
+
+  return (
+    <Badge
+      variant="outline"
+      className="bg-muted text-muted-foreground border-border"
+    >
+      Not ready
+    </Badge>
+  );
+}
 
 // ============================================================================
 // Main Component
@@ -315,6 +363,8 @@ function SessionDetailPage() {
     () => (session?.maps ?? []).filter((m) => m.state === "AVAILABLE"),
     [session?.maps]
   );
+
+  const isWaiting = session?.status === "WAITING";
 
   // Invalid session ID state
   if (!isValidId) {
@@ -781,6 +831,9 @@ function SessionDetailPage() {
                           <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
                           Connected
                         </Badge>
+                      )}
+                      {isWaiting && (
+                        <PlayerReadyBadge readyAt={player.readyAt} />
                       )}
                       {isLiveOrPaused && player.hasVotedThisRound && (
                         <Badge

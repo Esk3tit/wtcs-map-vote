@@ -5616,6 +5616,35 @@ describe("sessions.startSession", () => {
       authT.mutation(api.sessions.startSession, { sessionId: deletedId })
     ).rejects.toThrow(/Session not found/);
   });
+
+  it("clears readyAt on all players", async () => {
+    const { t, authT, sessionId } = await createStartableSession();
+
+    // Set readyAt on all players before starting
+    await t.run(async (ctx) => {
+      const players = await ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+        .collect();
+      for (const player of players) {
+        await ctx.db.patch(player._id, { readyAt: Date.now() });
+      }
+    });
+
+    await authT.mutation(api.sessions.startSession, { sessionId });
+
+    const players = await t.run(async (ctx) =>
+      ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+        .collect()
+    );
+
+    expect(players).toHaveLength(2);
+    for (const player of players) {
+      expect(player.readyAt).toBeUndefined();
+    }
+  });
 });
 
 // ============================================================================
@@ -6369,6 +6398,35 @@ describe("sessions.resetSession", () => {
     expect(players).toHaveLength(2);
     for (const player of players) {
       expect(player.hasVotedThisRound).toBe(false);
+    }
+  });
+
+  it("clears readyAt on all players", async () => {
+    const { t, authT, sessionId } = await createCompletedSession();
+
+    // Set readyAt on all players before resetting
+    await t.run(async (ctx) => {
+      const players = await ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+        .collect();
+      for (const player of players) {
+        await ctx.db.patch(player._id, { readyAt: Date.now() });
+      }
+    });
+
+    await authT.mutation(api.sessions.resetSession, { sessionId });
+
+    const players = await t.run(async (ctx) =>
+      ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+        .collect()
+    );
+
+    expect(players).toHaveLength(2);
+    for (const player of players) {
+      expect(player.readyAt).toBeUndefined();
     }
   });
 

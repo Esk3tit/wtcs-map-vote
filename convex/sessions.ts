@@ -75,6 +75,7 @@ const adminPlayerObjectValidator = v.object({
   isConnected: v.boolean(),
   lastHeartbeat: v.optional(v.number()),
   hasVotedThisRound: v.boolean(),
+  readyAt: v.optional(v.number()),
 });
 
 /**
@@ -147,6 +148,7 @@ function toSanitizedPlayer(player: Doc<"sessionPlayers">) {
     teamName: player.teamName,
     isConnected: player.isConnected,
     hasVotedThisRound: player.hasVotedThisRound,
+    readyAt: player.readyAt,
   };
 }
 
@@ -1116,6 +1118,15 @@ export const startSession = mutation({
       },
     });
 
+    // Clear readyAt on all players for data hygiene (WAR-51)
+    const players = await ctx.db
+      .query("sessionPlayers")
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+      .collect();
+    await Promise.all(
+      players.map((player) => ctx.db.patch(player._id, { readyAt: undefined }))
+    );
+
     // Schedule timer expiry for first turn/round (WAR-47)
     await scheduleTimerExpiry(
       ctx,
@@ -1319,6 +1330,7 @@ export const resetSession = mutation({
       ...players.map((p) =>
         ctx.db.patch(p._id, {
           hasVotedThisRound: false,
+          readyAt: undefined,
           tokenExpiresAt: now + TOKEN_EXPIRY_MS,
         })
       ),
@@ -1525,6 +1537,7 @@ const sanitizedPlayerValidator = v.object({
   teamName: v.string(),
   isConnected: v.boolean(),
   hasVotedThisRound: v.boolean(),
+  readyAt: v.optional(v.number()),
 });
 
 /**
