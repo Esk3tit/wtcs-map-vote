@@ -1372,7 +1372,7 @@ describe("sessions.deleteSession", () => {
     });
 
     it("deletes WAITING session with cascade", async () => {
-      const { t, authT, sessionId, playerIds, mapIds } =
+      const { t, authT, sessionId, playerIds, mapIds, voteIds } =
         await createAuthenticatedFullSession("WAITING");
 
       const result = await authT.mutation(api.sessions.deleteSession, { sessionId });
@@ -1381,15 +1381,14 @@ describe("sessions.deleteSession", () => {
       const session = await t.run(async (ctx) => ctx.db.get(sessionId));
       expect(session).toBeNull();
 
-      const players = await t.run(async (ctx) =>
-        Promise.all(playerIds.map((id) => ctx.db.get(id)))
+      const allRelated = await t.run(async (ctx) =>
+        Promise.all([
+          ...playerIds.map((id) => ctx.db.get(id)),
+          ...mapIds.map((id) => ctx.db.get(id)),
+          ...voteIds.map((id) => ctx.db.get(id)),
+        ])
       );
-      expect(players.every((p) => p === null)).toBe(true);
-
-      const maps = await t.run(async (ctx) =>
-        Promise.all(mapIds.map((id) => ctx.db.get(id)))
-      );
-      expect(maps.every((m) => m === null)).toBe(true);
+      expect(allRelated.every((r) => r === null)).toBe(true);
     });
 
     it("deletes PAUSED session with cascade", async () => {
