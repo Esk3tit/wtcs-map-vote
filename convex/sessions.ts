@@ -599,7 +599,7 @@ export const deleteSession = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    const admin = await requireAdmin(ctx);
 
     const session = await ctx.db.get(args.sessionId);
     if (!session) {
@@ -609,7 +609,7 @@ export const deleteSession = mutation({
     // Block deletion of active sessions — must pause or end first
     if (session.status === "IN_PROGRESS") {
       throw new ConvexError(
-        "Cannot delete an active session. Pause or end the session first"
+        "Cannot delete an active session. Pause or end the session first."
       );
     }
 
@@ -646,6 +646,8 @@ export const deleteSession = mutation({
       sessionId: args.sessionId,
       action: "SESSION_DELETED",
       actorType: "ADMIN",
+      actorId: admin._id,
+      details: { reason: `Deleted from ${session.status} state` },
     });
 
     return { success: true };

@@ -1462,8 +1462,8 @@ describe("sessions.deleteSession", () => {
   });
 
   describe("audit logging", () => {
-    it("creates SESSION_DELETED audit log", async () => {
-      const { t, authT, sessionId } = await createAuthenticatedSessionInStatus("DRAFT");
+    it("creates SESSION_DELETED audit log with actorId and reason", async () => {
+      const { t, authT, sessionId } = await createAuthenticatedSessionInStatus("WAITING");
 
       await authT.mutation(api.sessions.deleteSession, { sessionId });
 
@@ -1477,6 +1477,8 @@ describe("sessions.deleteSession", () => {
       const deleteLog = logs.find((l) => l.action === "SESSION_DELETED");
       expect(deleteLog).toBeDefined();
       expect(deleteLog?.actorType).toBe("ADMIN");
+      expect(deleteLog?.actorId).toBeDefined();
+      expect(deleteLog?.details?.reason).toBe("Deleted from WAITING state");
     });
   });
 });
