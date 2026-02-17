@@ -91,8 +91,8 @@ export function CountdownTimer({
       role="timer"
       aria-label={
         mins > 0
-          ? `${mins} minute${mins !== 1 ? "s" : ""} ${remaining % 60} seconds remaining`
-          : `${remaining} seconds remaining`
+          ? `${mins} minute${mins !== 1 ? "s" : ""} ${remaining % 60} second${remaining % 60 !== 1 ? "s" : ""} remaining`
+          : `${remaining} second${remaining !== 1 ? "s" : ""} remaining`
       }
     >
       {mins}:{secs}
