@@ -1,6 +1,14 @@
+/**
+ * Cascade Delete
+ *
+ * Helpers for atomically deleting a session and all related records
+ * (players, maps, votes, audit logs).
+ */
+
 import { internalMutation } from "../_generated/server";
 import type { MutationCtx } from "../_generated/server";
 import type { Id } from "../_generated/dataModel";
+
 import { v, ConvexError } from "convex/values";
 
 // ============================================================================
@@ -52,6 +60,10 @@ export async function cascadeDeleteSessionRecords(
  *
  * Convex mutations are atomic — deletion order doesn't affect referential
  * integrity since all changes commit (or roll back) together.
+ *
+ * @param sessionId - The session to delete
+ * @param preserveAuditLogs - If true, keep audit logs for historical record
+ * @returns Counts of deleted records by type
  */
 export const deleteSessionWithCascade = internalMutation({
   args: {
