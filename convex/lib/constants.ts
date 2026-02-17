@@ -62,6 +62,15 @@ export const ACTIVE_SESSION_STATUSES: Set<SessionStatus> = new Set([
   "PAUSED",
 ]);
 
+/** Statuses from which a session may be deleted. */
+export const DELETABLE_STATUSES: ReadonlySet<SessionStatus> = new Set([
+  "DRAFT",
+  "WAITING",
+  "PAUSED",
+  "COMPLETE",
+  "EXPIRED",
+]);
+
 /**
  * Valid session state transitions.
  * Maps each status to the set of statuses it can transition to.

@@ -1,5 +1,51 @@
 import { internalMutation } from "../_generated/server";
+import type { MutationCtx } from "../_generated/server";
+import type { Id } from "../_generated/dataModel";
 import { v, ConvexError } from "convex/values";
+
+// ============================================================================
+// Shared Helper
+// ============================================================================
+
+/**
+ * Delete all records related to a session (players, maps, votes).
+ * Does NOT delete the session itself or audit logs.
+ * Call this from within a mutation for transactional atomicity.
+ *
+ * @param ctx - Mutation context
+ * @param sessionId - The session whose related records should be deleted
+ */
+export async function cascadeDeleteSessionRecords(
+  ctx: MutationCtx,
+  sessionId: Id<"sessions">
+): Promise<{ players: number; maps: number; votes: number }> {
+  const [players, maps, votes] = await Promise.all([
+    ctx.db
+      .query("sessionPlayers")
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+      .collect(),
+    ctx.db
+      .query("sessionMaps")
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+      .collect(),
+    ctx.db
+      .query("votes")
+      .withIndex("by_sessionId_and_round", (q) => q.eq("sessionId", sessionId))
+      .collect(),
+  ]);
+
+  await Promise.all([
+    ...players.map((p) => ctx.db.delete(p._id)),
+    ...maps.map((m) => ctx.db.delete(m._id)),
+    ...votes.map((v) => ctx.db.delete(v._id)),
+  ]);
+
+  return { players: players.length, maps: maps.length, votes: votes.length };
+}
+
+// ============================================================================
+// Internal Mutation
+// ============================================================================
 
 /**
  * Deletes a session and all related records (cascade delete).
@@ -36,23 +82,13 @@ export const deleteSessionWithCascade = internalMutation({
       throw new ConvexError(`Session ${sessionId} not found`);
     }
 
-    // Collect all related records first (before any deletions)
-    // Using by_sessionId_and_round compound index - querying by first field works
-    const votes = await ctx.db
-      .query("votes")
-      .withIndex("by_sessionId_and_round", (q) => q.eq("sessionId", sessionId))
-      .collect();
+    // Delete players, maps, and votes via shared helper
+    const { players, maps, votes } = await cascadeDeleteSessionRecords(
+      ctx,
+      sessionId
+    );
 
-    const players = await ctx.db
-      .query("sessionPlayers")
-      .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
-      .collect();
-
-    const maps = await ctx.db
-      .query("sessionMaps")
-      .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
-      .collect();
-
+    // Handle audit logs separately (controlled by preserveAuditLogs flag)
     const logs = preserveAuditLogs
       ? []
       : await ctx.db
@@ -60,21 +96,18 @@ export const deleteSessionWithCascade = internalMutation({
           .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
           .collect();
 
-    // Delete in order: votes -> players -> maps -> logs -> session
-    // (children before parents to maintain referential integrity)
-    await Promise.all(votes.map((vote) => ctx.db.delete(vote._id)));
-    await Promise.all(players.map((player) => ctx.db.delete(player._id)));
-    await Promise.all(maps.map((map) => ctx.db.delete(map._id)));
     if (!preserveAuditLogs) {
       await Promise.all(logs.map((log) => ctx.db.delete(log._id)));
     }
+
+    // Delete the session itself
     await ctx.db.delete(sessionId);
 
     return {
       deleted: {
-        votes: votes.length,
-        players: players.length,
-        maps: maps.length,
+        votes,
+        players,
+        maps,
         auditLogs: logs.length,
         session: 1,
       },
