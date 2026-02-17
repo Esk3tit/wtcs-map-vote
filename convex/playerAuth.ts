@@ -10,7 +10,7 @@ import { internalMutation } from "./_generated/server";
 
 import { v } from "convex/values";
 
-import { ACTIVE_SESSION_STATUSES, HEARTBEAT_SKIP_MS } from "./lib/constants";
+import { ACTIVE_SESSION_STATUSES, HEARTBEAT_SKIP_MS, READY_SKIP_MS } from "./lib/constants";
 import { lookupAndValidatePlayer } from "./lib/auth";
 
 import { logAction } from "./audit";
@@ -281,8 +281,14 @@ export const playerReady = internalMutation({
       return { status: "error" as const, error: "IP_MISMATCH" as const };
     }
 
+    // Skip write if readyAt is still fresh (reduces reactive query churn)
+    const now = Date.now();
+    if (player.readyAt && now - player.readyAt < READY_SKIP_MS) {
+      return { status: "ok" as const };
+    }
+
     // Set readyAt timestamp
-    await ctx.db.patch(player._id, { readyAt: Date.now() });
+    await ctx.db.patch(player._id, { readyAt: now });
 
     return { status: "ok" as const };
   },

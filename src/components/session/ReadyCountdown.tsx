@@ -1,4 +1,3 @@
-import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
 
 const RADIUS = 28;
@@ -9,23 +8,20 @@ const CIRCUMFERENCE = 2 * Math.PI * RADIUS;
 /**
  * Circular countdown ring that depletes over `durationMs`.
  * Shows remaining seconds inside a hollow SVG circle.
+ *
+ * Receives `now` from the parent to avoid running a duplicate timer.
  */
 export function ReadyCountdown({
   readyAt,
   durationMs,
+  now,
   className,
 }: {
   readyAt: number;
   durationMs: number;
+  now: number;
   className?: string;
 }) {
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, []);
-
   const elapsed = now - readyAt;
   const remaining = Math.max(0, durationMs - elapsed);
   const remainingSeconds = Math.ceil(remaining / 1000);

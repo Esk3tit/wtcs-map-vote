@@ -1118,6 +1118,15 @@ export const startSession = mutation({
       },
     });
 
+    // Clear readyAt on all players for data hygiene (WAR-51)
+    const players = await ctx.db
+      .query("sessionPlayers")
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+      .collect();
+    for (const player of players) {
+      await ctx.db.patch(player._id, { readyAt: undefined });
+    }
+
     // Schedule timer expiry for first turn/round (WAR-47)
     await scheduleTimerExpiry(
       ctx,

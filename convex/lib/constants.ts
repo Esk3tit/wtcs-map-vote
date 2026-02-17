@@ -49,6 +49,8 @@ export function sortPlayersByJoinOrder<T extends { _creationTime: number; _id: s
 
 // Player ready indicator
 export const READY_EXPIRY_MS = 60_000; // 60 seconds
+/** Skip redundant ready writes within this window (5 seconds). */
+export const READY_SKIP_MS = 5_000;
 
 // Player heartbeat constants
 export const HEARTBEAT_SKIP_MS = 15_000; // Skip DB write if heartbeat is still fresh

@@ -6,8 +6,8 @@ import type { ActorType } from "../../../convex/lib/types";
 import {
   getActivePlayerIndex,
   sortPlayersByJoinOrder,
-  READY_EXPIRY_MS,
 } from "../../../convex/lib/constants";
+import { isReadyActive } from "@/lib/ready";
 import {
   Card,
   CardContent,
@@ -164,11 +164,12 @@ function PlayerReadyBadge({ readyAt }: { readyAt?: number }) {
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
+    if (readyAt == null) return;
     const timer = setInterval(() => setNow(Date.now()), 1000);
     return () => clearInterval(timer);
-  }, []);
+  }, [readyAt]);
 
-  const isPlayerReady = readyAt != null && now - readyAt < READY_EXPIRY_MS;
+  const isPlayerReady = isReadyActive(readyAt, now);
   const secondsAgo = readyAt != null ? Math.floor((now - readyAt) / 1000) : null;
 
   if (isPlayerReady) {

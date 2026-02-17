@@ -9,6 +9,7 @@ import { ReadyCountdown } from "@/components/session/ReadyCountdown";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
 import { SITE_URL } from "@/lib/convexHttp";
 import { READY_EXPIRY_MS } from "../../convex/lib/constants";
+import { isReadyActive } from "@/lib/ready";
 import { toast } from "sonner";
 import { Lock, Loader2, Clock, CheckCircle2 } from "lucide-react";
 import { useEffect, useState, useCallback } from "react";
@@ -49,6 +50,7 @@ function PlayerLobbyPage() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ token }),
+        signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) {
         toast.error("Failed to ready up. Please try again.");
@@ -110,7 +112,7 @@ function PlayerLobbyPage() {
   }
 
   const { player, session, maps, otherPlayers } = data;
-  const playerIsReady = player.readyAt != null && now - player.readyAt < READY_EXPIRY_MS;
+  const playerIsReady = isReadyActive(player.readyAt, now);
   const showReadyButton = session.status === "WAITING";
 
   // Get waiting message based on status
@@ -181,6 +183,7 @@ function PlayerLobbyPage() {
                 <ReadyCountdown
                   readyAt={player.readyAt}
                   durationMs={READY_EXPIRY_MS}
+                  now={now}
                 />
                 <p className="text-sm font-medium text-green-500">Ready!</p>
               </>
@@ -240,7 +243,7 @@ function PlayerLobbyPage() {
           <Card className="p-4 bg-card/50">
             <div className="space-y-3">
               {otherPlayers.map((otherPlayer) => {
-                const otherIsReady = otherPlayer.readyAt != null && now - otherPlayer.readyAt < READY_EXPIRY_MS;
+                const otherIsReady = isReadyActive(otherPlayer.readyAt, now);
                 return (
                   <div
                     key={otherPlayer._id}
