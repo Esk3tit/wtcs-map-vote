@@ -1,7 +1,3 @@
-# CLAUDE.md
-
-This file provides guidance to Claude Code (claude.ai/code) when working with this codebase.
-
 ## Project Overview
 
 WTCS Map Vote - A React application for map voting functionality.
@@ -248,6 +244,8 @@ it("creates a map", async () => {
 
 Invoke with `/dev-browser` or use the Skill tool. The skill provides browser automation with persistent page state for navigating, clicking, filling forms, taking screenshots, and testing web apps. Navigate to `http://localhost:5173` (ensure dev server is running).
 
+Use Google Chrome with the dev-browser extension relay to bypass Google OAuth, as Chrome For Testing does not support OAuth authentication.
+
 ### Convex MCP (Backend Testing)
 
 **Always refer to [docs/convex_rules.md](docs/convex_rules.md)** when writing or modifying Convex functions. This contains essential guidelines for function syntax, validators, schemas, and best practices.
@@ -425,3 +423,7 @@ No additional GitHub Actions deploy job needed - Netlify manages both frontend h
 **Always create plans in `docs/plans/`** - this directory is gitignored.
 
 When using `/workflows:plan`, `/superpowers:write-plan`, or similar planning commands, write plan files to `docs/plans/<plan-name>.md`. These are temporary working documents and should not be committed to the repository.
+
+## Agent Usage Guidelines
+
+Do NOT run agents in the background. For example, when running the `/workflows:review` command, execute it in the foreground and wait for completion.

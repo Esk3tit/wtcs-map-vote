@@ -55,11 +55,20 @@ export const HEARTBEAT_TIMEOUT_MS = 60_000; // 60 seconds
 
 // Type-safe active session statuses (validated against schema)
 export type SessionStatus = Doc<"sessions">["status"];
-export const ACTIVE_SESSION_STATUSES: Set<SessionStatus> = new Set([
+export const ACTIVE_SESSION_STATUSES: ReadonlySet<SessionStatus> = new Set([
   "DRAFT",
   "WAITING",
   "IN_PROGRESS",
   "PAUSED",
+]);
+
+/** Statuses from which a session may be deleted. */
+export const DELETABLE_STATUSES: ReadonlySet<SessionStatus> = new Set([
+  "DRAFT",
+  "WAITING",
+  "PAUSED",
+  "COMPLETE",
+  "EXPIRED",
 ]);
 
 /**

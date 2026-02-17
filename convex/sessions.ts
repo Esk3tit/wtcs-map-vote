@@ -29,6 +29,7 @@ import {
   CLONE_NAME_SUFFIX,
   getActivePlayerIndex,
   sortPlayersByJoinOrder,
+  DELETABLE_STATUSES,
 } from "./lib/constants";
 import { validateName, validateRange } from "./lib/validation";
 import {
@@ -47,6 +48,7 @@ import {
 import { pickRandom } from "./lib/random";
 import { generateUniqueToken } from "./lib/tokenGeneration";
 import { scheduleTimerExpiry } from "./lib/timerScheduling";
+import { cascadeDeleteSessionRecords } from "./lib/cascadeDelete";
 
 import { logAction } from "./audit";
 
@@ -533,7 +535,7 @@ export const updateSession = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    const admin = await requireAdmin(ctx);
 
     const session = await ctx.db.get(args.sessionId);
     if (!session) {
@@ -579,6 +581,7 @@ export const updateSession = mutation({
       sessionId: args.sessionId,
       action: "SESSION_UPDATED",
       actorType: "ADMIN",
+      actorId: admin._id,
       details: { reason: `Updated: ${changedFields.join(", ")}` },
     });
 
@@ -588,10 +591,11 @@ export const updateSession = mutation({
 
 /**
  * Delete a session and all related records.
- * Only allowed in DRAFT state. Cascade deletes players and maps,
- * but preserves audit logs for history.
+ * Only allowed from statuses listed in DELETABLE_STATUSES.
+ * Cascade deletes players, maps, and votes. Preserves audit logs for history.
  *
  * @param sessionId - The session to delete
+ * @returns Object with success boolean
  */
 export const deleteSession = mutation({
   args: {
@@ -599,44 +603,22 @@ export const deleteSession = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    const admin = await requireAdmin(ctx);
 
     const session = await ctx.db.get(args.sessionId);
     if (!session) {
       throw new ConvexError("Session not found");
     }
 
-    // Only allow deletion in DRAFT state
-    if (session.status !== "DRAFT") {
+    // Block deletion of non-deletable sessions — must pause or end first
+    if (!DELETABLE_STATUSES.has(session.status)) {
       throw new ConvexError(
-        `Cannot delete session in ${session.status} state. Only DRAFT sessions can be deleted.`
+        `Cannot delete session in ${session.status} state. Pause or end the session first.`
       );
     }
 
-    // Fetch related records (include votes for complete cascade delete)
-    const [players, maps, votes] = await Promise.all([
-      ctx.db
-        .query("sessionPlayers")
-        .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
-        .collect(),
-      ctx.db
-        .query("sessionMaps")
-        .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
-        .collect(),
-      ctx.db
-        .query("votes")
-        .withIndex("by_sessionId_and_round", (q) =>
-          q.eq("sessionId", args.sessionId)
-        )
-        .collect(),
-    ]);
-
-    // Delete related records in parallel
-    await Promise.all([
-      ...players.map((p) => ctx.db.delete(p._id)),
-      ...maps.map((m) => ctx.db.delete(m._id)),
-      ...votes.map((v) => ctx.db.delete(v._id)),
-    ]);
+    // Cascade delete related records (players, maps, votes)
+    await cascadeDeleteSessionRecords(ctx, args.sessionId);
 
     // Delete the session
     await ctx.db.delete(args.sessionId);
@@ -646,6 +628,8 @@ export const deleteSession = mutation({
       sessionId: args.sessionId,
       action: "SESSION_DELETED",
       actorType: "ADMIN",
+      actorId: admin._id,
+      details: { reason: `Deleted from ${session.status} state` },
     });
 
     return { success: true };
@@ -673,7 +657,7 @@ export const assignPlayer = mutation({
     token: v.string(),
   }),
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    const admin = await requireAdmin(ctx);
 
     const session = await ctx.db.get(args.sessionId);
     if (!session) {
@@ -739,6 +723,7 @@ export const assignPlayer = mutation({
       sessionId: args.sessionId,
       action: "PLAYER_ASSIGNED",
       actorType: "ADMIN",
+      actorId: admin._id,
       details: { teamName: args.teamName },
     });
 
@@ -763,7 +748,7 @@ export const setSessionMaps = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    const admin = await requireAdmin(ctx);
 
     const session = await ctx.db.get(args.sessionId);
     if (!session) {
@@ -842,6 +827,7 @@ export const setSessionMaps = mutation({
       sessionId: args.sessionId,
       action: "MAPS_ASSIGNED",
       actorType: "ADMIN",
+      actorId: admin._id,
     });
 
     return { success: true };
