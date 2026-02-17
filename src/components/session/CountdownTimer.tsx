@@ -89,7 +89,11 @@ export function CountdownTimer({
         remaining > 5 && remaining <= 10 && "text-amber-500"
       )}
       role="timer"
-      aria-label={`${remaining} seconds remaining`}
+      aria-label={
+        mins > 0
+          ? `${mins} minute${mins !== 1 ? "s" : ""} ${remaining % 60} seconds remaining`
+          : `${remaining} seconds remaining`
+      }
     >
       {mins}:{secs}
     </span>

@@ -37,7 +37,7 @@ export async function cascadeDeleteSessionRecords(
   await Promise.all([
     ...players.map((p) => ctx.db.delete(p._id)),
     ...maps.map((m) => ctx.db.delete(m._id)),
-    ...votes.map((v) => ctx.db.delete(v._id)),
+    ...votes.map((vote) => ctx.db.delete(vote._id)),
   ]);
 
   return { players: players.length, maps: maps.length, votes: votes.length };
@@ -50,14 +50,8 @@ export async function cascadeDeleteSessionRecords(
 /**
  * Deletes a session and all related records (cascade delete).
  *
- * Order matters for referential integrity:
- * 1. Delete votes (references sessionPlayers and sessionMaps)
- * 2. Delete sessionPlayers
- * 3. Delete sessionMaps
- * 4. Delete auditLogs (unless preserved for historical record)
- * 5. Delete session
- *
- * Convex mutations are atomic - if any step fails, all changes roll back.
+ * Convex mutations are atomic — deletion order doesn't affect referential
+ * integrity since all changes commit (or roll back) together.
  */
 export const deleteSessionWithCascade = internalMutation({
   args: {
