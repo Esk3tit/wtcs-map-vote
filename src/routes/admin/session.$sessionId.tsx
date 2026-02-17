@@ -166,6 +166,7 @@ function PlayerReadyBadge({ readyAt }: { readyAt?: number }) {
 
   useEffect(() => {
     if (readyAt == null) return;
+    setNow(Date.now());
     const timer = setInterval(() => {
       const next = Date.now();
       setNow(next);
