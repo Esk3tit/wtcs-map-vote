@@ -166,7 +166,6 @@ function PlayerReadyBadge({ readyAt }: { readyAt?: number }) {
 
   useEffect(() => {
     if (readyAt == null) return;
-    setNow(Date.now());
     const timer = setInterval(() => {
       const next = Date.now();
       setNow(next);
@@ -176,7 +175,7 @@ function PlayerReadyBadge({ readyAt }: { readyAt?: number }) {
   }, [readyAt]);
 
   const isPlayerReady = isReadyActive(readyAt, now);
-  const secondsAgo = readyAt != null ? Math.floor((now - readyAt) / 1000) : null;
+  const secondsAgo = readyAt != null ? Math.max(0, Math.floor((now - readyAt) / 1000)) : null;
 
   if (isPlayerReady) {
     return (
