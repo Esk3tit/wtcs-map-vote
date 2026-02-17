@@ -588,8 +588,8 @@ export const updateSession = mutation({
 
 /**
  * Delete a session and all related records.
- * Only allowed in DRAFT state. Cascade deletes players and maps,
- * but preserves audit logs for history.
+ * Allowed from any state except IN_PROGRESS (must pause or end first).
+ * Cascade deletes players, maps, and votes. Preserves audit logs for history.
  *
  * @param sessionId - The session to delete
  */
@@ -606,10 +606,10 @@ export const deleteSession = mutation({
       throw new ConvexError("Session not found");
     }
 
-    // Only allow deletion in DRAFT state
-    if (session.status !== "DRAFT") {
+    // Block deletion of active sessions — must pause or end first
+    if (session.status === "IN_PROGRESS") {
       throw new ConvexError(
-        `Cannot delete session in ${session.status} state. Only DRAFT sessions can be deleted.`
+        "Cannot delete an active session. Pause or end the session first"
       );
     }
 

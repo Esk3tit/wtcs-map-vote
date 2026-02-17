@@ -1370,31 +1370,83 @@ describe("sessions.deleteSession", () => {
       // Should have original log plus SESSION_DELETED log
       expect(logs).toHaveLength(2);
     });
+
+    it("deletes WAITING session with cascade", async () => {
+      const { t, authT, sessionId, playerIds, mapIds } =
+        await createAuthenticatedFullSession("WAITING");
+
+      const result = await authT.mutation(api.sessions.deleteSession, { sessionId });
+
+      expect(result.success).toBe(true);
+      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(session).toBeNull();
+
+      const players = await t.run(async (ctx) =>
+        Promise.all(playerIds.map((id) => ctx.db.get(id)))
+      );
+      expect(players.every((p) => p === null)).toBe(true);
+
+      const maps = await t.run(async (ctx) =>
+        Promise.all(mapIds.map((id) => ctx.db.get(id)))
+      );
+      expect(maps.every((m) => m === null)).toBe(true);
+    });
+
+    it("deletes PAUSED session with cascade", async () => {
+      const { t, authT, sessionId, voteIds } =
+        await createAuthenticatedFullSession("PAUSED");
+
+      const result = await authT.mutation(api.sessions.deleteSession, { sessionId });
+
+      expect(result.success).toBe(true);
+      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(session).toBeNull();
+
+      const votes = await t.run(async (ctx) =>
+        Promise.all(voteIds.map((id) => ctx.db.get(id)))
+      );
+      expect(votes.every((v) => v === null)).toBe(true);
+    });
+
+    it("deletes COMPLETE session with cascade", async () => {
+      const { t, authT, sessionId, playerIds, mapIds, voteIds } =
+        await createAuthenticatedFullSession("COMPLETE");
+
+      const result = await authT.mutation(api.sessions.deleteSession, { sessionId });
+
+      expect(result.success).toBe(true);
+      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(session).toBeNull();
+
+      const allRelated = await t.run(async (ctx) =>
+        Promise.all([
+          ...playerIds.map((id) => ctx.db.get(id)),
+          ...mapIds.map((id) => ctx.db.get(id)),
+          ...voteIds.map((id) => ctx.db.get(id)),
+        ])
+      );
+      expect(allRelated.every((r) => r === null)).toBe(true);
+    });
+
+    it("deletes EXPIRED session", async () => {
+      const { t, authT, sessionId } =
+        await createAuthenticatedSessionInStatus("EXPIRED");
+
+      const result = await authT.mutation(api.sessions.deleteSession, { sessionId });
+
+      expect(result.success).toBe(true);
+      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(session).toBeNull();
+    });
   });
 
   describe("state restrictions", () => {
-    it("throws when deleting session in restricted states", async () => {
-      const { t, authT, adminId } = await createAuthenticatedAdmin();
-      const restrictedStatuses = ["WAITING", "IN_PROGRESS", "PAUSED", "COMPLETE", "EXPIRED"] as const;
+    it("throws when deleting IN_PROGRESS session", async () => {
+      const { authT, sessionId } = await createAuthenticatedSessionInStatus("IN_PROGRESS");
 
-      // Create sessions for all restricted states in a single context
-      const sessionIds = await t.run(async (ctx) => {
-        const ids: Record<string, Id<"sessions">> = {};
-        for (const status of restrictedStatuses) {
-          ids[status] = await ctx.db.insert(
-            "sessions",
-            sessionFactory(adminId, { status, matchName: `${status} Session` })
-          );
-        }
-        return ids;
-      });
-
-      // Test each status throws the expected error
-      for (const status of restrictedStatuses) {
-        await expect(
-          authT.mutation(api.sessions.deleteSession, { sessionId: sessionIds[status] })
-        ).rejects.toThrow(/Cannot delete session/i);
-      }
+      await expect(
+        authT.mutation(api.sessions.deleteSession, { sessionId })
+      ).rejects.toThrow(/Cannot delete an active session/i);
     });
   });
 
