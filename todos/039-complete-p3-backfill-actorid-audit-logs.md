@@ -43,9 +43,9 @@ Go with Option 1: Capture `requireAdmin(ctx)` return value in all three mutation
 
 ## Acceptance Criteria
 
-- [ ] `updateSession`, `assignPlayer`, `setSessionMaps` include `actorId` in audit logs
-- [ ] Tests updated to verify `actorId` presence
-- [ ] All tests pass
+- [x] `updateSession`, `assignPlayer`, `setSessionMaps` include `actorId` in audit logs
+- [x] Tests updated to verify `actorId` presence
+- [x] All tests pass
 
 ## Work Log
 

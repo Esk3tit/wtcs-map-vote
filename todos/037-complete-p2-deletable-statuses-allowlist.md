@@ -64,11 +64,11 @@ Go with Option 1: Define `DELETABLE_STATUSES` in `convex/lib/constants.ts` and u
 
 ## Acceptance Criteria
 
-- [ ] `DELETABLE_STATUSES` constant defined in `convex/lib/constants.ts`
-- [ ] `deleteSession` uses the constant for its guard
-- [ ] TypeScript compiler surfaces errors if new `SessionStatus` values are not addressed
-- [ ] Tests pass
-- [ ] Typecheck passes
+- [x] `DELETABLE_STATUSES` constant defined in `convex/lib/constants.ts`
+- [x] `deleteSession` uses the constant for its guard
+- [x] TypeScript compiler surfaces errors if new `SessionStatus` values are not addressed
+- [x] Tests pass
+- [x] Typecheck passes
 
 ## Work Log
 

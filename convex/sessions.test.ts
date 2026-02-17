@@ -1393,7 +1393,7 @@ describe("sessions.deleteSession", () => {
     });
 
     it("deletes PAUSED session with cascade", async () => {
-      const { t, authT, sessionId, voteIds } =
+      const { t, authT, sessionId, playerIds, mapIds, voteIds } =
         await createAuthenticatedFullSession("PAUSED");
 
       const result = await authT.mutation(api.sessions.deleteSession, { sessionId });
@@ -1402,10 +1402,14 @@ describe("sessions.deleteSession", () => {
       const session = await t.run(async (ctx) => ctx.db.get(sessionId));
       expect(session).toBeNull();
 
-      const votes = await t.run(async (ctx) =>
-        Promise.all(voteIds.map((id) => ctx.db.get(id)))
+      const allRelated = await t.run(async (ctx) =>
+        Promise.all([
+          ...playerIds.map((id) => ctx.db.get(id)),
+          ...mapIds.map((id) => ctx.db.get(id)),
+          ...voteIds.map((id) => ctx.db.get(id)),
+        ])
       );
-      expect(votes.every((v) => v === null)).toBe(true);
+      expect(allRelated.every((r) => r === null)).toBe(true);
     });
 
     it("deletes COMPLETE session with cascade", async () => {
@@ -1428,15 +1432,24 @@ describe("sessions.deleteSession", () => {
       expect(allRelated.every((r) => r === null)).toBe(true);
     });
 
-    it("deletes EXPIRED session", async () => {
-      const { t, authT, sessionId } =
-        await createAuthenticatedSessionInStatus("EXPIRED");
+    it("deletes EXPIRED session with cascade", async () => {
+      const { t, authT, sessionId, playerIds, mapIds, voteIds } =
+        await createAuthenticatedFullSession("EXPIRED");
 
       const result = await authT.mutation(api.sessions.deleteSession, { sessionId });
 
       expect(result.success).toBe(true);
       const session = await t.run(async (ctx) => ctx.db.get(sessionId));
       expect(session).toBeNull();
+
+      const allRelated = await t.run(async (ctx) =>
+        Promise.all([
+          ...playerIds.map((id) => ctx.db.get(id)),
+          ...mapIds.map((id) => ctx.db.get(id)),
+          ...voteIds.map((id) => ctx.db.get(id)),
+        ])
+      );
+      expect(allRelated.every((r) => r === null)).toBe(true);
     });
   });
 
