@@ -10,6 +10,7 @@ import { usePlayerAuth } from "@/hooks/usePlayerAuth";
 import { SITE_URL } from "@/lib/convexHttp";
 import { READY_EXPIRY_MS } from "../../convex/lib/constants";
 import { isReadyActive } from "@/lib/ready";
+import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { Lock, Loader2, Clock, CheckCircle2 } from "lucide-react";
 import { useEffect, useState, useCallback } from "react";
@@ -256,16 +257,18 @@ function PlayerLobbyPage() {
                       {showReadyButton && (
                         <div className="flex items-center gap-1.5">
                           <div
-                            className={`h-2 w-2 rounded-full ${
+                            className={cn(
+                              "h-2 w-2 rounded-full",
                               otherIsReady ? "bg-green-500" : "bg-muted"
-                            }`}
+                            )}
                           />
                           <span
-                            className={`text-xs font-medium ${
+                            className={cn(
+                              "text-xs font-medium",
                               otherIsReady
                                 ? "text-green-500"
                                 : "text-muted-foreground"
-                            }`}
+                            )}
                           >
                             {otherIsReady ? "Ready" : "Not ready"}
                           </span>
@@ -273,16 +276,18 @@ function PlayerLobbyPage() {
                       )}
                       <div className="flex items-center gap-1.5">
                         <div
-                          className={`h-2 w-2 rounded-full ${
+                          className={cn(
+                            "h-2 w-2 rounded-full",
                             otherPlayer.isConnected ? "bg-green-500" : "bg-muted"
-                          }`}
+                          )}
                         />
                         <span
-                          className={`text-sm font-medium ${
+                          className={cn(
+                            "text-sm font-medium",
                             otherPlayer.isConnected
                               ? "text-green-500"
                               : "text-muted-foreground"
-                          }`}
+                          )}
                         >
                           {otherPlayer.isConnected
                             ? "Connected"
