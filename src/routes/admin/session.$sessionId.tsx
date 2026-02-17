@@ -6,6 +6,7 @@ import type { ActorType } from "../../../convex/lib/types";
 import {
   getActivePlayerIndex,
   sortPlayersByJoinOrder,
+  READY_EXPIRY_MS,
 } from "../../../convex/lib/constants";
 import {
   Card,
@@ -315,6 +316,15 @@ function SessionDetailPage() {
     () => (session?.maps ?? []).filter((m) => m.state === "AVAILABLE"),
     [session?.maps]
   );
+
+  // Tick every second when WAITING so ready badges stay current
+  const isWaiting = session?.status === "WAITING";
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!isWaiting) return;
+    const timer = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(timer);
+  }, [isWaiting]);
 
   // Invalid session ID state
   if (!isValidId) {
@@ -782,6 +792,27 @@ function SessionDetailPage() {
                           Connected
                         </Badge>
                       )}
+                      {isWaiting && (() => {
+                        const readyAt = player.readyAt;
+                        const isPlayerReady = readyAt != null && now - readyAt < READY_EXPIRY_MS;
+                        const secondsAgo = readyAt != null ? Math.floor((now - readyAt) / 1000) : null;
+                        return isPlayerReady ? (
+                          <Badge
+                            variant="outline"
+                            className="gap-1 bg-green-500/20 text-green-600 border-green-500/30"
+                          >
+                            <CheckCircle2 className="w-3 h-3" />
+                            Ready ({secondsAgo}s ago)
+                          </Badge>
+                        ) : (
+                          <Badge
+                            variant="outline"
+                            className="bg-muted text-muted-foreground border-border"
+                          >
+                            Not ready
+                          </Badge>
+                        );
+                      })()}
                       {isLiveOrPaused && player.hasVotedThisRound && (
                         <Badge
                           variant="outline"

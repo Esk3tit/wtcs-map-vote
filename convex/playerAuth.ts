@@ -1,7 +1,7 @@
 /**
  * Player Authentication Module
  *
- * Handles player token validation with IP locking.
+ * Handles player token validation with IP locking and ready signalling.
  * Players authenticate via token URLs; on first use the token is
  * locked to the client's IP address to prevent sharing.
  */
@@ -210,6 +210,78 @@ export const playerHeartbeat = internalMutation({
       isConnected: true,
       lastHeartbeat: now,
     });
+
+    return { status: "ok" as const };
+  },
+});
+
+/**
+ * Signal player readiness in the lobby.
+ *
+ * Sets `readyAt = Date.now()` on the player record. Readiness expires
+ * client-side after READY_EXPIRY_MS (60s); players can re-press to refresh.
+ * Only allowed in WAITING state (ready only matters before session starts).
+ *
+ * Called by the HTTP action POST /api/player/ready.
+ *
+ * @param token - Player access token
+ * @param ipAddress - Client IP from HTTP headers
+ */
+export const playerReady = internalMutation({
+  args: {
+    token: v.string(),
+    ipAddress: v.string(),
+  },
+  returns: v.union(
+    v.object({ status: v.literal("ok") }),
+    v.object({
+      status: v.literal("error"),
+      error: v.union(
+        v.literal("INVALID_TOKEN"),
+        v.literal("INVALID_IP"),
+        v.literal("TOKEN_EXPIRED"),
+        v.literal("SESSION_NOT_FOUND"),
+        v.literal("SESSION_NOT_WAITING"),
+        v.literal("TOKEN_NOT_ACTIVATED"),
+        v.literal("IP_MISMATCH")
+      ),
+    })
+  ),
+  handler: async (ctx, args) => {
+    const { token } = args;
+    const ipAddress = args.ipAddress.trim();
+
+    // Shared read-only validation: IP check, token lookup, expiry, session
+    const result = await lookupAndValidatePlayer(ctx, token, ipAddress);
+    if (result.status === "error") {
+      return result;
+    }
+
+    const { player, session } = result;
+
+    // Ready only makes sense in WAITING state
+    if (session.status !== "WAITING") {
+      return {
+        status: "error" as const,
+        error: "SESSION_NOT_WAITING" as const,
+      };
+    }
+
+    // Require token to be activated first
+    if (!player.ipAddress) {
+      return {
+        status: "error" as const,
+        error: "TOKEN_NOT_ACTIVATED" as const,
+      };
+    }
+
+    // Verify IP matches
+    if (player.ipAddress !== ipAddress) {
+      return { status: "error" as const, error: "IP_MISMATCH" as const };
+    }
+
+    // Set readyAt timestamp
+    await ctx.db.patch(player._id, { readyAt: Date.now() });
 
     return { status: "ok" as const };
   },

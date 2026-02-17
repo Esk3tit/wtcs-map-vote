@@ -75,6 +75,7 @@ const adminPlayerObjectValidator = v.object({
   isConnected: v.boolean(),
   lastHeartbeat: v.optional(v.number()),
   hasVotedThisRound: v.boolean(),
+  readyAt: v.optional(v.number()),
 });
 
 /**
@@ -147,6 +148,7 @@ function toSanitizedPlayer(player: Doc<"sessionPlayers">) {
     teamName: player.teamName,
     isConnected: player.isConnected,
     hasVotedThisRound: player.hasVotedThisRound,
+    readyAt: player.readyAt,
   };
 }
 
@@ -1319,6 +1321,7 @@ export const resetSession = mutation({
       ...players.map((p) =>
         ctx.db.patch(p._id, {
           hasVotedThisRound: false,
+          readyAt: undefined,
           tokenExpiresAt: now + TOKEN_EXPIRY_MS,
         })
       ),
@@ -1525,6 +1528,7 @@ const sanitizedPlayerValidator = v.object({
   teamName: v.string(),
   isConnected: v.boolean(),
   hasVotedThisRound: v.boolean(),
+  readyAt: v.optional(v.number()),
 });
 
 /**

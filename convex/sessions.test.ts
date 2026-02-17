@@ -6372,6 +6372,35 @@ describe("sessions.resetSession", () => {
     }
   });
 
+  it("clears readyAt on all players", async () => {
+    const { t, authT, sessionId } = await createCompletedSession();
+
+    // Set readyAt on all players before resetting
+    await t.run(async (ctx) => {
+      const players = await ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+        .collect();
+      for (const player of players) {
+        await ctx.db.patch(player._id, { readyAt: Date.now() });
+      }
+    });
+
+    await authT.mutation(api.sessions.resetSession, { sessionId });
+
+    const players = await t.run(async (ctx) =>
+      ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+        .collect()
+    );
+
+    expect(players).toHaveLength(2);
+    for (const player of players) {
+      expect(player.readyAt).toBeUndefined();
+    }
+  });
+
   it("extends player tokenExpiresAt by 24 hours from now", async () => {
     const { t, authT, adminId } = await createAuthenticatedAdmin();
 

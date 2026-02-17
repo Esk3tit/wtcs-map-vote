@@ -3,14 +3,24 @@ import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { TokenErrorPage } from "@/components/session/TokenErrorPage";
+import { ReadyCountdown } from "@/components/session/ReadyCountdown";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
-import { Lock, Loader2, Clock } from "lucide-react";
-import { useEffect } from "react";
+import { SITE_URL } from "@/lib/convexHttp";
+import { READY_EXPIRY_MS } from "../../convex/lib/constants";
+import { Lock, Loader2, Clock, CheckCircle2 } from "lucide-react";
+import { useEffect, useState, useCallback } from "react";
 
 export const Route = createFileRoute("/lobby/$token")({
   component: PlayerLobbyPage,
 });
+
+/** Check if a readyAt timestamp is still within the expiry window. */
+function isReady(readyAt: number | undefined): boolean {
+  if (!readyAt) return false;
+  return Date.now() - readyAt < READY_EXPIRY_MS;
+}
 
 function PlayerLobbyPage() {
   const { token } = Route.useParams();
@@ -24,6 +34,24 @@ function PlayerLobbyPage() {
     api.sessions.getSessionByToken,
     auth.status === "authenticated" ? { token } : "skip"
   );
+
+  // Ready button state
+  const [readyLoading, setReadyLoading] = useState(false);
+
+  const handleReady = useCallback(async () => {
+    setReadyLoading(true);
+    try {
+      await fetch(`${SITE_URL}/api/player/ready`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ token }),
+      });
+    } catch {
+      // Non-fatal — reactive query will show current state
+    } finally {
+      setReadyLoading(false);
+    }
+  }, [token]);
 
   // Auto-redirect based on session status (hook must be before early returns)
   useEffect(() => {
@@ -75,6 +103,8 @@ function PlayerLobbyPage() {
   }
 
   const { player, session, maps, otherPlayers } = data;
+  const playerIsReady = isReady(player.readyAt);
+  const showReadyButton = session.status === "WAITING";
 
   // Get waiting message based on status
   const getWaitingMessage = () => {
@@ -136,6 +166,35 @@ function PlayerLobbyPage() {
           </div>
         </Card>
 
+        {/* Ready Button (WAITING only) */}
+        {showReadyButton && (
+          <div className="flex flex-col items-center gap-3">
+            {playerIsReady && player.readyAt ? (
+              <>
+                <ReadyCountdown
+                  readyAt={player.readyAt}
+                  durationMs={READY_EXPIRY_MS}
+                />
+                <p className="text-sm font-medium text-green-500">Ready!</p>
+              </>
+            ) : (
+              <Button
+                size="lg"
+                className="gap-2 bg-green-600 hover:bg-green-700 text-white px-8"
+                disabled={readyLoading}
+                onClick={handleReady}
+              >
+                {readyLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="w-5 h-5" />
+                )}
+                Ready Up
+              </Button>
+            )}
+          </div>
+        )}
+
         {/* Waiting Indicator */}
         <div className="flex flex-col items-center gap-4 py-8">
           {session.status === "EXPIRED" ? (
@@ -173,34 +232,57 @@ function PlayerLobbyPage() {
         {otherPlayers.length > 0 && (
           <Card className="p-4 bg-card/50">
             <div className="space-y-3">
-              {otherPlayers.map((otherPlayer) => (
-                <div
-                  key={otherPlayer._id}
-                  className="flex items-center justify-between"
-                >
-                  <span className="text-lg font-semibold text-foreground">
-                    {otherPlayer.teamName}
-                  </span>
-                  <div className="flex items-center gap-2">
-                    <div
-                      className={`h-2 w-2 rounded-full ${
-                        otherPlayer.isConnected ? "bg-green-500" : "bg-muted"
-                      }`}
-                    />
-                    <span
-                      className={`text-sm font-medium ${
-                        otherPlayer.isConnected
-                          ? "text-green-500"
-                          : "text-muted-foreground"
-                      }`}
-                    >
-                      {otherPlayer.isConnected
-                        ? "Connected"
-                        : "Not yet connected"}
+              {otherPlayers.map((otherPlayer) => {
+                const otherIsReady = isReady(otherPlayer.readyAt);
+                return (
+                  <div
+                    key={otherPlayer._id}
+                    className="flex items-center justify-between"
+                  >
+                    <span className="text-lg font-semibold text-foreground">
+                      {otherPlayer.teamName}
                     </span>
+                    <div className="flex items-center gap-3">
+                      {showReadyButton && (
+                        <div className="flex items-center gap-1.5">
+                          <div
+                            className={`h-2 w-2 rounded-full ${
+                              otherIsReady ? "bg-green-500" : "bg-muted"
+                            }`}
+                          />
+                          <span
+                            className={`text-xs font-medium ${
+                              otherIsReady
+                                ? "text-green-500"
+                                : "text-muted-foreground"
+                            }`}
+                          >
+                            {otherIsReady ? "Ready" : "Not ready"}
+                          </span>
+                        </div>
+                      )}
+                      <div className="flex items-center gap-1.5">
+                        <div
+                          className={`h-2 w-2 rounded-full ${
+                            otherPlayer.isConnected ? "bg-green-500" : "bg-muted"
+                          }`}
+                        />
+                        <span
+                          className={`text-sm font-medium ${
+                            otherPlayer.isConnected
+                              ? "text-green-500"
+                              : "text-muted-foreground"
+                          }`}
+                        >
+                          {otherPlayer.isConnected
+                            ? "Connected"
+                            : "Not yet connected"}
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </Card>
         )}

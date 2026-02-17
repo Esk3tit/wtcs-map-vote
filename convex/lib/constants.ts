@@ -47,6 +47,9 @@ export function sortPlayersByJoinOrder<T extends { _creationTime: number; _id: s
   );
 }
 
+// Player ready indicator
+export const READY_EXPIRY_MS = 60_000; // 60 seconds
+
 // Player heartbeat constants
 export const HEARTBEAT_SKIP_MS = 15_000; // Skip DB write if heartbeat is still fresh
 // INVARIANT: Must be > client HEARTBEAT_INTERVAL_MS (src/hooks/usePlayerAuth.ts).

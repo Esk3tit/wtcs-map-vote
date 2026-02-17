@@ -70,7 +70,10 @@ export function getCorsHeaders(): Record<string, string> {
  * @param mutationRef - The internal mutation to invoke with { token, ipAddress }
  */
 function createPlayerHandler(
-  mutationRef: typeof internal.playerAuth.validateAndLockToken | typeof internal.playerAuth.playerHeartbeat
+  mutationRef:
+    | typeof internal.playerAuth.validateAndLockToken
+    | typeof internal.playerAuth.playerHeartbeat
+    | typeof internal.playerAuth.playerReady
 ) {
   return httpAction(async (ctx, req) => {
     const corsHeaders = getCorsHeaders();
@@ -142,6 +145,23 @@ http.route({
 /** Handle CORS preflight for heartbeat endpoint. */
 http.route({
   path: "/api/player/heartbeat",
+  method: "OPTIONS",
+  handler: corsPreflightHandler,
+});
+
+/**
+ * Player ready signal to indicate readiness in the lobby.
+ * Called by the frontend when a player presses "Ready Up".
+ */
+http.route({
+  path: "/api/player/ready",
+  method: "POST",
+  handler: createPlayerHandler(internal.playerAuth.playerReady),
+});
+
+/** Handle CORS preflight for ready endpoint. */
+http.route({
+  path: "/api/player/ready",
   method: "OPTIONS",
   handler: corsPreflightHandler,
 });
