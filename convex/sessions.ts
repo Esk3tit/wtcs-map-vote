@@ -595,6 +595,7 @@ export const updateSession = mutation({
  * Cascade deletes players, maps, and votes. Preserves audit logs for history.
  *
  * @param sessionId - The session to delete
+ * @returns Object with success boolean
  */
 export const deleteSession = mutation({
   args: {
@@ -612,7 +613,7 @@ export const deleteSession = mutation({
     // Block deletion of non-deletable sessions — must pause or end first
     if (!DELETABLE_STATUSES.has(session.status)) {
       throw new ConvexError(
-        "Cannot delete an active session. Pause or end the session first."
+        `Cannot delete session in ${session.status} state. Pause or end the session first.`
       );
     }
 
