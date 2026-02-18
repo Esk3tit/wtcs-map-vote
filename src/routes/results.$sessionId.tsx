@@ -12,7 +12,10 @@ export const Route = createFileRoute("/results/$sessionId")({
   validateSearch: (
     search: Record<string, unknown>
   ): { token?: string } => ({
-    ...(typeof search.token === "string" ? { token: search.token } : {}),
+    token:
+      typeof search.token === "string" && /^[a-f0-9]{32}$/.test(search.token)
+        ? search.token
+        : undefined,
   }),
 });
 
@@ -26,8 +29,9 @@ function VotingResultsPage() {
   });
 
   // Subscribe to session status for reset detection (only when token present)
+  // Uses lightweight query — only fetches session ID and status, no maps/players/votes.
   const sessionData = useQuery(
-    api.sessions.getSessionByToken,
+    api.sessions.getSessionStatusByToken,
     token ? { token } : "skip"
   );
 

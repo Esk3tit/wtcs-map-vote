@@ -89,6 +89,9 @@ export function useSessionStatusRedirect(
       }
     } else if (currentPage === "results") {
       navigate({ to: "/lobby/$token", params: { token }, replace: true });
+    } else {
+      const _exhaustive: never = currentPage;
+      throw new Error(`Unhandled page navigation: ${_exhaustive}`);
     }
   }, [data, navigate, token, currentPage]);
 
