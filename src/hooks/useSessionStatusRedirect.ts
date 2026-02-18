@@ -5,7 +5,7 @@ import type { SessionStatus } from "../../convex/lib/constants";
 
 /**
  * Minimal shape of the session data needed for redirect decisions.
- * Matches the union returned by `getSessionByToken`.
+ * Matches the union returned by `getSessionByToken` and `getSessionStatusByToken`.
  */
 export type SessionQueryData =
   | {
@@ -49,7 +49,7 @@ function shouldRedirect(
  * `currentPage` to fire an immediate side-effect, and the hook must return
  * an `isRedirecting` render-guard boolean that `<Navigate>` cannot provide.
  *
- * @param data - Reactive session data from useQuery(getSessionByToken)
+ * @param data - Reactive session data matching SessionQueryData
  * @param token - Player's auth token
  * @param currentPage - Which page this hook is called from
  * @returns isRedirecting - True when a redirect is pending (use as render guard)
@@ -92,7 +92,10 @@ export function useSessionStatusRedirect(
     } else if (currentPage === "results") {
       if (session.status === "IN_PROGRESS") {
         navigate({ to: "/vote/$token", params: { token }, replace: true });
-      } else {
+      } else if (
+        session.status === "WAITING" ||
+        session.status === "DRAFT"
+      ) {
         navigate({ to: "/lobby/$token", params: { token }, replace: true });
       }
     } else {
