@@ -1,14 +1,7 @@
 import { useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import type { Id } from "../../convex/_generated/dataModel";
-
-type SessionStatus =
-  | "DRAFT"
-  | "WAITING"
-  | "IN_PROGRESS"
-  | "PAUSED"
-  | "COMPLETE"
-  | "EXPIRED";
+import type { SessionStatus } from "../../convex/lib/constants";
 
 /**
  * Minimal shape of the session data needed for redirect decisions.
@@ -38,12 +31,21 @@ function shouldRedirect(
       );
     case "results":
       return status === "WAITING" || status === "DRAFT";
+    default: {
+      const _exhaustive: never = currentPage;
+      throw new Error(`Unhandled page: ${_exhaustive}`);
+    }
   }
 }
 
 /**
  * Auto-redirect players based on session status changes.
  * Must be called unconditionally (before early returns).
+ *
+ * Uses `useEffect` + `useNavigate` instead of TanStack Router's `<Navigate>`
+ * component because `shouldRedirect` evaluates `data`, `token`, and
+ * `currentPage` to fire an immediate side-effect, and the hook must return
+ * an `isRedirecting` render-guard boolean that `<Navigate>` cannot provide.
  *
  * @param data - Reactive session data from useQuery(getSessionByToken)
  * @param token - Player's auth token
