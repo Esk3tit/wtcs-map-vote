@@ -76,6 +76,22 @@ export const DELETABLE_STATUSES: ReadonlySet<SessionStatus> = new Set([
   "EXPIRED",
 ]);
 
+/** Statuses in which session configuration (name, timer, players, format) can be modified. */
+export const EDITABLE_STATUSES: ReadonlySet<SessionStatus> = new Set([
+  "DRAFT",
+  "WAITING",
+]);
+
+/** Statuses in which the map pool can be configured. */
+export const MAP_POOL_STATUSES: ReadonlySet<SessionStatus> = new Set([
+  "DRAFT",
+]);
+
+/** Statuses from which a session can be reset (COMPLETE only). */
+export const RESETTABLE_STATUSES: ReadonlySet<SessionStatus> = new Set([
+  "COMPLETE",
+]);
+
 /**
  * Valid session state transitions.
  * Maps each status to the set of statuses it can transition to.

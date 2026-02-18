@@ -3,6 +3,7 @@
  *
  * Comprehensive tests for the centralized session state transition system:
  * - validateTransition: valid and invalid transitions
+ * - requireSessionStatus: allowed-state guard for non-transition checks
  * - guardFinalize: player count and map count preconditions
  * - guardStart: player connectivity preconditions
  * - transitionSession: atomic validate + patch + audit
@@ -18,9 +19,17 @@ import {
   mapFactory,
 } from "./test.factories";
 import type { SessionStatus } from "./lib/constants";
-import { VALID_TRANSITIONS, SESSION_RESET_PATCHES } from "./lib/constants";
+import {
+  VALID_TRANSITIONS,
+  SESSION_RESET_PATCHES,
+  EDITABLE_STATUSES,
+  RESETTABLE_STATUSES,
+  MAP_POOL_STATUSES,
+  DELETABLE_STATUSES,
+} from "./lib/constants";
 import {
   validateTransition,
+  requireSessionStatus,
   guardFinalize,
   guardStart,
   transitionSession,
@@ -734,5 +743,90 @@ describe("transitionSession", () => {
         });
       }
     );
+  });
+});
+
+// ============================================================================
+// requireSessionStatus
+// ============================================================================
+
+describe("requireSessionStatus", () => {
+  /** Minimal session stub for pure-function tests. */
+  const stubSession = (status: SessionStatus) => ({ status });
+
+  describe("passes for allowed statuses", () => {
+    it("passes when status is in the allowed set", () => {
+      expect(() =>
+        requireSessionStatus(stubSession("DRAFT"), EDITABLE_STATUSES, "update session")
+      ).not.toThrow();
+    });
+
+    it("passes for second member of set", () => {
+      expect(() =>
+        requireSessionStatus(stubSession("WAITING"), EDITABLE_STATUSES, "assign players")
+      ).not.toThrow();
+    });
+
+    it("passes for single-status set", () => {
+      expect(() =>
+        requireSessionStatus(stubSession("COMPLETE"), RESETTABLE_STATUSES, "reset session")
+      ).not.toThrow();
+    });
+
+    it("passes for MAP_POOL_STATUSES", () => {
+      expect(() =>
+        requireSessionStatus(stubSession("DRAFT"), MAP_POOL_STATUSES, "set maps")
+      ).not.toThrow();
+    });
+  });
+
+  describe("throws for disallowed statuses", () => {
+    it.each([
+      ["IN_PROGRESS", "update session"],
+      ["PAUSED", "assign players"],
+      ["COMPLETE", "update session"],
+      ["EXPIRED", "set maps"],
+    ] as const)(
+      "throws for %s when calling %s",
+      (status, action) => {
+        expect(() =>
+          requireSessionStatus(stubSession(status), EDITABLE_STATUSES, action)
+        ).toThrow(/Cannot .+ in .+ state/);
+      }
+    );
+
+    it("throws for DRAFT when only COMPLETE is allowed", () => {
+      expect(() =>
+        requireSessionStatus(stubSession("DRAFT"), RESETTABLE_STATUSES, "reset session")
+      ).toThrow(/Cannot reset session in DRAFT state/);
+    });
+  });
+
+  describe("error messages", () => {
+    it("includes the action name and current status", () => {
+      expect(() =>
+        requireSessionStatus(stubSession("IN_PROGRESS"), EDITABLE_STATUSES, "update session")
+      ).toThrow(/Cannot update session in IN_PROGRESS state/);
+    });
+
+    it("lists allowed statuses", () => {
+      expect(() =>
+        requireSessionStatus(stubSession("EXPIRED"), EDITABLE_STATUSES, "assign players")
+      ).toThrow(/Only DRAFT or WAITING state allowed/);
+    });
+
+    it("lists single allowed status", () => {
+      expect(() =>
+        requireSessionStatus(stubSession("WAITING"), MAP_POOL_STATUSES, "set maps")
+      ).toThrow(/Only DRAFT state allowed/);
+    });
+
+    it("uses comma-separated format for 3+ allowed statuses", () => {
+      expect(() =>
+        requireSessionStatus(stubSession("IN_PROGRESS"), DELETABLE_STATUSES, "delete session")
+      ).toThrow(
+        /Only DRAFT, WAITING, PAUSED, COMPLETE, or EXPIRED state allowed/
+      );
+    });
   });
 });
