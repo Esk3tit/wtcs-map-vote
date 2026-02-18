@@ -30,7 +30,7 @@ import {
   getActivePlayerIndex,
   sortPlayersByJoinOrder,
   DELETABLE_STATUSES,
-  DRAFT_ONLY_STATUSES,
+  MAP_POOL_STATUSES,
   EDITABLE_STATUSES,
   RESETTABLE_STATUSES,
 } from "./lib/constants";
@@ -613,11 +613,7 @@ export const deleteSession = mutation({
     }
 
     // Block deletion of non-deletable sessions — must pause or end first
-    if (!DELETABLE_STATUSES.has(session.status)) {
-      throw new ConvexError(
-        `Cannot delete session in ${session.status} state. Pause or end the session first.`
-      );
-    }
+    requireSessionStatus(session, DELETABLE_STATUSES, "delete session");
 
     // Cascade delete related records (players, maps, votes)
     await cascadeDeleteSessionRecords(ctx, args.sessionId);
@@ -754,7 +750,7 @@ export const setSessionMaps = mutation({
     }
 
     // Only allow in DRAFT state
-    requireSessionStatus(session, DRAFT_ONLY_STATUSES, "set maps");
+    requireSessionStatus(session, MAP_POOL_STATUSES, "set maps");
 
     // Validate map count matches session config
     if (args.mapIds.length !== session.mapPoolSize) {

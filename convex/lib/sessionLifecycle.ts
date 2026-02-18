@@ -128,14 +128,14 @@ export async function guardStart(
  * @param action - Human-readable action name for error message
  */
 export function requireSessionStatus(
-  session: Doc<"sessions">,
+  session: Pick<Doc<"sessions">, "status">,
   allowed: ReadonlySet<SessionStatus>,
   action: string
 ): void {
   if (!allowed.has(session.status)) {
     const allowedList = [...allowed].join(" or ");
     throw new ConvexError(
-      `Cannot ${action} in ${session.status} state. Only ${allowedList} sessions allowed.`
+      `Cannot ${action} in ${session.status} state. Only ${allowedList} state allowed.`
     );
   }
 }

@@ -23,6 +23,8 @@ import {
   VALID_TRANSITIONS,
   SESSION_RESET_PATCHES,
   EDITABLE_STATUSES,
+  RESETTABLE_STATUSES,
+  MAP_POOL_STATUSES,
 } from "./lib/constants";
 import {
   validateTransition,
@@ -749,8 +751,7 @@ describe("transitionSession", () => {
 
 describe("requireSessionStatus", () => {
   /** Minimal session stub for pure-function tests. */
-  const stubSession = (status: SessionStatus) =>
-    ({ status }) as import("./_generated/dataModel").Doc<"sessions">;
+  const stubSession = (status: SessionStatus) => ({ status });
 
   describe("passes for allowed statuses", () => {
     it("passes when status is in the allowed set", () => {
@@ -766,9 +767,8 @@ describe("requireSessionStatus", () => {
     });
 
     it("passes for single-status set", () => {
-      const completeOnly: ReadonlySet<SessionStatus> = new Set(["COMPLETE"]);
       expect(() =>
-        requireSessionStatus(stubSession("COMPLETE"), completeOnly, "reset session")
+        requireSessionStatus(stubSession("COMPLETE"), RESETTABLE_STATUSES, "reset session")
       ).not.toThrow();
     });
   });
@@ -789,9 +789,8 @@ describe("requireSessionStatus", () => {
     );
 
     it("throws for DRAFT when only COMPLETE is allowed", () => {
-      const completeOnly: ReadonlySet<SessionStatus> = new Set(["COMPLETE"]);
       expect(() =>
-        requireSessionStatus(stubSession("DRAFT"), completeOnly, "reset session")
+        requireSessionStatus(stubSession("DRAFT"), RESETTABLE_STATUSES, "reset session")
       ).toThrow(/Cannot reset session in DRAFT state/);
     });
   });
@@ -806,14 +805,13 @@ describe("requireSessionStatus", () => {
     it("lists allowed statuses", () => {
       expect(() =>
         requireSessionStatus(stubSession("EXPIRED"), EDITABLE_STATUSES, "assign players")
-      ).toThrow(/Only DRAFT or WAITING sessions allowed/);
+      ).toThrow(/Only DRAFT or WAITING state allowed/);
     });
 
     it("lists single allowed status", () => {
-      const draftOnly: ReadonlySet<SessionStatus> = new Set(["DRAFT"]);
       expect(() =>
-        requireSessionStatus(stubSession("WAITING"), draftOnly, "set maps")
-      ).toThrow(/Only DRAFT sessions allowed/);
+        requireSessionStatus(stubSession("WAITING"), MAP_POOL_STATUSES, "set maps")
+      ).toThrow(/Only DRAFT state allowed/);
     });
   });
 });

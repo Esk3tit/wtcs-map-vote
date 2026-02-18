@@ -82,8 +82,8 @@ export const EDITABLE_STATUSES: ReadonlySet<SessionStatus> = new Set([
   "WAITING",
 ]);
 
-/** Statuses in which the map pool can be set (DRAFT only). */
-export const DRAFT_ONLY_STATUSES: ReadonlySet<SessionStatus> = new Set([
+/** Statuses in which the map pool can be configured. */
+export const MAP_POOL_STATUSES: ReadonlySet<SessionStatus> = new Set([
   "DRAFT",
 ]);
 
