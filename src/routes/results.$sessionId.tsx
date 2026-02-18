@@ -34,7 +34,7 @@ function VotingResultsPage() {
   // Auto-redirect to lobby on session reset (hook must be before early returns)
   const isRedirecting = useSessionStatusRedirect(
     sessionData,
-    token ?? "",
+    token,
     "results"
   );
 

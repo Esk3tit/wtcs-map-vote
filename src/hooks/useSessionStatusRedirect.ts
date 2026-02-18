@@ -52,13 +52,13 @@ function shouldRedirect(
  */
 export function useSessionStatusRedirect(
   data: SessionQueryData | undefined,
-  token: string,
+  token: string | undefined,
   currentPage: "lobby" | "vote" | "results"
 ): boolean {
   const navigate = useNavigate();
 
   useEffect(() => {
-    if (!data || data.status !== "valid") return;
+    if (!data || data.status !== "valid" || !token) return;
 
     const { session } = data;
     if (!shouldRedirect(currentPage, session.status)) return;
@@ -91,6 +91,6 @@ export function useSessionStatusRedirect(
   }, [data, navigate, token, currentPage]);
 
   // Render guard: true when a redirect is pending
-  if (!data || data.status !== "valid") return false;
+  if (!data || data.status !== "valid" || !token) return false;
   return shouldRedirect(currentPage, data.session.status);
 }
