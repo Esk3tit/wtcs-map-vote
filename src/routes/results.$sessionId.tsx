@@ -38,8 +38,8 @@ function VotingResultsPage() {
     "results"
   );
 
-  // Loading state
-  if (data === undefined) {
+  // Render guard: show spinner while redirect is in flight
+  if (isRedirecting) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
@@ -47,8 +47,8 @@ function VotingResultsPage() {
     );
   }
 
-  // Render guard: show spinner while redirect is in flight
-  if (isRedirecting) {
+  // Loading state
+  if (data === undefined) {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />

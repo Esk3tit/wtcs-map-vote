@@ -2,25 +2,44 @@ import { useEffect } from "react";
 import { useNavigate } from "@tanstack/react-router";
 import type { Id } from "../../convex/_generated/dataModel";
 
+type SessionStatus =
+  | "DRAFT"
+  | "WAITING"
+  | "IN_PROGRESS"
+  | "PAUSED"
+  | "COMPLETE"
+  | "EXPIRED";
+
 /**
  * Minimal shape of the session data needed for redirect decisions.
  * Matches the union returned by `getSessionByToken`.
  */
-type SessionQueryData =
+export type SessionQueryData =
   | {
       status: "valid";
       session: {
         _id: Id<"sessions">;
-        status:
-          | "DRAFT"
-          | "WAITING"
-          | "IN_PROGRESS"
-          | "PAUSED"
-          | "COMPLETE"
-          | "EXPIRED";
+        status: SessionStatus;
       };
     }
   | { status: "error" };
+
+/** Returns true when the current page should redirect for the given status. */
+function shouldRedirect(
+  currentPage: "lobby" | "vote" | "results",
+  status: SessionStatus
+): boolean {
+  switch (currentPage) {
+    case "lobby":
+      return status === "IN_PROGRESS" || status === "COMPLETE";
+    case "vote":
+      return (
+        status === "COMPLETE" || status === "DRAFT" || status === "WAITING"
+      );
+    case "results":
+      return status === "WAITING" || status === "DRAFT";
+  }
+}
 
 /**
  * Auto-redirect players based on session status changes.
@@ -42,6 +61,7 @@ export function useSessionStatusRedirect(
     if (!data || data.status !== "valid") return;
 
     const { session } = data;
+    if (!shouldRedirect(currentPage, session.status)) return;
 
     if (currentPage === "lobby") {
       if (session.status === "IN_PROGRESS") {
@@ -66,30 +86,11 @@ export function useSessionStatusRedirect(
         navigate({ to: "/lobby/$token", params: { token }, replace: true });
       }
     } else if (currentPage === "results") {
-      if (session.status === "WAITING" || session.status === "DRAFT") {
-        navigate({ to: "/lobby/$token", params: { token }, replace: true });
-      }
+      navigate({ to: "/lobby/$token", params: { token }, replace: true });
     }
   }, [data, navigate, token, currentPage]);
 
-  // Return whether a redirect is pending (for render guards)
+  // Render guard: true when a redirect is pending
   if (!data || data.status !== "valid") return false;
-
-  const { session } = data;
-
-  if (currentPage === "lobby") {
-    return session.status === "IN_PROGRESS" || session.status === "COMPLETE";
-  }
-  if (currentPage === "vote") {
-    return (
-      session.status === "COMPLETE" ||
-      session.status === "DRAFT" ||
-      session.status === "WAITING"
-    );
-  }
-  if (currentPage === "results") {
-    return session.status === "WAITING" || session.status === "DRAFT";
-  }
-
-  return false;
+  return shouldRedirect(currentPage, data.session.status);
 }
