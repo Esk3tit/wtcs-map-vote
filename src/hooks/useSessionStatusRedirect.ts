@@ -30,7 +30,9 @@ function shouldRedirect(
         status === "COMPLETE" || status === "DRAFT" || status === "WAITING"
       );
     case "results":
-      return status === "WAITING" || status === "DRAFT";
+      return (
+        status === "WAITING" || status === "DRAFT" || status === "IN_PROGRESS"
+      );
     default: {
       const _exhaustive: never = currentPage;
       throw new Error(`Unhandled page: ${_exhaustive}`);
@@ -88,7 +90,11 @@ export function useSessionStatusRedirect(
         navigate({ to: "/lobby/$token", params: { token }, replace: true });
       }
     } else if (currentPage === "results") {
-      navigate({ to: "/lobby/$token", params: { token }, replace: true });
+      if (session.status === "IN_PROGRESS") {
+        navigate({ to: "/vote/$token", params: { token }, replace: true });
+      } else {
+        navigate({ to: "/lobby/$token", params: { token }, replace: true });
+      }
     } else {
       const _exhaustive: never = currentPage;
       throw new Error(`Unhandled page navigation: ${_exhaustive}`);
