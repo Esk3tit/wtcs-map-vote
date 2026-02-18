@@ -11,7 +11,7 @@ dependencies: []
 ## Problem Statement
 
 `requireSessionStatus()` generates error messages using "sessions allowed" as the noun:
-```
+```text
 Cannot update session in IN_PROGRESS state. Only DRAFT or WAITING sessions allowed.
 ```
 

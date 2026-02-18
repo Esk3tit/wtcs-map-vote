@@ -613,7 +613,11 @@ export const deleteSession = mutation({
     }
 
     // Block deletion of non-deletable sessions — must pause or end first
-    requireSessionStatus(session, DELETABLE_STATUSES, "delete session");
+    requireSessionStatus(
+      session,
+      DELETABLE_STATUSES,
+      "delete session (pause or end it first)",
+    );
 
     // Cascade delete related records (players, maps, votes)
     await cascadeDeleteSessionRecords(ctx, args.sessionId);

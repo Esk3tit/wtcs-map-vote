@@ -133,7 +133,11 @@ export function requireSessionStatus(
   action: string
 ): void {
   if (!allowed.has(session.status)) {
-    const allowedList = [...allowed].join(" or ");
+    const items = [...allowed];
+    const allowedList =
+      items.length > 2
+        ? items.slice(0, -1).join(", ") + ", or " + items.at(-1)
+        : items.join(" or ");
     throw new ConvexError(
       `Cannot ${action} in ${session.status} state. Only ${allowedList} state allowed.`
     );

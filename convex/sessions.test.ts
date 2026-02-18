@@ -1458,7 +1458,7 @@ describe("sessions.deleteSession", () => {
 
       await expect(
         authT.mutation(api.sessions.deleteSession, { sessionId })
-      ).rejects.toThrow(/Cannot delete session in IN_PROGRESS state/i);
+      ).rejects.toThrow(/Cannot delete session \(pause or end it first\) in IN_PROGRESS state/i);
     });
   });
 

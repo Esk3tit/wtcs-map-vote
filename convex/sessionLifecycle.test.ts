@@ -25,6 +25,7 @@ import {
   EDITABLE_STATUSES,
   RESETTABLE_STATUSES,
   MAP_POOL_STATUSES,
+  DELETABLE_STATUSES,
 } from "./lib/constants";
 import {
   validateTransition,
@@ -812,6 +813,14 @@ describe("requireSessionStatus", () => {
       expect(() =>
         requireSessionStatus(stubSession("WAITING"), MAP_POOL_STATUSES, "set maps")
       ).toThrow(/Only DRAFT state allowed/);
+    });
+
+    it("uses comma-separated format for 3+ allowed statuses", () => {
+      expect(() =>
+        requireSessionStatus(stubSession("IN_PROGRESS"), DELETABLE_STATUSES, "delete session")
+      ).toThrow(
+        /Only DRAFT, WAITING, PAUSED, COMPLETE, or EXPIRED state allowed/
+      );
     });
   });
 });

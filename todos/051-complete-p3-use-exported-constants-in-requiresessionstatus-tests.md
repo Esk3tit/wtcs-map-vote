@@ -10,7 +10,7 @@ dependencies: []
 
 ## Problem Statement
 
-Tests for `requireSessionStatus` at lines 769, 792, and 813 of `sessionLifecycle.test.ts` create local inline `new Set(["COMPLETE"])` and `new Set(["DRAFT"])` instead of importing and using the exported `RESETTABLE_STATUSES` and `DRAFT_ONLY_STATUSES` constants. This means a typo in those constants would not be caught by the unit tests — only at the integration level.
+Tests for `requireSessionStatus` at lines 769, 792, and 813 of `sessionLifecycle.test.ts` create local inline `new Set(["COMPLETE"])` and `new Set(["DRAFT"])` instead of importing and using the exported `RESETTABLE_STATUSES` and `MAP_POOL_STATUSES` constants. This means a typo in those constants would not be caught by the unit tests — only at the integration level.
 
 ## Findings
 
@@ -31,7 +31,7 @@ requireSessionStatus(stubSession("COMPLETE"), RESETTABLE_STATUSES, "reset sessio
 
 ### Option A: Import and use exported constants (Recommended)
 
-Add `RESETTABLE_STATUSES` and `DRAFT_ONLY_STATUSES` to the imports and replace 3 inline set declarations.
+Add `RESETTABLE_STATUSES` and `MAP_POOL_STATUSES` to the imports and replace 3 inline set declarations.
 
 **Pros:** Tests validate the actual constants; one fewer place to maintain
 **Cons:** Slightly couples test to constant naming
@@ -45,7 +45,7 @@ Add `RESETTABLE_STATUSES` and `DRAFT_ONLY_STATUSES` to the imports and replace 3
 
 ## Acceptance Criteria
 
-- [ ] Tests import `RESETTABLE_STATUSES` and `DRAFT_ONLY_STATUSES`
+- [ ] Tests import `RESETTABLE_STATUSES` and `MAP_POOL_STATUSES`
 - [ ] Inline `new Set()` replaced with named constants in `requireSessionStatus` tests
 - [ ] All tests pass
 
