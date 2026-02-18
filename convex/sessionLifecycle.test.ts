@@ -19,7 +19,11 @@ import {
   mapFactory,
 } from "./test.factories";
 import type { SessionStatus } from "./lib/constants";
-import { VALID_TRANSITIONS, SESSION_RESET_PATCHES } from "./lib/constants";
+import {
+  VALID_TRANSITIONS,
+  SESSION_RESET_PATCHES,
+  EDITABLE_STATUSES,
+} from "./lib/constants";
 import {
   validateTransition,
   requireSessionStatus,
@@ -27,7 +31,6 @@ import {
   guardStart,
   transitionSession,
 } from "./lib/sessionLifecycle";
-import { EDITABLE_STATUSES } from "./lib/constants";
 
 // ============================================================================
 // Test Helpers
