@@ -772,6 +772,12 @@ describe("requireSessionStatus", () => {
         requireSessionStatus(stubSession("COMPLETE"), RESETTABLE_STATUSES, "reset session")
       ).not.toThrow();
     });
+
+    it("passes for MAP_POOL_STATUSES", () => {
+      expect(() =>
+        requireSessionStatus(stubSession("DRAFT"), MAP_POOL_STATUSES, "set maps")
+      ).not.toThrow();
+    });
   });
 
   describe("throws for disallowed statuses", () => {
