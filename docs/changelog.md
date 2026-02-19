@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.14.1] - 2026-02-19 - Return Validator Bug Fix
+
+### Fixed
+- **`sessionMapObjectValidator` missing `submittedByAdmin` field** — Hand-written return validator in `convex/sessions.ts` was missing `submittedByAdmin: v.optional(v.boolean())`, causing `ReturnsValidationError` at runtime when `getSession` returned session maps with the `submittedByAdmin` property. Convex return validators are strict and reject undeclared properties.
+
+### Technical Notes
+- Audited all 40+ Convex functions for validator/schema mismatches — this was the only issue found
+- 3 queries without `returns` validators (`listSessions`, `listSessionsForDashboard`, `listTeams`) intentionally left without validators to avoid future drift bugs
+- TypeScript, lint, and all 840 tests pass clean
+
+---
+
 ## [0.14.0] - 2026-02-15 - Phase 5: Disconnect Detection & Auto-Pause (WAR-49, PR #68)
 
 ### Added

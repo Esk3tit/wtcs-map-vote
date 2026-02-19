@@ -98,6 +98,7 @@ const sessionMapObjectValidator = v.object({
   bannedAtTurn: v.optional(v.number()),
   bannedAtRound: v.optional(v.number()),
   voteCount: v.optional(v.number()),
+  submittedByAdmin: v.optional(v.boolean()),
 });
 
 /**

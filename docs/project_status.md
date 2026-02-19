@@ -2,7 +2,7 @@
 
 Current progress and next steps for the WTCS Map Vote project.
 
-**Last Updated:** February 15, 2026
+**Last Updated:** February 19, 2026
 
 ---
 
@@ -151,6 +151,7 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] Shared voting helpers extracted (`convex/lib/votingHelpers.ts`, `convex/lib/timerScheduling.ts`)
 - [x] Admin session control buttons wired (WAR-48, PR #67) — all action buttons functional with confirmation dialogs
 - [x] Disconnect detection and auto-pause (WAR-49, PR #68) — heartbeat timeout cron with auto-pause
+- [x] Return validator audit — fixed `sessionMapObjectValidator` missing `submittedByAdmin` field
 
 ---
 
