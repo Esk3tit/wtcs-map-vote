@@ -1722,6 +1722,69 @@ export const getSessionByToken = query({
 });
 
 /**
+ * Lightweight session status query for redirect detection.
+ * Returns only session ID and status — no maps, players, or votes.
+ * Used on the results page to detect session resets without the overhead
+ * of the full `getSessionByToken` query.
+ *
+ * @param token - Player access token from URL
+ */
+export const getSessionStatusByToken = query({
+  args: {
+    token: v.string(),
+  },
+  returns: v.union(
+    v.object({
+      status: v.literal("valid"),
+      session: v.object({
+        _id: v.id("sessions"),
+        status: sessionStatusValidator,
+      }),
+    }),
+    v.object({
+      status: v.literal("error"),
+      error: v.union(
+        v.literal("INVALID_TOKEN"),
+        v.literal("TOKEN_EXPIRED"),
+        v.literal("SESSION_NOT_FOUND"),
+        v.literal("TOKEN_NOT_ACTIVATED")
+      ),
+    })
+  ),
+  handler: async (ctx, args) => {
+    const player = await ctx.db
+      .query("sessionPlayers")
+      .withIndex("by_token", (q) => q.eq("token", args.token))
+      .first();
+
+    if (!player) {
+      return { status: "error" as const, error: "INVALID_TOKEN" as const };
+    }
+
+    if (player.tokenExpiresAt < Date.now()) {
+      return { status: "error" as const, error: "TOKEN_EXPIRED" as const };
+    }
+
+    const session = await ctx.db.get(player.sessionId);
+    if (!session) {
+      return { status: "error" as const, error: "SESSION_NOT_FOUND" as const };
+    }
+
+    if (!player.ipAddress) {
+      return {
+        status: "error" as const,
+        error: "TOKEN_NOT_ACTIVATED" as const,
+      };
+    }
+
+    return {
+      status: "valid" as const,
+      session: { _id: session._id, status: session.status },
+    };
+  },
+});
+
+/**
  * Get session results for display on results page.
  * Requires valid token authentication.
  *

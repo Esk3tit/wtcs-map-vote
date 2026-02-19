@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Card } from "@/components/ui/card";
@@ -17,6 +17,7 @@ import {
 import { TokenErrorPage } from "@/components/session/TokenErrorPage";
 import { CountdownTimer } from "@/components/session/CountdownTimer";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
+import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
 import { SITE_URL } from "@/lib/convexHttp";
 import { Check, Lock, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
@@ -73,8 +74,6 @@ function getVotingErrorMessage(error: VotingErrorCode): string {
 
 function PlayerVotingPage() {
   const { token } = Route.useParams();
-  const navigate = useNavigate();
-
   // Step 1: Validate token and lock IP via HTTP action
   const auth = usePlayerAuth(token);
 
@@ -92,20 +91,8 @@ function PlayerVotingPage() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [optimisticVotedMapId, setOptimisticVotedMapId] = useState<Id<"sessionMaps"> | null>(null);
 
-  // Auto-redirect to results when session completes (hook before early returns)
-  useEffect(() => {
-    if (data?.status === "valid") {
-      const { session } = data;
-      if (session.status === "COMPLETE") {
-        navigate({
-          to: "/results/$sessionId",
-          params: { sessionId: session._id },
-        });
-      } else if (session.status === "DRAFT" || session.status === "WAITING") {
-        navigate({ to: "/lobby/$token", params: { token } });
-      }
-    }
-  }, [data, navigate, token]);
+  // Auto-redirect based on session status (hook must be before early returns)
+  const isRedirecting = useSessionStatusRedirect(data, token, "vote");
 
   // Auto-dismiss dialog when the selected map is no longer available (e.g. opponent banned it)
   useEffect(() => {
@@ -177,6 +164,15 @@ function PlayerVotingPage() {
       );
     }
     return <TokenErrorPage error={data.error} />;
+  }
+
+  // Render guard: show spinner while redirect is in flight
+  if (isRedirecting) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
   }
 
   const { player, session, maps, otherPlayers, isYourTurn } = data;

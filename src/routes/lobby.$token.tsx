@@ -1,4 +1,4 @@
-import { createFileRoute, useNavigate } from "@tanstack/react-router";
+import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import { Card } from "@/components/ui/card";
@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { TokenErrorPage } from "@/components/session/TokenErrorPage";
 import { ReadyCountdown } from "@/components/session/ReadyCountdown";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
+import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
 import { SITE_URL } from "@/lib/convexHttp";
 import { READY_EXPIRY_MS } from "../../convex/lib/constants";
 import { isReadyActive } from "@/lib/ready";
@@ -21,8 +22,6 @@ export const Route = createFileRoute("/lobby/$token")({
 
 function PlayerLobbyPage() {
   const { token } = Route.useParams();
-  const navigate = useNavigate();
-
   // Step 1: Validate token and lock IP via HTTP action
   const auth = usePlayerAuth(token);
 
@@ -64,16 +63,7 @@ function PlayerLobbyPage() {
   }, [token]);
 
   // Auto-redirect based on session status (hook must be before early returns)
-  useEffect(() => {
-    if (data?.status === "valid") {
-      const { session } = data;
-      if (session.status === "IN_PROGRESS") {
-        navigate({ to: "/vote/$token", params: { token } });
-      } else if (session.status === "COMPLETE") {
-        navigate({ to: "/results/$sessionId", params: { sessionId: session._id } });
-      }
-    }
-  }, [data, navigate, token]);
+  const isRedirecting = useSessionStatusRedirect(data, token, "lobby");
 
   // Auth loading
   if (auth.status === "loading") {
@@ -110,6 +100,15 @@ function PlayerLobbyPage() {
       );
     }
     return <TokenErrorPage error={data.error} />;
+  }
+
+  // Render guard: show spinner while redirect is in flight
+  if (isRedirecting) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
   }
 
   const { player, session, maps, otherPlayers } = data;

@@ -2,21 +2,54 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
+import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Trophy, X, Loader2, AlertTriangle, Clock } from "lucide-react";
 
 export const Route = createFileRoute("/results/$sessionId")({
   component: VotingResultsPage,
+  validateSearch: (
+    search: Record<string, unknown>
+  ): { token?: string } => ({
+    token:
+      typeof search.token === "string" && /^[a-f0-9]{32}$/.test(search.token)
+        ? search.token
+        : undefined,
+  }),
 });
 
 function VotingResultsPage() {
   const { sessionId } = Route.useParams();
+  const { token } = Route.useSearch();
   const typedSessionId = sessionId as Id<"sessions">;
 
   const data = useQuery(api.sessions.getSessionResults, {
     sessionId: typedSessionId,
   });
+
+  // Subscribe to session status for reset detection (only when token present)
+  // Uses lightweight query — only fetches session ID and status, no maps/players/votes.
+  const sessionData = useQuery(
+    api.sessions.getSessionStatusByToken,
+    token ? { token } : "skip"
+  );
+
+  // Auto-redirect to lobby on session reset (hook must be before early returns)
+  const isRedirecting = useSessionStatusRedirect(
+    sessionData,
+    token,
+    "results"
+  );
+
+  // Render guard: show spinner while redirect is in flight
+  if (isRedirecting) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
 
   // Loading state
   if (data === undefined) {
