@@ -16,6 +16,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { TokenErrorPage } from "@/components/session/TokenErrorPage";
 import { CountdownTimer } from "@/components/session/CountdownTimer";
+import { SessionPausedOverlay } from "@/components/session/SessionPausedOverlay";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
 import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
 import { SITE_URL } from "@/lib/convexHttp";
@@ -248,23 +249,20 @@ function PlayerVotingPage() {
     }
   };
 
-  // Show paused state
-  if (session.status === "PAUSED") {
-    return (
-      <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-6">
-        <Card className="max-w-md p-8 text-center space-y-4">
-          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
-          <h1 className="text-2xl font-bold">Session Paused</h1>
-          <p className="text-muted-foreground">
-            The admin has paused this session. Please wait for them to resume.
-          </p>
-        </Card>
-      </div>
-    );
-  }
+  const isPaused = session.status === "PAUSED";
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
+      {/* Screen reader live region — always mounted so announcements work */}
+      <div role="status" aria-live="assertive" aria-atomic="true" className="sr-only">
+        {isPaused
+          ? "Session has been paused. All interactions are disabled."
+          : ""}
+      </div>
+
+      <SessionPausedOverlay isPaused={isPaused} />
+
+      <div inert={isPaused || undefined}>
       {/* Header */}
       <header className="border-b border-border bg-card px-4 py-3 sm:px-6 sm:py-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -553,6 +551,7 @@ function PlayerVotingPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      </div>
     </div>
   );
 }
