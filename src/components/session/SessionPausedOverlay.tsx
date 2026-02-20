@@ -22,8 +22,10 @@ export function SessionPausedOverlay({ isPaused }: { isPaused: boolean }) {
   // Lock body scroll and compensate for scrollbar removal while paused
   useEffect(() => {
     if (isPaused) {
-      const scrollbarWidth =
-        window.innerWidth - document.documentElement.clientWidth;
+      const scrollbarWidth = Math.max(
+        0,
+        window.innerWidth - document.documentElement.clientWidth,
+      );
       const originalOverflow = document.body.style.overflow;
       const originalPaddingRight = document.body.style.paddingRight;
       document.body.style.overflow = "hidden";
@@ -43,9 +45,10 @@ export function SessionPausedOverlay({ isPaused }: { isPaused: boolean }) {
       role="dialog"
       aria-modal="true"
       aria-labelledby="paused-overlay-heading"
+      aria-describedby="paused-overlay-description"
     >
       <Card className="max-w-md p-6 sm:p-8 text-center space-y-4 mx-4">
-        <Loader2 className="h-10 w-10 sm:h-12 sm:w-12 animate-spin text-primary mx-auto" />
+        <Loader2 aria-hidden="true" className="h-10 w-10 sm:h-12 sm:w-12 animate-spin text-primary mx-auto" />
         <h2
           id="paused-overlay-heading"
           ref={headingRef}
@@ -54,7 +57,7 @@ export function SessionPausedOverlay({ isPaused }: { isPaused: boolean }) {
         >
           Session Paused
         </h2>
-        <p className="text-sm sm:text-base text-muted-foreground">
+        <p id="paused-overlay-description" className="text-sm sm:text-base text-muted-foreground">
           Waiting for admin to resume...
         </p>
       </Card>

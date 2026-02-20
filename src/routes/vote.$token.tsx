@@ -20,6 +20,7 @@ import { SessionPausedOverlay } from "@/components/session/SessionPausedOverlay"
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
 import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
 import { SITE_URL } from "@/lib/convexHttp";
+import { cn } from "@/lib/utils";
 import { Check, Lock, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -339,15 +340,16 @@ function PlayerVotingPage() {
               return (
                 <Card
                   key={map._id}
-                  className={`overflow-hidden transition-all duration-200 relative group ${
-                    map.state === "AVAILABLE" && isYourTurn && !isSubmitting && !isPaused
-                      ? "cursor-pointer hover:ring-2 hover:ring-primary hover:shadow-lg hover:shadow-primary/20 active:ring-2 active:ring-primary"
-                      : ""
-                  } ${isMyVote ? "ring-2 ring-amber-400 shadow-lg shadow-amber-400/20" : ""} ${map.state === "BANNED" ? "opacity-60" : ""} ${
-                    isSubmitting ? "pointer-events-none opacity-80" : ""
-                  }`}
+                  className={cn(
+                    "overflow-hidden transition-all duration-200 relative group",
+                    map.state === "AVAILABLE" && isYourTurn && !isSubmitting && !isPaused &&
+                      "cursor-pointer hover:ring-2 hover:ring-primary hover:shadow-lg hover:shadow-primary/20 active:ring-2 active:ring-primary",
+                    isMyVote && "ring-2 ring-amber-400 shadow-lg shadow-amber-400/20",
+                    map.state === "BANNED" && "opacity-60",
+                    isSubmitting && "pointer-events-none opacity-80",
+                  )}
                   onClick={() => {
-                    if (map.state === "AVAILABLE" && isYourTurn && !isSubmitting) {
+                    if (map.state === "AVAILABLE" && isYourTurn && !isSubmitting && !isPaused) {
                       handleMapClick(map._id, map.name);
                     }
                   }}
@@ -503,7 +505,7 @@ function PlayerVotingPage() {
 
       {/* Confirmation Dialog (Ban / Vote) */}
       <AlertDialog
-        open={!!pendingAction}
+        open={!!pendingAction && !isPaused}
         onOpenChange={(open) =>
           !open && !isSubmitting && setPendingAction(null)
         }
