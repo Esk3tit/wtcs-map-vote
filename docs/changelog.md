@@ -16,7 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ### Added
 - **`SessionPausedOverlay` component** (`src/components/session/SessionPausedOverlay.tsx`) — centered Card with spinner, "Session Paused" heading, focus management, scroll lock, and mobile-responsive sizing
-- Screen reader live region (`role="status"`, `aria-live="assertive"`) for pause/resume announcements
+- Accessible dialog semantics (`role="dialog"`, `aria-modal="true"`, `aria-labelledby`) for screen reader announcement on pause
 
 ### Technical Notes
 - Overlay at `z-40` (below `z-50` AlertDialog and Sonner toasts)
