@@ -111,6 +111,13 @@ function PlayerVotingPage() {
     }
   }, [data, pendingAction]);
 
+  // Auto-dismiss dialog when session is paused
+  useEffect(() => {
+    if (pendingAction && data?.status === "valid" && data.session.status === "PAUSED") {
+      setPendingAction(null);
+    }
+  }, [data, pendingAction]);
+
   // Clear optimistic vote indicator once server state confirms the same vote
   useEffect(() => {
     if (
@@ -199,8 +206,10 @@ function PlayerVotingPage() {
 
   const currentStep = banSteps.findIndex((step) => !step.completed);
 
+  const isPaused = session.status === "PAUSED";
+
   const handleMapClick = (mapId: Id<"sessionMaps">, mapName: string) => {
-    if (!isYourTurn || isSubmitting) return;
+    if (!isYourTurn || isSubmitting || isPaused) return;
 
     setPendingAction({
       _id: mapId,
@@ -210,7 +219,7 @@ function PlayerVotingPage() {
   };
 
   const submitAction = async () => {
-    if (!pendingAction || isSubmitting) return;
+    if (!pendingAction || isSubmitting || isPaused) return;
 
     const endpoint =
       pendingAction.type === "ban"
@@ -248,8 +257,6 @@ function PlayerVotingPage() {
       setIsSubmitting(false);
     }
   };
-
-  const isPaused = session.status === "PAUSED";
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
