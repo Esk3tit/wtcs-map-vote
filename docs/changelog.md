@@ -6,6 +6,40 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.16.0] - 2026-02-20 - Session Paused Overlay (WAR-55, PR #74)
+
+### Changed
+- **Paused state on vote page now shows semi-transparent overlay** instead of full-page replacement — players retain visual context of map grid, timer, and turn order while the session is paused
+- Overlay uses `backdrop-blur-sm` and `bg-black/50` for readability with underlying content visible
+- All interaction beneath overlay disabled via HTML `inert` attribute (pointer, keyboard, assistive tech)
+- Overlay auto-dismisses reactively when admin resumes session (Convex subscription)
+
+### Added
+- **`SessionPausedOverlay` component** (`src/components/session/SessionPausedOverlay.tsx`) — centered Card with spinner, "Session Paused" heading, focus management, scroll lock, and mobile-responsive sizing
+- Screen reader live region (`role="status"`, `aria-live="assertive"`) for pause/resume announcements
+
+### Technical Notes
+- Overlay at `z-40` (below `z-50` AlertDialog and Sonner toasts)
+- `CountdownTimer` already handles pause via `timerPausedAt` — no timer changes needed
+- Uses `tw-animate-css` `animate-in fade-in duration-200` for enter animation
+
+---
+
+## [0.15.0] - 2026-02-19 - Player Session State Auto-Redirects (WAR-54, PR #73)
+
+### Added
+- **`useSessionStatusRedirect` hook** — reactive session status subscription that auto-redirects players between lobby, vote, and results pages based on session state transitions
+- Lobby page auto-redirects to `/vote` when session starts (WAITING → IN_PROGRESS)
+- Vote page auto-redirects to `/results` when session completes (IN_PROGRESS → COMPLETE)
+- Results page redirects away if session is not in a terminal state
+
+### Technical Notes
+- Uses `getSessionStatusByToken` lightweight query (avoids full session payload)
+- Redirect sets are explicit per page to prevent redirect loops
+- PAUSED status excluded from vote page redirects (players stay on vote page)
+
+---
+
 ## [0.14.1] - 2026-02-19 - Return Validator Bug Fix
 
 ### Fixed
