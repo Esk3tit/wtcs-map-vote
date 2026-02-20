@@ -95,25 +95,22 @@ function PlayerVotingPage() {
   // Auto-redirect based on session status (hook must be before early returns)
   const isRedirecting = useSessionStatusRedirect(data, token, "vote");
 
-  // Auto-dismiss dialog when the selected map is no longer available (e.g. opponent banned it)
+  // Auto-dismiss confirmation dialog when the pending action is no longer valid.
+  // Covers: map banned by opponent, turn expired, session paused.
+  // INVARIANT: AlertDialog renders via portal to document.body, escaping the
+  // inert wrapper. This effect ensures the dialog is dismissed when paused,
+  // since the portal cannot be blocked by the inert attribute.
   useEffect(() => {
     if (!pendingAction || data?.status !== "valid") return;
+
     const map = data.maps.find((m) => m._id === pendingAction._id);
-    if (!map || map.state !== "AVAILABLE") {
-      setPendingAction(null);
-    }
-  }, [data, pendingAction]);
+    const shouldDismiss =
+      !map ||
+      map.state !== "AVAILABLE" ||
+      !data.isYourTurn ||
+      data.session.status === "PAUSED";
 
-  // Auto-dismiss dialog when turn expires (server flips isYourTurn to false)
-  useEffect(() => {
-    if (pendingAction && data?.status === "valid" && !data.isYourTurn) {
-      setPendingAction(null);
-    }
-  }, [data, pendingAction]);
-
-  // Auto-dismiss dialog when session is paused
-  useEffect(() => {
-    if (pendingAction && data?.status === "valid" && data.session.status === "PAUSED") {
+    if (shouldDismiss) {
       setPendingAction(null);
     }
   }, [data, pendingAction]);
@@ -260,13 +257,6 @@ function PlayerVotingPage() {
 
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
-      {/* Screen reader live region — always mounted so announcements work */}
-      <div role="status" aria-live="assertive" aria-atomic="true" className="sr-only">
-        {isPaused
-          ? "Session has been paused. All interactions are disabled."
-          : ""}
-      </div>
-
       <SessionPausedOverlay isPaused={isPaused} />
 
       <div inert={isPaused || undefined}>
@@ -350,7 +340,7 @@ function PlayerVotingPage() {
                 <Card
                   key={map._id}
                   className={`overflow-hidden transition-all duration-200 relative group ${
-                    map.state === "AVAILABLE" && isYourTurn && !isSubmitting
+                    map.state === "AVAILABLE" && isYourTurn && !isSubmitting && !isPaused
                       ? "cursor-pointer hover:ring-2 hover:ring-primary hover:shadow-lg hover:shadow-primary/20 active:ring-2 active:ring-primary"
                       : ""
                   } ${isMyVote ? "ring-2 ring-amber-400 shadow-lg shadow-amber-400/20" : ""} ${map.state === "BANNED" ? "opacity-60" : ""} ${

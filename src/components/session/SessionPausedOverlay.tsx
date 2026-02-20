@@ -8,7 +8,10 @@ export function SessionPausedOverlay({ isPaused }: { isPaused: boolean }) {
   // Focus heading when overlay appears; restore focus when it dismisses
   useEffect(() => {
     if (isPaused) {
-      const previouslyFocused = document.activeElement as HTMLElement | null;
+      const previouslyFocused =
+        document.activeElement instanceof HTMLElement
+          ? document.activeElement
+          : null;
       headingRef.current?.focus();
       return () => {
         previouslyFocused?.focus();
@@ -16,12 +19,18 @@ export function SessionPausedOverlay({ isPaused }: { isPaused: boolean }) {
     }
   }, [isPaused]);
 
-  // Lock body scroll while paused
+  // Lock body scroll and compensate for scrollbar removal while paused
   useEffect(() => {
     if (isPaused) {
+      const scrollbarWidth =
+        window.innerWidth - document.documentElement.clientWidth;
+      const originalOverflow = document.body.style.overflow;
+      const originalPaddingRight = document.body.style.paddingRight;
       document.body.style.overflow = "hidden";
+      document.body.style.paddingRight = `${scrollbarWidth}px`;
       return () => {
-        document.body.style.overflow = "";
+        document.body.style.overflow = originalOverflow;
+        document.body.style.paddingRight = originalPaddingRight;
       };
     }
   }, [isPaused]);
@@ -31,11 +40,14 @@ export function SessionPausedOverlay({ isPaused }: { isPaused: boolean }) {
   return (
     <div
       className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 backdrop-blur-sm animate-in fade-in duration-200"
+      role="dialog"
       aria-modal="true"
+      aria-labelledby="paused-overlay-heading"
     >
       <Card className="max-w-md p-6 sm:p-8 text-center space-y-4 mx-4">
         <Loader2 className="h-10 w-10 sm:h-12 sm:w-12 animate-spin text-primary mx-auto" />
         <h2
+          id="paused-overlay-heading"
           ref={headingRef}
           tabIndex={-1}
           className="text-xl sm:text-2xl font-bold outline-none"
