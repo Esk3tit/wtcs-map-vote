@@ -259,7 +259,7 @@ function PlayerVotingPage() {
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       <SessionPausedOverlay isPaused={isPaused} />
 
-      <div inert={isPaused || undefined}>
+      <div inert={isPaused}>
       {/* Header */}
       <header className="border-b border-border bg-card px-4 py-3 sm:px-6 sm:py-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
