@@ -2,7 +2,7 @@
 
 Current progress and next steps for the WTCS Map Vote project.
 
-**Last Updated:** February 19, 2026
+**Last Updated:** February 20, 2026
 
 ---
 
@@ -153,19 +153,15 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] Disconnect detection and auto-pause (WAR-49, PR #68) — heartbeat timeout cron with auto-pause
 - [x] Return validator audit — fixed `sessionMapObjectValidator` missing `submittedByAdmin` field
 
+### Phase 6: Player Experience Polish (IN PROGRESS)
+- [x] Player session state auto-redirects (WAR-54, PR #73) — `useSessionStatusRedirect` hook for lobby→vote→results transitions
+- [x] Session paused overlay on vote page (WAR-55, PR #74) — semi-transparent overlay replaces full-page replacement
+
 ---
 
 ## Next Steps
 
-### Real-Time Features
-   - [ ] Session state subscription
-   - [ ] Map state updates during voting
-   - [ ] Player connection status
-   - [ ] Timer synchronization
-
 ### Player-Facing UI
-   - [ ] Wire player lobby to real-time session state
-   - [ ] Wire player voting page to real-time map/timer state
    - [ ] Player reconnection UI (auto-reconnect on heartbeat resume)
 
 ### Future Work

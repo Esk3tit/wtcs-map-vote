@@ -16,9 +16,11 @@ import {
 } from "@/components/ui/alert-dialog";
 import { TokenErrorPage } from "@/components/session/TokenErrorPage";
 import { CountdownTimer } from "@/components/session/CountdownTimer";
+import { SessionPausedOverlay } from "@/components/session/SessionPausedOverlay";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
 import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
 import { SITE_URL } from "@/lib/convexHttp";
+import { cn } from "@/lib/utils";
 import { Check, Lock, X, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -94,18 +96,22 @@ function PlayerVotingPage() {
   // Auto-redirect based on session status (hook must be before early returns)
   const isRedirecting = useSessionStatusRedirect(data, token, "vote");
 
-  // Auto-dismiss dialog when the selected map is no longer available (e.g. opponent banned it)
+  // Auto-dismiss confirmation dialog when the pending action is no longer valid.
+  // Covers: map banned by opponent, turn expired, session paused.
+  // INVARIANT: AlertDialog renders via portal to document.body, escaping the
+  // inert wrapper. This effect ensures the dialog is dismissed when paused,
+  // since the portal cannot be blocked by the inert attribute.
   useEffect(() => {
     if (!pendingAction || data?.status !== "valid") return;
-    const map = data.maps.find((m) => m._id === pendingAction._id);
-    if (!map || map.state !== "AVAILABLE") {
-      setPendingAction(null);
-    }
-  }, [data, pendingAction]);
 
-  // Auto-dismiss dialog when turn expires (server flips isYourTurn to false)
-  useEffect(() => {
-    if (pendingAction && data?.status === "valid" && !data.isYourTurn) {
+    const map = data.maps.find((m) => m._id === pendingAction._id);
+    const shouldDismiss =
+      !map ||
+      map.state !== "AVAILABLE" ||
+      !data.isYourTurn ||
+      data.session.status === "PAUSED";
+
+    if (shouldDismiss) {
       setPendingAction(null);
     }
   }, [data, pendingAction]);
@@ -198,8 +204,10 @@ function PlayerVotingPage() {
 
   const currentStep = banSteps.findIndex((step) => !step.completed);
 
+  const isPaused = session.status === "PAUSED";
+
   const handleMapClick = (mapId: Id<"sessionMaps">, mapName: string) => {
-    if (!isYourTurn || isSubmitting) return;
+    if (!isYourTurn || isSubmitting || isPaused) return;
 
     setPendingAction({
       _id: mapId,
@@ -209,7 +217,7 @@ function PlayerVotingPage() {
   };
 
   const submitAction = async () => {
-    if (!pendingAction || isSubmitting) return;
+    if (!pendingAction || isSubmitting || isPaused) return;
 
     const endpoint =
       pendingAction.type === "ban"
@@ -248,23 +256,11 @@ function PlayerVotingPage() {
     }
   };
 
-  // Show paused state
-  if (session.status === "PAUSED") {
-    return (
-      <div className="min-h-screen bg-background text-foreground flex flex-col items-center justify-center p-6">
-        <Card className="max-w-md p-8 text-center space-y-4">
-          <Loader2 className="h-12 w-12 animate-spin text-primary mx-auto" />
-          <h1 className="text-2xl font-bold">Session Paused</h1>
-          <p className="text-muted-foreground">
-            The admin has paused this session. Please wait for them to resume.
-          </p>
-        </Card>
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
+      <SessionPausedOverlay isPaused={isPaused} />
+
+      <div inert={isPaused}>
       {/* Header */}
       <header className="border-b border-border bg-card px-4 py-3 sm:px-6 sm:py-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -344,15 +340,16 @@ function PlayerVotingPage() {
               return (
                 <Card
                   key={map._id}
-                  className={`overflow-hidden transition-all duration-200 relative group ${
-                    map.state === "AVAILABLE" && isYourTurn && !isSubmitting
-                      ? "cursor-pointer hover:ring-2 hover:ring-primary hover:shadow-lg hover:shadow-primary/20 active:ring-2 active:ring-primary"
-                      : ""
-                  } ${isMyVote ? "ring-2 ring-amber-400 shadow-lg shadow-amber-400/20" : ""} ${map.state === "BANNED" ? "opacity-60" : ""} ${
-                    isSubmitting ? "pointer-events-none opacity-80" : ""
-                  }`}
+                  className={cn(
+                    "overflow-hidden transition-all duration-200 relative group",
+                    map.state === "AVAILABLE" && isYourTurn && !isSubmitting && !isPaused &&
+                      "cursor-pointer hover:ring-2 hover:ring-primary hover:shadow-lg hover:shadow-primary/20 active:ring-2 active:ring-primary",
+                    isMyVote && "ring-2 ring-amber-400 shadow-lg shadow-amber-400/20",
+                    map.state === "BANNED" && "opacity-60",
+                    isSubmitting && "pointer-events-none opacity-80",
+                  )}
                   onClick={() => {
-                    if (map.state === "AVAILABLE" && isYourTurn && !isSubmitting) {
+                    if (map.state === "AVAILABLE" && isYourTurn && !isSubmitting && !isPaused) {
                       handleMapClick(map._id, map.name);
                     }
                   }}
@@ -508,7 +505,7 @@ function PlayerVotingPage() {
 
       {/* Confirmation Dialog (Ban / Vote) */}
       <AlertDialog
-        open={!!pendingAction}
+        open={!!pendingAction && !isPaused}
         onOpenChange={(open) =>
           !open && !isSubmitting && setPendingAction(null)
         }
@@ -553,6 +550,7 @@ function PlayerVotingPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+      </div>
     </div>
   );
 }
