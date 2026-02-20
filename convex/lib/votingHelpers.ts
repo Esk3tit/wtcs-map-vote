@@ -12,6 +12,7 @@ import type { Doc, Id } from "../_generated/dataModel";
 import { ConvexError, v } from "convex/values";
 
 import { completeSession } from "./sessionLifecycle";
+import { REVEAL_DURATION_MS } from "./constants";
 import { pickRandom } from "./random";
 import { scheduleTimerExpiry } from "./timerScheduling";
 import { logAction } from "../audit";
@@ -218,11 +219,14 @@ export async function resolveRound(
   if (remainingCount > 1) {
     // === ROUND_ADVANCED: multiple maps still available ===
     const now = Date.now();
+    // Offset timer start by reveal duration so players get the full
+    // configured timer for voting after the client-side reveal phase.
+    const timerStart = now + REVEAL_DURATION_MS;
     await ctx.db.patch(session._id, {
       currentRound: currentRound + 1,
       isRevoteRound: false,
       updatedAt: now,
-      timerStartedAt: now,
+      timerStartedAt: timerStart,
       timerPausedAt: undefined,
     });
     await resetVoteFlags(ctx, session._id);
@@ -241,7 +245,7 @@ export async function resolveRound(
     await scheduleTimerExpiry(
       ctx,
       session._id,
-      now,
+      timerStart,
       session.turnTimerSeconds,
       session.format as "ABBA" | "MULTIPLAYER"
     );
@@ -271,11 +275,13 @@ export async function resolveRound(
     );
 
     const now = Date.now();
+    // Offset timer start by reveal duration for deadlock reveal
+    const timerStart = now + REVEAL_DURATION_MS;
     await ctx.db.patch(session._id, {
       currentRound: currentRound + 1,
       isRevoteRound: true,
       updatedAt: now,
-      timerStartedAt: now,
+      timerStartedAt: timerStart,
       timerPausedAt: undefined,
     });
     await resetVoteFlags(ctx, session._id);
@@ -294,7 +300,7 @@ export async function resolveRound(
     await scheduleTimerExpiry(
       ctx,
       session._id,
-      now,
+      timerStart,
       session.turnTimerSeconds,
       session.format as "ABBA" | "MULTIPLAYER"
     );

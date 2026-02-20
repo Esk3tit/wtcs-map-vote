@@ -2285,8 +2285,10 @@ describe("voting.resolveRound", () => {
 
       const dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
       expect(dbSession?.status).toBe("IN_PROGRESS");
-      expect(dbSession?.timerStartedAt).toBeGreaterThanOrEqual(before);
-      expect(dbSession?.timerStartedAt).toBeLessThanOrEqual(after);
+      // timerStartedAt is offset by REVEAL_DURATION_MS (3s) to account for
+      // the client-side reveal phase before the next round starts.
+      expect(dbSession?.timerStartedAt).toBeGreaterThanOrEqual(before + 3_000);
+      expect(dbSession?.timerStartedAt).toBeLessThanOrEqual(after + 3_000);
       expect(dbSession?.timerPausedAt).toBeUndefined();
     });
 
@@ -2306,8 +2308,9 @@ describe("voting.resolveRound", () => {
 
       const dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
       expect(dbSession?.isRevoteRound).toBe(true);
-      expect(dbSession?.timerStartedAt).toBeGreaterThanOrEqual(before);
-      expect(dbSession?.timerStartedAt).toBeLessThanOrEqual(after);
+      // timerStartedAt is offset by REVEAL_DURATION_MS (3s) for the reveal phase
+      expect(dbSession?.timerStartedAt).toBeGreaterThanOrEqual(before + 3_000);
+      expect(dbSession?.timerStartedAt).toBeLessThanOrEqual(after + 3_000);
     });
 
     it("clears timers on session completion (WINNER)", async () => {
