@@ -44,10 +44,15 @@ export default defineConfig({
         },
       },
       {
+        resolve: {
+          alias: {
+            "@": path.resolve(__dirname, "./src"),
+          },
+        },
         test: {
           name: "react",
           include: ["src/**/*.test.{ts,tsx}"],
-          environment: "jsdom",
+          environment: "node",
         },
       },
     ],

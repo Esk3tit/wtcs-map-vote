@@ -1,4 +1,4 @@
-import { useState, useEffect, useReducer } from "react";
+import { useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
@@ -17,17 +17,13 @@ import {
 import { TokenErrorPage } from "@/components/session/TokenErrorPage";
 import { CountdownTimer } from "@/components/session/CountdownTimer";
 import { SessionPausedOverlay } from "@/components/session/SessionPausedOverlay";
+import { VoteMapCard } from "@/components/session/VoteMapCard";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
-import { usePrevious } from "@/hooks/usePrevious";
-import { useRevealTimer } from "@/hooks/useRevealTimer";
+import { useRevealPhase } from "@/hooks/useRevealPhase";
 import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
 import { SITE_URL } from "@/lib/convexHttp";
 import { cn } from "@/lib/utils";
-import {
-  REVEAL_DURATION_MS,
-  WINNER_REVEAL_DURATION_MS,
-} from "../../convex/lib/constants";
-import { Check, Lock, X, Loader2, Trophy, ShieldCheck } from "lucide-react";
+import { Check, Lock, X, Loader2, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import type { Id } from "../../convex/_generated/dataModel";
 
@@ -85,86 +81,6 @@ function getVotingErrorMessage(error: VotingErrorCode): string {
 }
 
 // ============================================================================
-// Round Phase State Machine (Multiplayer only)
-// ============================================================================
-
-type RoundOutcome = "ROUND_ADVANCED" | "REVOTE" | "WINNER" | "RANDOM_WINNER";
-
-type RoundPhase = "VOTING" | "REVEALING" | "WINNER_REVEAL" | "REDIRECTING";
-
-type RevealData = {
-  completedRound: number;
-  eliminatedMapIds: Id<"sessionMaps">[];
-  outcome: RoundOutcome;
-};
-
-type PhaseState = {
-  phase: RoundPhase;
-  reveal: RevealData | null;
-  winnerMapId: Id<"sessionMaps"> | null;
-};
-
-type PhaseEvent =
-  | {
-      type: "ROUND_COMPLETED";
-      completedRound: number;
-      eliminatedMapIds: Id<"sessionMaps">[];
-      outcome: "ROUND_ADVANCED" | "REVOTE";
-    }
-  | {
-      type: "WINNER_DETECTED";
-      winnerMapId: Id<"sessionMaps">;
-      completedRound: number;
-      eliminatedMapIds: Id<"sessionMaps">[];
-      outcome: "WINNER" | "RANDOM_WINNER";
-    }
-  | { type: "REVEAL_TIMER_ELAPSED" }
-  | { type: "WINNER_REVEAL_ELAPSED" };
-
-const INITIAL_PHASE_STATE: PhaseState = {
-  phase: "VOTING",
-  reveal: null,
-  winnerMapId: null,
-};
-
-function phaseReducer(state: PhaseState, event: PhaseEvent): PhaseState {
-  switch (event.type) {
-    case "ROUND_COMPLETED":
-      if (state.phase !== "VOTING") return state;
-      return {
-        phase: "REVEALING",
-        reveal: {
-          completedRound: event.completedRound,
-          eliminatedMapIds: event.eliminatedMapIds,
-          outcome: event.outcome,
-        },
-        winnerMapId: null,
-      };
-    case "WINNER_DETECTED":
-      // Winner can interrupt both VOTING and REVEALING phases
-      if (state.phase === "REDIRECTING" || state.phase === "WINNER_REVEAL")
-        return state;
-      return {
-        phase: "WINNER_REVEAL",
-        reveal: {
-          completedRound: event.completedRound,
-          eliminatedMapIds: event.eliminatedMapIds,
-          outcome: event.outcome,
-        },
-        winnerMapId: event.winnerMapId,
-      };
-    case "REVEAL_TIMER_ELAPSED":
-      if (state.phase !== "REVEALING") return state;
-      return { phase: "VOTING", reveal: null, winnerMapId: null };
-    case "WINNER_REVEAL_ELAPSED":
-      if (state.phase !== "WINNER_REVEAL") return state;
-      return { ...state, phase: "REDIRECTING" };
-    default:
-      return state;
-  }
-}
-
-// ============================================================================
 // Component
 // ============================================================================
 
@@ -188,10 +104,7 @@ function PlayerVotingPage() {
   const [optimisticVotedMapId, setOptimisticVotedMapId] =
     useState<Id<"sessionMaps"> | null>(null);
 
-  // Round phase state machine (multiplayer reveal)
-  const [phaseState, dispatch] = useReducer(phaseReducer, INITIAL_PHASE_STATE);
-
-  // Derive session values for detection hooks
+  // Derive session values
   const currentRound =
     data?.status === "valid" ? data.session.currentRound : undefined;
   const sessionStatus =
@@ -200,89 +113,26 @@ function PlayerVotingPage() {
     data?.status === "valid" ? data.session.format : undefined;
   const isPaused = sessionStatus === "PAUSED";
   const isMultiplayer = sessionFormat === "MULTIPLAYER";
-  const isRevealing =
-    isMultiplayer &&
-    (phaseState.phase === "REVEALING" ||
-      phaseState.phase === "WINNER_REVEAL");
 
-  // Track previous values for transition detection
-  const previousRound = usePrevious(currentRound);
-  const previousStatus = usePrevious(sessionStatus);
-
-  // Detect multiplayer round completion (currentRound incremented)
-  useEffect(() => {
-    if (!isMultiplayer) return;
-    if (previousRound === undefined || currentRound === undefined) return;
-    if (currentRound <= previousRound) return;
-    if (data?.status !== "valid") return;
-
-    // Find maps eliminated in the just-completed round
-    const eliminated = data.maps.filter(
-      (m) => m.state === "BANNED" && m.bannedAtRound === previousRound
-    );
-
-    // Determine outcome: if isRevoteRound is now true, the previous round was a deadlock
-    const outcome = data.session.isRevoteRound ? "REVOTE" : "ROUND_ADVANCED";
-
-    dispatch({
-      type: "ROUND_COMPLETED",
-      completedRound: previousRound,
-      eliminatedMapIds: eliminated.map((m) => m._id),
-      outcome,
-    });
-  }, [currentRound, previousRound, data, isMultiplayer]);
-
-  // Detect winner (session transitions from IN_PROGRESS to COMPLETE)
-  useEffect(() => {
-    if (!isMultiplayer) return;
-    if (previousStatus !== "IN_PROGRESS" || sessionStatus !== "COMPLETE")
-      return;
-    if (data?.status !== "valid") return;
-
-    const winnerMapId = data.session.winnerMapId;
-    if (!winnerMapId) return;
-
-    // Find maps eliminated in the final round
-    const completedRound = previousRound ?? data.session.currentRound;
-    const eliminated = data.maps.filter(
-      (m) => m.state === "BANNED" && m.bannedAtRound === completedRound
-    );
-
-    // Determine if this was a random winner.
-    // In a RANDOM_WINNER resolution the server bans all maps then promotes
-    // one back to WINNER state. That winner map retains its bannedAtRound
-    // field, whereas a normal last-map-standing winner was never banned.
-    const winnerMap = data.maps.find((m) => m._id === winnerMapId);
-    const outcome: "WINNER" | "RANDOM_WINNER" =
-      winnerMap?.bannedAtRound !== undefined ? "RANDOM_WINNER" : "WINNER";
-
-    dispatch({
-      type: "WINNER_DETECTED",
-      winnerMapId,
-      completedRound,
-      eliminatedMapIds: eliminated.map((m) => m._id),
-      outcome,
-    });
-  }, [sessionStatus, previousStatus, data, isMultiplayer, previousRound]);
-
-  // Reveal timer (3s for normal rounds, 5s for winner)
-  const revealDuration =
-    phaseState.phase === "WINNER_REVEAL"
-      ? WINNER_REVEAL_DURATION_MS
-      : REVEAL_DURATION_MS;
-
-  const { remainingMs } = useRevealTimer(
-    isRevealing,
-    revealDuration,
+  // Round phase state machine (multiplayer reveal)
+  const {
+    phaseState,
+    isRevealPhase,
+    isWinnerReveal,
+    isAnyReveal,
+    revealData,
+    remainingMs,
+  } = useRevealPhase({
+    currentRound,
+    sessionStatus,
+    maps: data?.status === "valid" ? data.maps : [],
+    sessionWinnerMapId:
+      data?.status === "valid" ? data.session.winnerMapId : undefined,
+    isRevoteRound:
+      data?.status === "valid" ? (data.session.isRevoteRound ?? false) : false,
+    isMultiplayer,
     isPaused,
-    () => {
-      if (phaseState.phase === "WINNER_REVEAL") {
-        dispatch({ type: "WINNER_REVEAL_ELAPSED" });
-      } else {
-        dispatch({ type: "REVEAL_TIMER_ELAPSED" });
-      }
-    }
-  );
+  });
 
   // Auto-redirect based on session status (suppressed during reveal phases)
   // By passing undefined during reveal, the hook's guard prevents it from firing.
@@ -306,12 +156,12 @@ function PlayerVotingPage() {
       map.state !== "AVAILABLE" ||
       !data.isYourTurn ||
       data.session.status === "PAUSED" ||
-      isRevealing;
+      isAnyReveal;
 
     if (shouldDismiss) {
       setPendingAction(null);
     }
-  }, [data, pendingAction, isRevealing]);
+  }, [data, pendingAction, isAnyReveal]);
 
   // Clear optimistic vote indicator once server state confirms the same vote
   useEffect(() => {
@@ -401,12 +251,6 @@ function PlayerVotingPage() {
 
   const currentStep = banSteps.findIndex((step) => !step.completed);
 
-  // Reveal-specific derived state
-  const revealData = phaseState.reveal;
-  const isRevealPhase = phaseState.phase === "REVEALING";
-  const isWinnerReveal = phaseState.phase === "WINNER_REVEAL";
-  const isAnyReveal = isRevealPhase || isWinnerReveal;
-
   // Separate maps into active (current round) and previously eliminated
   const activeMaps = isAnyReveal
     ? maps.filter(
@@ -446,15 +290,18 @@ function PlayerVotingPage() {
 
   // Check if a map is the winner during winner reveal
   const isWinnerMap = (mapId: Id<"sessionMaps">) =>
-    isWinnerReveal && phaseState.winnerMapId === mapId;
+    isWinnerReveal && phaseState.phase === "WINNER_REVEAL" && phaseState.winnerMapId === mapId;
 
   // Find the winner map name for accessibility announcements
-  const winnerMapName = isWinnerReveal
+  const winnerMapName = (phaseState.phase === "WINNER_REVEAL" || phaseState.phase === "REDIRECTING")
     ? maps.find((m) => m._id === phaseState.winnerMapId)?.name
     : undefined;
 
+  // Whether the UI is interactive (not paused and not in a reveal phase)
+  const isInteractive = !isPaused && !isAnyReveal;
+
   const handleMapClick = (mapId: Id<"sessionMaps">, mapName: string) => {
-    if (!isYourTurn || isSubmitting || isPaused || isAnyReveal) return;
+    if (!isYourTurn || isSubmitting || !isInteractive) return;
 
     setPendingAction({
       _id: mapId,
@@ -535,7 +382,7 @@ function PlayerVotingPage() {
           `Session complete. Winner: ${winnerMapName}.`}
       </div>
 
-      <div inert={isPaused || isAnyReveal}>
+      <div inert={!isInteractive}>
         {/* Header */}
         <header className="border-b border-border bg-card px-4 py-3 sm:px-6 sm:py-4">
           <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -668,145 +515,21 @@ function PlayerVotingPage() {
                     map._id === optimisticVotedMapId) &&
                   map.state === "AVAILABLE";
 
-                const justEliminated = isJustEliminated(map._id);
-                const survivor = isSurvivor(map._id, map.state);
-                const winner = isWinnerMap(map._id);
-
                 return (
-                  <Card
+                  <VoteMapCard
                     key={map._id}
-                    className={cn(
-                      "overflow-hidden relative group",
-                      "motion-safe:transition-all motion-safe:duration-200",
-                      // Normal voting styles
-                      !isAnyReveal &&
-                        map.state === "AVAILABLE" &&
-                        isYourTurn &&
-                        !isSubmitting &&
-                        !isPaused &&
-                        "cursor-pointer hover:ring-2 hover:ring-primary hover:shadow-lg hover:shadow-primary/20 active:ring-2 active:ring-primary",
-                      !isAnyReveal &&
-                        isMyVote &&
-                        "ring-2 ring-amber-400 shadow-lg shadow-amber-400/20",
-                      !isAnyReveal &&
-                        map.state === "BANNED" &&
-                        "opacity-60",
-                      !isAnyReveal &&
-                        isSubmitting &&
-                        "pointer-events-none opacity-80",
-                      // Reveal styles
-                      justEliminated &&
-                        "ring-2 ring-red-500/50 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500",
-                      survivor &&
-                        "ring-2 ring-green-500/50 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500",
-                      winner &&
-                        "ring-2 ring-amber-400 shadow-lg shadow-amber-400/30 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500"
-                    )}
-                    onClick={() => {
-                      if (
-                        map.state === "AVAILABLE" &&
-                        isYourTurn &&
-                        !isSubmitting &&
-                        !isPaused &&
-                        !isAnyReveal
-                      ) {
-                        handleMapClick(map._id, map.name);
-                      }
-                    }}
-                  >
-                    <div className="aspect-video relative overflow-hidden">
-                      <img
-                        src={map.imageUrl || "/placeholder.svg"}
-                        alt={map.name}
-                        className={cn(
-                          "w-full h-full object-cover",
-                          "motion-safe:transition-all motion-safe:duration-500",
-                          map.state === "BANNED" && "grayscale",
-                          justEliminated && "grayscale brightness-50"
-                        )}
-                      />
-
-                      {/* Just Eliminated Overlay (reveal) */}
-                      {justEliminated && (
-                        <div className="absolute inset-0 bg-red-950/40 flex flex-col items-center justify-center motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300">
-                          <X
-                            className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 text-red-500 motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-500"
-                            strokeWidth={3}
-                          />
-                          {map.voteCount !== undefined && (
-                            <span className="mt-2 text-xs sm:text-sm font-bold text-red-400 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-500 motion-safe:delay-200">
-                              {map.voteCount}{" "}
-                              {map.voteCount === 1 ? "vote" : "votes"}
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Standard Banned Overlay (non-reveal) */}
-                      {map.state === "BANNED" && !justEliminated && (
-                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                          <X
-                            className="w-16 h-16 text-red-600"
-                            strokeWidth={4}
-                          />
-                        </div>
-                      )}
-
-                      {/* Survivor Badge (reveal) */}
-                      {survivor && (
-                        <div className="absolute top-2 right-2 motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-75 motion-safe:duration-500 motion-safe:delay-300">
-                          <Badge className="bg-green-600 text-white border-green-500 gap-1">
-                            <ShieldCheck className="w-3 h-3" />
-                            Safe
-                          </Badge>
-                        </div>
-                      )}
-
-                      {/* Winner Map Overlay */}
-                      {winner && (
-                        <div className="absolute inset-0 bg-amber-500/20 flex flex-col items-center justify-center motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500">
-                          <Trophy className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 text-amber-400 motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-500" />
-                          <Badge className="mt-2 bg-amber-500 text-white border-amber-400 text-sm motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-500 motion-safe:delay-200">
-                            WINNER
-                          </Badge>
-                        </div>
-                      )}
-
-                      {/* Winner Overlay (ABBA / non-reveal) */}
-                      {map.state === "WINNER" && !winner && (
-                        <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                          <Check
-                            className="w-16 h-16 text-primary"
-                            strokeWidth={4}
-                          />
-                        </div>
-                      )}
-                    </div>
-
-                    <div className="p-3">
-                      <div className="font-semibold text-center">
-                        {map.name}
-                      </div>
-                      {!isAnyReveal && isMyVote && (
-                        <div className="text-xs text-center text-amber-400 mt-1">
-                          Your vote
-                        </div>
-                      )}
-                      {map.state === "BANNED" &&
-                        !justEliminated &&
-                        bannedByPlayer && (
-                          <div className="text-xs text-center text-muted-foreground mt-1">
-                            Banned by {bannedByPlayer.teamName}
-                          </div>
-                        )}
-                      {justEliminated && map.voteCount !== undefined && (
-                        <div className="text-xs text-center text-red-400 mt-1">
-                          Eliminated ({map.voteCount}{" "}
-                          {map.voteCount === 1 ? "vote" : "votes"})
-                        </div>
-                      )}
-                    </div>
-                  </Card>
+                    map={map}
+                    isMyVote={isMyVote}
+                    isYourTurn={isYourTurn}
+                    isSubmitting={isSubmitting}
+                    isInteractive={isInteractive}
+                    isAnyReveal={isAnyReveal}
+                    justEliminated={isJustEliminated(map._id)}
+                    survivor={isSurvivor(map._id, map.state)}
+                    winner={isWinnerMap(map._id)}
+                    bannedByTeamName={bannedByPlayer?.teamName}
+                    onMapClick={handleMapClick}
+                  />
                 );
               })}
             </div>

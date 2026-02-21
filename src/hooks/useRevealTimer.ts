@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
 
 /**
  * Manages a timed reveal phase with pause support.
@@ -51,10 +51,6 @@ export function useRevealTimer(
     segmentStartRef.current = null;
   }, [generation, durationMs]);
 
-  const timerCallback = useCallback(() => {
-    onCompleteRef.current();
-  }, []);
-
   useEffect(() => {
     if (!isActive || isPaused) {
       // Snapshot elapsed time when pausing
@@ -70,7 +66,7 @@ export function useRevealTimer(
     const segmentRemaining = Math.max(0, durationMs - elapsedRef.current);
 
     if (segmentRemaining <= 0) {
-      timerCallback();
+      onCompleteRef.current();
       return;
     }
 
@@ -80,10 +76,10 @@ export function useRevealTimer(
       const segmentElapsed = Date.now() - segmentStartRef.current;
       const totalElapsed = elapsedRef.current + segmentElapsed;
       setRemainingMs(Math.max(0, durationMs - totalElapsed));
-    }, 100);
+    }, 250);
 
     // Auto-advance timeout
-    const timeoutId = setTimeout(timerCallback, segmentRemaining);
+    const timeoutId = setTimeout(() => onCompleteRef.current(), segmentRemaining);
 
     return () => {
       clearTimeout(timeoutId);
@@ -93,7 +89,7 @@ export function useRevealTimer(
         segmentStartRef.current = null;
       }
     };
-  }, [isActive, isPaused, durationMs, timerCallback, generation]);
+  }, [isActive, isPaused, durationMs, generation]);
 
   return { remainingMs: isActive ? remainingMs : durationMs };
 }
