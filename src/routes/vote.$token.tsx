@@ -256,6 +256,7 @@ function PlayerVotingPage() {
     ? maps.filter(
         (m) =>
           m.state === "AVAILABLE" ||
+          m.state === "WINNER" ||
           (m.state === "BANNED" &&
             revealData &&
             m.bannedAtRound === revealData.completedRound)
@@ -353,7 +354,7 @@ function PlayerVotingPage() {
   };
 
   // Compute countdown text for reveal
-  const revealCountdown = Math.ceil(remainingMs / 1000);
+  const revealCountdown = Math.max(1, Math.ceil(remainingMs / 1000));
 
   // Compute accessibility announcement
   const eliminatedCount = revealData?.eliminatedMapIds.length ?? 0;

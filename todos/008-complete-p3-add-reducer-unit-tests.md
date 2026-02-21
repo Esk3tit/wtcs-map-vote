@@ -3,7 +3,7 @@ status: complete
 priority: p3
 issue_id: "008"
 tags: [code-review, testing]
-dependencies: ["001"]
+dependencies: ["002"]
 ---
 
 # Add Unit Tests for phaseReducer

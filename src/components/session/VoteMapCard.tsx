@@ -47,6 +47,12 @@ export function VoteMapCard({
   bannedByTeamName,
   onMapClick,
 }: VoteMapCardProps) {
+  const isClickable =
+    isInteractive &&
+    isYourTurn &&
+    map.state === "AVAILABLE" &&
+    !isSubmitting;
+
   return (
     <Card
       className={cn(
@@ -54,10 +60,7 @@ export function VoteMapCard({
         "motion-safe:transition-all motion-safe:duration-200",
         // Normal voting styles
         !isAnyReveal &&
-          map.state === "AVAILABLE" &&
-          isYourTurn &&
-          !isSubmitting &&
-          isInteractive &&
+          isClickable &&
           "cursor-pointer hover:ring-2 hover:ring-primary hover:shadow-lg hover:shadow-primary/20 active:ring-2 active:ring-primary",
         !isAnyReveal &&
           isMyVote &&
@@ -76,13 +79,19 @@ export function VoteMapCard({
         winner &&
           "ring-2 ring-amber-400 shadow-lg shadow-amber-400/30 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500"
       )}
+      role={isClickable ? "button" : undefined}
+      tabIndex={isClickable ? 0 : undefined}
+      aria-label={
+        isClickable ? `Vote for ${map.name}` : undefined
+      }
       onClick={() => {
-        if (
-          map.state === "AVAILABLE" &&
-          isYourTurn &&
-          !isSubmitting &&
-          isInteractive
-        ) {
+        if (isClickable) {
+          onMapClick(map._id, map.name);
+        }
+      }}
+      onKeyDown={(e) => {
+        if (isClickable && (e.key === "Enter" || e.key === " ")) {
+          e.preventDefault();
           onMapClick(map._id, map.name);
         }
       }}

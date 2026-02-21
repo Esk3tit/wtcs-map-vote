@@ -44,9 +44,9 @@ Implement Option A: Derive isInteractive boolean
 
 ## Acceptance Criteria
 
-- [ ] Single `isInteractive` derived boolean
-- [ ] All three guard locations use it
-- [ ] No behavior change
+- [x] Single `isInteractive` derived boolean
+- [x] All three guard locations use it
+- [x] No behavior change
 
 ## Work Log
 

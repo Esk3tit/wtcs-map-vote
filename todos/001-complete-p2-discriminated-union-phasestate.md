@@ -60,10 +60,10 @@ Implement Option A: Full discriminated union
 
 ## Acceptance Criteria
 
-- [ ] PhaseState is a discriminated union
-- [ ] All consumers use proper narrowing
-- [ ] TypeScript compiles with no errors
-- [ ] Reveal and winner flows still work correctly
+- [x] PhaseState is a discriminated union
+- [x] All consumers use proper narrowing
+- [x] TypeScript compiles with no errors
+- [x] Reveal and winner flows still work correctly
 
 ## Work Log
 

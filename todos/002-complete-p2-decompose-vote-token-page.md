@@ -62,10 +62,10 @@ Implement Option C: Extract both reveal hook and map card component
 
 ## Acceptance Criteria
 
-- [ ] vote.$token.tsx is under 800 lines
-- [ ] Extracted modules have clear interfaces
-- [ ] No behavior changes
-- [ ] TypeScript compiles cleanly
+- [x] vote.$token.tsx is under 800 lines
+- [x] Extracted modules have clear interfaces
+- [x] No behavior changes
+- [x] TypeScript compiles cleanly
 
 ## Work Log
 
