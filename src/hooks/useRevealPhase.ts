@@ -140,11 +140,17 @@ export function useRevealPhase(params: {
     if (previousRound === undefined || currentRound === undefined) return;
     if (currentRound <= previousRound) return;
 
-    // Find maps eliminated in the just-completed round
-    const eliminated = getEliminatedMapIds(maps, previousRound);
-
     // Determine outcome: if isRevoteRound is now true, the previous round was a deadlock
     const outcome = isRevoteRound ? "REVOTE" : "ROUND_ADVANCED";
+
+    // For REVOTE, the backend resets ALL maps back to AVAILABLE in the same
+    // transaction that increments currentRound, so getEliminatedMapIds would
+    // find nothing. Instead, use all AVAILABLE maps as the eliminated set
+    // (they were all eliminated before being restored).
+    const eliminated =
+      outcome === "REVOTE"
+        ? maps.filter((m) => m.state === "AVAILABLE").map((m) => m._id)
+        : getEliminatedMapIds(maps, previousRound);
 
     dispatch({
       type: "ROUND_COMPLETED",

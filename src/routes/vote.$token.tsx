@@ -101,8 +101,10 @@ function PlayerVotingPage() {
     type: "ban" | "vote";
   } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [optimisticVotedMapId, setOptimisticVotedMapId] =
-    useState<Id<"sessionMaps"> | null>(null);
+  const [optimisticVote, setOptimisticVote] = useState<{
+    mapId: Id<"sessionMaps">;
+    forRound: number;
+  } | null>(null);
 
   // Derive session values
   const currentRound =
@@ -113,6 +115,14 @@ function PlayerVotingPage() {
     data?.status === "valid" ? data.session.format : undefined;
   const isPaused = sessionStatus === "PAUSED";
   const isMultiplayer = sessionFormat === "MULTIPLAYER";
+
+  // Derive the effective optimistic ID synchronously during render.
+  // When currentRound changes (e.g. deadlock revote), this evaluates to null
+  // immediately — no effect needed.
+  const optimisticVotedMapId =
+    optimisticVote && optimisticVote.forRound === currentRound
+      ? optimisticVote.mapId
+      : null;
 
   // Round phase state machine (multiplayer reveal)
   const {
@@ -137,7 +147,10 @@ function PlayerVotingPage() {
   // Auto-redirect based on session status (suppressed during reveal phases)
   // By passing undefined during reveal, the hook's guard prevents it from firing.
   const redirectData =
-    phaseState.phase === "REVEALING" || phaseState.phase === "WINNER_REVEAL"
+    phaseState.phase === "REVEALING" ||
+    phaseState.phase === "WINNER_REVEAL" ||
+    // Suppress redirect while winner detection effect catches up (1-render gap)
+    (isMultiplayer && sessionStatus === "COMPLETE" && phaseState.phase === "VOTING")
       ? undefined
       : data;
   const isRedirecting = useSessionStatusRedirect(redirectData, token, "vote");
@@ -170,17 +183,9 @@ function PlayerVotingPage() {
       optimisticVotedMapId &&
       data.playerVotedMapId === optimisticVotedMapId
     ) {
-      setOptimisticVotedMapId(null);
+      setOptimisticVote(null);
     }
   }, [data, optimisticVotedMapId]);
-
-  // Clear optimistic vote on round transition
-  useEffect(() => {
-    if (optimisticVotedMapId) {
-      setOptimisticVotedMapId(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data?.status === "valid" ? data.session.currentRound : undefined]);
 
   // Auth loading
   if (auth.status === "loading") {
@@ -336,8 +341,8 @@ function PlayerVotingPage() {
       const result: { status: string; error?: string } = await res.json();
 
       if (result.status === "ok") {
-        if (pendingAction.type === "vote") {
-          setOptimisticVotedMapId(pendingAction._id);
+        if (pendingAction.type === "vote" && currentRound !== undefined) {
+          setOptimisticVote({ mapId: pendingAction._id, forRound: currentRound });
         }
         setPendingAction(null);
       } else {
@@ -506,7 +511,7 @@ function PlayerVotingPage() {
           {/* Map Grid */}
           <div className="max-w-6xl mx-auto mb-12">
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-              {(isAnyReveal && session.format === "MULTIPLAYER"
+              {(session.format === "MULTIPLAYER"
                 ? activeMaps
                 : maps
               ).map((map) => {
