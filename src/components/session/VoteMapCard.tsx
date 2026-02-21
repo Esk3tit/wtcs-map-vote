@@ -110,17 +110,11 @@ export function VoteMapCard({
 
         {/* Just Eliminated Overlay (reveal) */}
         {justEliminated && (
-          <div className="absolute inset-0 bg-red-950/40 flex flex-col items-center justify-center motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300">
+          <div className="absolute inset-0 bg-red-950/40 flex items-center justify-center motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300">
             <X
               className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 text-red-500 motion-safe:animate-in motion-safe:zoom-in-50 motion-safe:duration-500"
               strokeWidth={3}
             />
-            {map.voteCount !== undefined && (
-              <span className="mt-2 text-xs sm:text-sm font-bold text-red-400 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-2 motion-safe:duration-500 motion-safe:delay-200">
-                {map.voteCount}{" "}
-                {map.voteCount === 1 ? "vote" : "votes"}
-              </span>
-            )}
           </div>
         )}
 

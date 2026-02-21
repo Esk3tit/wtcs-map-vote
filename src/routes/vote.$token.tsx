@@ -458,11 +458,12 @@ function PlayerVotingPage() {
               /* Normal Voting Banner */
               <>
                 <div
-                  className={`rounded-lg p-6 text-center mb-4 ${
+                  className={cn(
+                    "rounded-lg p-6 text-center mb-4",
                     isYourTurn
                       ? "bg-green-950/50 border-2 border-green-600"
                       : "bg-muted border-2 border-border"
-                  }`}
+                  )}
                 >
                   <div className="text-2xl font-bold mb-2">
                     {session.format === "ABBA"
@@ -476,9 +477,10 @@ function PlayerVotingPage() {
                 </div>
 
                 <div
-                  className={`text-center mb-4 font-mono text-4xl sm:text-5xl md:text-7xl font-bold ${
+                  className={cn(
+                    "text-center mb-4 font-mono text-4xl sm:text-5xl md:text-7xl font-bold",
                     isYourTurn ? "text-primary" : "text-muted-foreground"
-                  }`}
+                  )}
                 >
                   {/* Key resets the timer when turn changes */}
                   <CountdownTimer
@@ -576,13 +578,14 @@ function PlayerVotingPage() {
                   <div key={index} className="flex items-center flex-1">
                     <div className="flex flex-col items-center">
                       <div
-                        className={`w-10 h-10 rounded-full flex items-center justify-center border-2 mb-2 ${
+                        className={cn(
+                          "w-10 h-10 rounded-full flex items-center justify-center border-2 mb-2",
                           step.completed
                             ? "bg-primary border-primary"
                             : currentStep === index
                               ? "bg-primary/20 border-primary"
                               : "bg-muted border-border"
-                        }`}
+                        )}
                       >
                         {step.completed ? (
                           <Check className="w-5 h-5 text-primary-foreground" />
