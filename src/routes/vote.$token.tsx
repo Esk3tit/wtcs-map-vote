@@ -23,6 +23,10 @@ import { useRevealTimer } from "@/hooks/useRevealTimer";
 import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
 import { SITE_URL } from "@/lib/convexHttp";
 import { cn } from "@/lib/utils";
+import {
+  REVEAL_DURATION_MS,
+  WINNER_REVEAL_DURATION_MS,
+} from "../../convex/lib/constants";
 import { Check, Lock, X, Loader2, Trophy, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -30,13 +34,6 @@ import type { Id } from "../../convex/_generated/dataModel";
 export const Route = createFileRoute("/vote/$token")({
   component: PlayerVotingPage,
 });
-
-// ============================================================================
-// Constants
-// ============================================================================
-
-const REVEAL_DURATION_MS = 3_000;
-const WINNER_REVEAL_DURATION_MS = 5_000;
 
 // ============================================================================
 // Voting Error Handling
@@ -251,12 +248,13 @@ function PlayerVotingPage() {
       (m) => m.state === "BANNED" && m.bannedAtRound === completedRound
     );
 
-    // Determine if this was a random winner (check if all maps got banned)
-    const availableMaps = data.maps.filter((m) => m.state === "AVAILABLE");
+    // Determine if this was a random winner.
+    // In a RANDOM_WINNER resolution the server bans all maps then promotes
+    // one back to WINNER state. That winner map retains its bannedAtRound
+    // field, whereas a normal last-map-standing winner was never banned.
+    const winnerMap = data.maps.find((m) => m._id === winnerMapId);
     const outcome: "WINNER" | "RANDOM_WINNER" =
-      availableMaps.length <= 1 && eliminated.length > 0
-        ? "WINNER"
-        : "RANDOM_WINNER";
+      winnerMap?.bannedAtRound !== undefined ? "RANDOM_WINNER" : "WINNER";
 
     dispatch({
       type: "WINNER_DETECTED",
