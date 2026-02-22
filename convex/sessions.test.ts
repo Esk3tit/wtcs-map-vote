@@ -5021,7 +5021,7 @@ describe("WAR-35: getSessionByToken enhancements", () => {
         expect("ipAddress" in otherPlayer).toBe(false);
         // Only expected fields present
         expect(Object.keys(otherPlayer).sort()).toEqual(
-          ["_id", "hasVotedThisRound", "isConnected", "role", "teamName"].sort()
+          ["_id", "connectionStatus", "hasVotedThisRound", "isConnected", "role", "teamName"].sort()
         );
       }
     });

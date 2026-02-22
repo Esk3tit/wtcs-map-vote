@@ -34,6 +34,18 @@ export const mapStateValidator = v.union(
 );
 
 /**
+ * Validator for player connection status (3-state).
+ * Connected: heartbeat is fresh.
+ * Reconnecting: heartbeat is stale but within timeout.
+ * Disconnected: heartbeat has timed out.
+ */
+export const connectionStatusValidator = v.union(
+  v.literal("connected"),
+  v.literal("reconnecting"),
+  v.literal("disconnected")
+);
+
+/**
  * Validator for audit action types.
  * Keep in sync with AuditAction type in types.ts
  *

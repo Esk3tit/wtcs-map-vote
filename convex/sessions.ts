@@ -33,12 +33,14 @@ import {
   MAP_POOL_STATUSES,
   EDITABLE_STATUSES,
   RESETTABLE_STATUSES,
+  HEARTBEAT_INTERVAL_MS,
 } from "./lib/constants";
 import { validateName, validateRange } from "./lib/validation";
 import {
   sessionStatusValidator,
   sessionFormatValidator,
   mapStateValidator,
+  connectionStatusValidator,
 } from "./lib/validators";
 import { requireAdmin } from "./lib/auth";
 import {
@@ -77,6 +79,7 @@ const adminPlayerObjectValidator = v.object({
   tokenExpiresAt: v.number(),
   isIpLocked: v.boolean(),
   isConnected: v.boolean(),
+  connectionStatus: connectionStatusValidator,
   lastHeartbeat: v.optional(v.number()),
   hasVotedThisRound: v.boolean(),
   readyAt: v.optional(v.number()),
@@ -134,12 +137,33 @@ const sessionWithRelationsValidator = v.object({
 // ============================================================================
 
 /**
+ * Derive a 3-state connection status from heartbeat data.
+ *
+ * @param isConnected - Server-authoritative connection flag
+ * @param lastHeartbeat - Timestamp of last successful heartbeat
+ */
+function computeConnectionStatus(
+  isConnected: boolean,
+  lastHeartbeat: number | undefined
+): "connected" | "reconnecting" | "disconnected" {
+  if (!isConnected) return "disconnected";
+  if (!lastHeartbeat) return "connected";
+  const elapsed = Date.now() - lastHeartbeat;
+  if (elapsed > HEARTBEAT_INTERVAL_MS) return "reconnecting";
+  return "connected";
+}
+
+/**
  * Transform a player document for admin-facing queries.
  * Strips ipAddress (GDPR) and replaces with isIpLocked boolean.
  */
 function toAdminPlayer(player: Doc<"sessionPlayers">) {
   const { ipAddress, ...rest } = player;
-  return { ...rest, isIpLocked: !!ipAddress };
+  return {
+    ...rest,
+    isIpLocked: !!ipAddress,
+    connectionStatus: computeConnectionStatus(player.isConnected, player.lastHeartbeat),
+  };
 }
 
 /**
@@ -152,6 +176,7 @@ function toSanitizedPlayer(player: Doc<"sessionPlayers">) {
     role: player.role,
     teamName: player.teamName,
     isConnected: player.isConnected,
+    connectionStatus: computeConnectionStatus(player.isConnected, player.lastHeartbeat),
     hasVotedThisRound: player.hasVotedThisRound,
     readyAt: player.readyAt,
   };
@@ -1525,6 +1550,7 @@ const sanitizedPlayerValidator = v.object({
   role: v.string(),
   teamName: v.string(),
   isConnected: v.boolean(),
+  connectionStatus: connectionStatusValidator,
   hasVotedThisRound: v.boolean(),
   readyAt: v.optional(v.number()),
 });

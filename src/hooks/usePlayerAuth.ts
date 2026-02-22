@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { SITE_URL } from "@/lib/convexHttp";
+import { HEARTBEAT_INTERVAL_MS } from "../../convex/lib/constants";
 
-// Heartbeat interval in milliseconds.
-// INVARIANT: Must be < server HEARTBEAT_TIMEOUT_MS (convex/lib/constants.ts, currently 60s).
-// The server timeout should be at least 2× this value to tolerate one missed heartbeat.
-const HEARTBEAT_INTERVAL_MS = 30_000;
+/** Consecutive heartbeat failures before transitioning to "error". */
+const MAX_MISSED_HEARTBEATS = 2;
 
-type AuthStatus = "loading" | "authenticated" | "error";
+type AuthStatus = "loading" | "authenticated" | "reconnecting" | "error";
 type AuthError =
   | "INVALID_TOKEN"
   | "TOKEN_EXPIRED"
@@ -35,11 +34,18 @@ interface UsePlayerAuthResult {
  * On mount: calls the HTTP validate-token endpoint to lock the token
  * to the client's IP. On success, starts a periodic heartbeat.
  * On error: returns the error for display via TokenErrorPage.
+ *
+ * Connection status states:
+ * - "loading" → initial token validation in progress
+ * - "authenticated" → connected and heartbeat is healthy
+ * - "reconnecting" → 1 missed heartbeat, retrying
+ * - "error" → 2+ missed heartbeats or server-side auth error
  */
 export function usePlayerAuth(token: string): UsePlayerAuthResult {
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [error, setError] = useState<AuthError | null>(null);
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const missedHeartbeatsRef = useRef(0);
 
   const stopHeartbeat = useCallback(() => {
     if (heartbeatRef.current) {
@@ -55,6 +61,7 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional: reset auth state synchronously when token prop changes before async validation
     setStatus("loading");
     setError(null);
+    missedHeartbeatsRef.current = 0;
 
     const normalizedToken = token.trim();
     if (!normalizedToken) {
@@ -85,6 +92,7 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
           stopHeartbeat();
           setStatus("authenticated");
           setError(null);
+          missedHeartbeatsRef.current = 0;
 
           // Start heartbeat
           heartbeatRef.current = setInterval(async () => {
@@ -104,12 +112,28 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
               if (controller.signal.aborted) return;
 
               if (hbData.status === "error") {
+                // Server-side auth error (token expired, IP mismatch, etc.)
                 setStatus("error");
                 setError(hbData.error);
                 stopHeartbeat();
+              } else {
+                // Heartbeat success — reset missed counter and restore status
+                missedHeartbeatsRef.current = 0;
+                setStatus("authenticated");
+                setError(null);
               }
             } catch {
-              // Heartbeat failures are non-fatal; will retry on next interval
+              if (controller.signal.aborted) return;
+
+              // Network failure — track consecutive misses
+              missedHeartbeatsRef.current += 1;
+              if (missedHeartbeatsRef.current >= MAX_MISSED_HEARTBEATS) {
+                setStatus("error");
+                setError("NETWORK_ERROR");
+                stopHeartbeat();
+              } else {
+                setStatus("reconnecting");
+              }
             }
           }, HEARTBEAT_INTERVAL_MS);
         } else {

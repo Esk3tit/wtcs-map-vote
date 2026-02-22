@@ -65,6 +65,7 @@ import {
   formatStatus,
   formatRelativeTime,
 } from "@/components/session/utils";
+import { ConnectionStatusBadge } from "@/components/session/ConnectionStatusBadge";
 
 // ============================================================================
 // Constants
@@ -161,6 +162,29 @@ const formatPlayerRole = (role: string, format: string): string => {
  * Displays a ready/not-ready badge for a player in the WAITING state.
  * Manages its own 1-second timer so the parent component does not re-render.
  */
+const ADMIN_CONNECTION_BADGE_STYLES = {
+  connected: "gap-1 bg-green-500/20 text-green-600 border-green-500/30",
+  reconnecting: "gap-1 bg-amber-500/20 text-amber-600 border-amber-500/30",
+  disconnected: "gap-1 bg-red-500/20 text-red-600 border-red-500/30",
+} as const;
+
+function AdminConnectionBadge({
+  status,
+}: {
+  status: "connected" | "reconnecting" | "disconnected";
+}) {
+  return (
+    <Badge variant="outline" className={ADMIN_CONNECTION_BADGE_STYLES[status]}>
+      <ConnectionStatusBadge status={status} showLabel={false} size="sm" />
+      {status === "connected"
+        ? "Connected"
+        : status === "reconnecting"
+          ? "Reconnecting"
+          : "Disconnected"}
+    </Badge>
+  );
+}
+
 function PlayerReadyBadge({ readyAt }: { readyAt?: number }) {
   const [now, setNow] = useState(() => Date.now());
 
@@ -823,15 +847,7 @@ function SessionDetailPage() {
                           Not activated
                         </Badge>
                       )}
-                      {player.isConnected && (
-                        <Badge
-                          variant="outline"
-                          className="gap-1 bg-green-500/20 text-green-600 border-green-500/30"
-                        >
-                          <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                          Connected
-                        </Badge>
-                      )}
+                      <AdminConnectionBadge status={player.connectionStatus} />
                       {isWaiting && (
                         <PlayerReadyBadge readyAt={player.readyAt} />
                       )}

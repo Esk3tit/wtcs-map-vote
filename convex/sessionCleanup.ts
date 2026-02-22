@@ -404,11 +404,12 @@ export const handleTimerExpiry = internalMutation({
 /**
  * Check for player heartbeat timeouts and auto-pause sessions.
  *
- * Scans all IN_PROGRESS sessions for players whose heartbeat has gone stale
- * (older than HEARTBEAT_TIMEOUT_MS). Marks them as disconnected and auto-pauses
- * the session when a critical player disconnects:
+ * Scans IN_PROGRESS and WAITING sessions for players whose heartbeat has gone
+ * stale (older than HEARTBEAT_TIMEOUT_MS). Marks them as disconnected.
+ * Auto-pauses only IN_PROGRESS sessions when a critical player disconnects:
  * - ABBA: any player disconnect pauses (both must be present)
  * - MULTIPLAYER: only unvoted player disconnect pauses
+ * WAITING sessions only update player status (no auto-pause, no audit log).
  *
  * Designed to be called by a 30-second interval cron.
  * Worst-case detection latency: ~90 seconds (60s timeout + 30s cron interval).
@@ -425,14 +426,19 @@ export const checkHeartbeatTimeouts = internalMutation({
     let disconnectedPlayerCount = 0;
     let pausedSessionCount = 0;
 
-    // NOTE: Collects all IN_PROGRESS sessions in a single transaction.
+    // Collect IN_PROGRESS and WAITING sessions.
     // Safe for current scale (~10 concurrent sessions). If the system grows
     // beyond ~100 concurrent sessions, consider paginating with .take(N)
     // and scheduling follow-up cron runs for remaining sessions.
-    const sessions = await ctx.db
+    const inProgressSessions = await ctx.db
       .query("sessions")
       .withIndex("by_status", (q) => q.eq("status", "IN_PROGRESS"))
       .collect();
+    const waitingSessions = await ctx.db
+      .query("sessions")
+      .withIndex("by_status", (q) => q.eq("status", "WAITING"))
+      .collect();
+    const sessions = [...inProgressSessions, ...waitingSessions];
 
     for (const session of sessions) {
       const players = await ctx.db
@@ -441,6 +447,7 @@ export const checkHeartbeatTimeouts = internalMutation({
         .collect();
 
       let sessionNeedsPause = false;
+      const isInProgress = session.status === "IN_PROGRESS";
 
       // Mark stale connected players as disconnected
       for (const player of players) {
@@ -453,21 +460,24 @@ export const checkHeartbeatTimeouts = internalMutation({
         await ctx.db.patch(player._id, { isConnected: false });
         disconnectedPlayerCount++;
 
-        // Log per-player (not batched) to match existing audit patterns and enable
-        // per-player filtering. Acceptable write volume at current scale.
-        await logAction(ctx, {
-          sessionId: session._id,
-          action: "PLAYER_DISCONNECTED",
-          actorType: "SYSTEM",
-          details: { teamName: player.teamName },
-        });
+        // Only log audit events and auto-pause for IN_PROGRESS sessions
+        if (isInProgress) {
+          // Log per-player (not batched) to match existing audit patterns and enable
+          // per-player filtering. Acceptable write volume at current scale.
+          await logAction(ctx, {
+            sessionId: session._id,
+            action: "PLAYER_DISCONNECTED",
+            actorType: "SYSTEM",
+            details: { teamName: player.teamName },
+          });
 
-        // ABBA: pause for any disconnect (both players must be present)
-        // MULTIPLAYER: pause only if disconnected player hasn't voted this round
-        if (session.format === "ABBA") {
-          sessionNeedsPause = true;
-        } else if (session.format === "MULTIPLAYER" && !player.hasVotedThisRound) {
-          sessionNeedsPause = true;
+          // ABBA: pause for any disconnect (both players must be present)
+          // MULTIPLAYER: pause only if disconnected player hasn't voted this round
+          if (session.format === "ABBA") {
+            sessionNeedsPause = true;
+          } else if (session.format === "MULTIPLAYER" && !player.hasVotedThisRound) {
+            sessionNeedsPause = true;
+          }
         }
       }
 

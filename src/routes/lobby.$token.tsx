@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TokenErrorPage } from "@/components/session/TokenErrorPage";
 import { ReadyCountdown } from "@/components/session/ReadyCountdown";
+import { ConnectionStatusBadge } from "@/components/session/ConnectionStatusBadge";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
 import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
 import { SITE_URL } from "@/lib/convexHttp";
@@ -26,9 +27,12 @@ function PlayerLobbyPage() {
   const auth = usePlayerAuth(token);
 
   // Step 2: Subscribe to reactive session data (only after auth succeeds)
+  // Keep subscription active during "reconnecting" to maintain real-time data
   const data = useQuery(
     api.sessions.getSessionByToken,
-    auth.status === "authenticated" ? { token } : "skip"
+    auth.status === "authenticated" || auth.status === "reconnecting"
+      ? { token }
+      : "skip"
   );
 
   // Tick every second when WAITING so ready badges stay current
@@ -112,6 +116,15 @@ function PlayerLobbyPage() {
   }
 
   const { player, session, maps, otherPlayers } = data;
+
+  // Derive own connection status from auth hook
+  const ownConnectionStatus =
+    auth.status === "authenticated"
+      ? "connected"
+      : auth.status === "reconnecting"
+        ? "reconnecting"
+        : "disconnected";
+
   const playerIsReady = isReadyActive(player.readyAt, now);
   const showReadyButton = session.status === "WAITING";
 
@@ -165,12 +178,7 @@ function PlayerLobbyPage() {
                 <Lock className="h-4 w-4" />
                 <span>Session locked to your device</span>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-2 rounded-full bg-green-500" />
-                <span className="text-sm font-medium text-green-500">
-                  Connected
-                </span>
-              </div>
+              <ConnectionStatusBadge status={ownConnectionStatus} />
             </div>
           </div>
         </Card>
@@ -273,26 +281,9 @@ function PlayerLobbyPage() {
                           </span>
                         </div>
                       )}
-                      <div className="flex items-center gap-1.5">
-                        <div
-                          className={cn(
-                            "h-2 w-2 rounded-full",
-                            otherPlayer.isConnected ? "bg-green-500" : "bg-muted"
-                          )}
-                        />
-                        <span
-                          className={cn(
-                            "text-sm font-medium",
-                            otherPlayer.isConnected
-                              ? "text-green-500"
-                              : "text-muted-foreground"
-                          )}
-                        >
-                          {otherPlayer.isConnected
-                            ? "Connected"
-                            : "Not yet connected"}
-                        </span>
-                      </div>
+                      <ConnectionStatusBadge
+                        status={otherPlayer.connectionStatus}
+                      />
                     </div>
                   </div>
                 );
