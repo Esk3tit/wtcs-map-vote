@@ -57,8 +57,9 @@ export const READY_EXPIRY_MS = 60_000; // 60 seconds
 export const READY_SKIP_MS = 5_000;
 
 // Player heartbeat constants
+export const HEARTBEAT_INTERVAL_MS = 30_000; // Client heartbeat interval
 export const HEARTBEAT_SKIP_MS = 15_000; // Skip DB write if heartbeat is still fresh
-// INVARIANT: Must be > client HEARTBEAT_INTERVAL_MS (src/hooks/usePlayerAuth.ts).
+// INVARIANT: Must be > HEARTBEAT_INTERVAL_MS.
 // Set to 2× the client interval to tolerate one missed heartbeat.
 export const HEARTBEAT_TIMEOUT_MS = 60_000; // 60 seconds
 

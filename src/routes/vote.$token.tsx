@@ -18,6 +18,10 @@ import { TokenErrorPage } from "@/components/session/TokenErrorPage";
 import { CountdownTimer } from "@/components/session/CountdownTimer";
 import { SessionPausedOverlay } from "@/components/session/SessionPausedOverlay";
 import { VoteMapCard } from "@/components/session/VoteMapCard";
+import {
+  ConnectionStatusBadge,
+  STATUS_CONFIG,
+} from "@/components/session/ConnectionStatusBadge";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
 import { useRevealPhase } from "@/hooks/useRevealPhase";
 import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
@@ -90,9 +94,12 @@ function PlayerVotingPage() {
   const auth = usePlayerAuth(token);
 
   // Step 2: Subscribe to reactive session data (only after auth succeeds)
+  // Keep subscription active during "reconnecting" to maintain real-time data
   const data = useQuery(
     api.sessions.getSessionByToken,
-    auth.status === "authenticated" ? { token } : "skip"
+    auth.status === "authenticated" || auth.status === "reconnecting"
+      ? { token }
+      : "skip"
   );
 
   const [pendingAction, setPendingAction] = useState<{
@@ -234,6 +241,12 @@ function PlayerVotingPage() {
   }
 
   const { player, session, maps, otherPlayers, isYourTurn } = data;
+
+  // Derive own connection status from auth hook.
+  // Only "authenticated" and "reconnecting" are reachable here — "loading"
+  // and "error" are handled by early returns above.
+  const ownConnectionStatus: "connected" | "reconnecting" =
+    auth.status === "authenticated" ? "connected" : "reconnecting";
 
   // Combine players for display purposes
   const allPlayers = [player, ...otherPlayers];
@@ -409,6 +422,10 @@ function PlayerVotingPage() {
               <span className="text-muted-foreground">
                 ({player.teamName})
               </span>
+              <ConnectionStatusBadge
+                status={ownConnectionStatus}
+                showLabel={false}
+              />
             </div>
           </div>
         </header>
@@ -646,11 +663,12 @@ function PlayerVotingPage() {
                     <div className="flex items-center gap-4">
                       <div className="flex items-center gap-2">
                         <div
-                          className={`w-3 h-3 rounded-full ${
+                          className={cn(
+                            "w-3 h-3 rounded-full",
                             player.hasVotedThisRound
-                              ? "bg-green-500"
+                              ? STATUS_CONFIG.connected.dotColor
                               : "bg-muted-foreground animate-pulse"
-                          }`}
+                          )}
                         />
                         <span className="text-sm font-medium">
                           {player.teamName}
@@ -661,25 +679,31 @@ function PlayerVotingPage() {
                           <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
                         )}
                       </div>
-                      {otherPlayers.map((op) => (
-                        <div key={op._id} className="flex items-center gap-2">
-                          <div
-                            className={`w-3 h-3 rounded-full ${
-                              op.hasVotedThisRound
-                                ? "bg-green-500"
-                                : "bg-muted-foreground animate-pulse"
-                            }`}
-                          />
-                          <span className="text-sm font-medium">
-                            {op.teamName}
-                          </span>
-                          {op.hasVotedThisRound ? (
-                            <Check className="w-4 h-4 text-green-500" />
-                          ) : (
-                            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                          )}
-                        </div>
-                      ))}
+                      {otherPlayers.map((op) => {
+                        // Dot color: voted=green, otherwise derive from connection status config
+                        const dotClass = op.hasVotedThisRound
+                          ? STATUS_CONFIG.connected.dotColor
+                          : op.connectionStatus === "disconnected"
+                            ? STATUS_CONFIG.disconnected.dotColor
+                            : op.connectionStatus === "reconnecting"
+                              ? `${STATUS_CONFIG.reconnecting.dotColor} animate-pulse`
+                              : "bg-muted-foreground animate-pulse";
+                        return (
+                          <div key={op._id} className="flex items-center gap-2">
+                            <div
+                              className={cn("w-3 h-3 rounded-full", dotClass)}
+                            />
+                            <span className="text-sm font-medium">
+                              {op.teamName}
+                            </span>
+                            {op.hasVotedThisRound ? (
+                              <Check className="w-4 h-4 text-green-500" />
+                            ) : (
+                              <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </>
                 )}
@@ -690,9 +714,12 @@ function PlayerVotingPage() {
 
         {/* Footer */}
         <footer className="border-t border-border bg-card px-4 py-3 sm:px-6 sm:py-4">
-          <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground max-w-6xl mx-auto">
-            <Lock className="w-4 h-4 flex-shrink-0" />
-            <span>Session locked to your device</span>
+          <div className="flex items-center justify-between text-xs sm:text-sm text-muted-foreground max-w-6xl mx-auto">
+            <div className="flex items-center gap-2">
+              <Lock className="w-4 h-4 flex-shrink-0" />
+              <span>Session locked to your device</span>
+            </div>
+            <ConnectionStatusBadge status={ownConnectionStatus} />
           </div>
         </footer>
 

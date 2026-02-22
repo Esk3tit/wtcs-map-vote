@@ -39,6 +39,7 @@ import {
   sessionStatusValidator,
   sessionFormatValidator,
   mapStateValidator,
+  connectionStatusValidator,
 } from "./lib/validators";
 import { requireAdmin } from "./lib/auth";
 import {
@@ -49,6 +50,7 @@ import {
   transitionSession,
   validateTransition,
 } from "./lib/sessionLifecycle";
+import { computeConnectionStatus } from "./lib/connectionStatus";
 import { pickRandom } from "./lib/random";
 import { generateUniqueToken } from "./lib/tokenGeneration";
 import { scheduleTimerExpiry } from "./lib/timerScheduling";
@@ -77,6 +79,7 @@ const adminPlayerObjectValidator = v.object({
   tokenExpiresAt: v.number(),
   isIpLocked: v.boolean(),
   isConnected: v.boolean(),
+  connectionStatus: connectionStatusValidator,
   lastHeartbeat: v.optional(v.number()),
   hasVotedThisRound: v.boolean(),
   readyAt: v.optional(v.number()),
@@ -139,7 +142,11 @@ const sessionWithRelationsValidator = v.object({
  */
 function toAdminPlayer(player: Doc<"sessionPlayers">) {
   const { ipAddress, ...rest } = player;
-  return { ...rest, isIpLocked: !!ipAddress };
+  return {
+    ...rest,
+    isIpLocked: !!ipAddress,
+    connectionStatus: computeConnectionStatus(player.isConnected, player.lastHeartbeat),
+  };
 }
 
 /**
@@ -152,6 +159,7 @@ function toSanitizedPlayer(player: Doc<"sessionPlayers">) {
     role: player.role,
     teamName: player.teamName,
     isConnected: player.isConnected,
+    connectionStatus: computeConnectionStatus(player.isConnected, player.lastHeartbeat),
     hasVotedThisRound: player.hasVotedThisRound,
     readyAt: player.readyAt,
   };
@@ -1525,6 +1533,7 @@ const sanitizedPlayerValidator = v.object({
   role: v.string(),
   teamName: v.string(),
   isConnected: v.boolean(),
+  connectionStatus: connectionStatusValidator,
   hasVotedThisRound: v.boolean(),
   readyAt: v.optional(v.number()),
 });

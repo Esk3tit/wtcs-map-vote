@@ -65,6 +65,8 @@ import {
   formatStatus,
   formatRelativeTime,
 } from "@/components/session/utils";
+import { ConnectionStatusBadge, STATUS_CONFIG } from "@/components/session/ConnectionStatusBadge";
+import type { ConnectionStatus } from "../../../convex/lib/connectionStatus";
 
 // ============================================================================
 // Constants
@@ -152,6 +154,29 @@ const formatPlayerRole = (role: string, format: string): string => {
   const num = role.replace("PLAYER_", "");
   return `Player ${num}`;
 };
+
+// ============================================================================
+// Admin Connection Badge
+// ============================================================================
+
+const ADMIN_CONNECTION_BADGE_STYLES = {
+  connected: "gap-1 bg-green-500/20 text-green-600 border-green-500/30",
+  reconnecting: "gap-1 bg-amber-500/20 text-amber-600 border-amber-500/30",
+  disconnected: "gap-1 bg-red-500/20 text-red-600 border-red-500/30",
+} as const;
+
+function AdminConnectionBadge({
+  status,
+}: {
+  status: ConnectionStatus;
+}) {
+  return (
+    <Badge variant="outline" className={ADMIN_CONNECTION_BADGE_STYLES[status]}>
+      <ConnectionStatusBadge status={status} showLabel={false} />
+      {STATUS_CONFIG[status].label}
+    </Badge>
+  );
+}
 
 // ============================================================================
 // Player Ready Badge (self-contained timer to avoid full-page re-renders)
@@ -823,14 +848,8 @@ function SessionDetailPage() {
                           Not activated
                         </Badge>
                       )}
-                      {player.isConnected && (
-                        <Badge
-                          variant="outline"
-                          className="gap-1 bg-green-500/20 text-green-600 border-green-500/30"
-                        >
-                          <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
-                          Connected
-                        </Badge>
+                      {player.isIpLocked && (
+                        <AdminConnectionBadge status={player.connectionStatus} />
                       )}
                       {isWaiting && (
                         <PlayerReadyBadge readyAt={player.readyAt} />
