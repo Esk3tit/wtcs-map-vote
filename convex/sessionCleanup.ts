@@ -430,14 +430,16 @@ export const checkHeartbeatTimeouts = internalMutation({
     // Safe for current scale (~10 concurrent sessions). If the system grows
     // beyond ~100 concurrent sessions, consider paginating with .take(N)
     // and scheduling follow-up cron runs for remaining sessions.
-    const inProgressSessions = await ctx.db
-      .query("sessions")
-      .withIndex("by_status", (q) => q.eq("status", "IN_PROGRESS"))
-      .collect();
-    const waitingSessions = await ctx.db
-      .query("sessions")
-      .withIndex("by_status", (q) => q.eq("status", "WAITING"))
-      .collect();
+    const [inProgressSessions, waitingSessions] = await Promise.all([
+      ctx.db
+        .query("sessions")
+        .withIndex("by_status", (q) => q.eq("status", "IN_PROGRESS"))
+        .collect(),
+      ctx.db
+        .query("sessions")
+        .withIndex("by_status", (q) => q.eq("status", "WAITING"))
+        .collect(),
+    ]);
     const sessions = [...inProgressSessions, ...waitingSessions];
 
     for (const session of sessions) {

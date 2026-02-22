@@ -239,13 +239,11 @@ function PlayerVotingPage() {
 
   const { player, session, maps, otherPlayers, isYourTurn } = data;
 
-  // Derive own connection status from auth hook
-  const ownConnectionStatus =
-    auth.status === "authenticated"
-      ? "connected"
-      : auth.status === "reconnecting"
-        ? "reconnecting"
-        : "disconnected";
+  // Derive own connection status from auth hook.
+  // Only "authenticated" and "reconnecting" are reachable here — "loading"
+  // and "error" are handled by early returns above.
+  const ownConnectionStatus: "connected" | "reconnecting" =
+    auth.status === "authenticated" ? "connected" : "reconnecting";
 
   // Combine players for display purposes
   const allPlayers = [player, ...otherPlayers];

@@ -140,6 +140,15 @@ const sessionWithRelationsValidator = v.object({
 /**
  * Derive a 3-state connection status from heartbeat data.
  *
+ * Note: Date.now() is not a reactive dependency in Convex queries. For other
+ * players, the "reconnecting" window (HEARTBEAT_INTERVAL_MS–HEARTBEAT_TIMEOUT_MS)
+ * will only appear if the query re-evaluates during that interval (e.g. from
+ * another field change). In practice, other players typically jump from
+ * "connected" → "disconnected" when the checkHeartbeatTimeouts cron patches
+ * isConnected. The local player's own "reconnecting" state is driven
+ * client-side by usePlayerAuth's missed-heartbeat tracking, which is fully
+ * reactive and not affected by this limitation.
+ *
  * @param isConnected - Server-authoritative connection flag
  * @param lastHeartbeat - Timestamp of last successful heartbeat
  */
