@@ -21,6 +21,13 @@ export function useRevealTimer(
     onCompleteRef.current = onComplete;
   }, [onComplete]);
 
+  // Visual countdown state
+  const [remainingMs, setRemainingMs] = useState(durationMs);
+
+  // Track accumulated elapsed time across pause/resume cycles
+  const elapsedRef = useRef(0);
+  const segmentStartRef = useRef<number | null>(null);
+
   // Generation counter increments each time isActive transitions to true.
   // This resets the timer for each new reveal without accessing refs during render.
   // setState here is intentional — we detect edge transitions to trigger resets.
@@ -28,17 +35,15 @@ export function useRevealTimer(
   const prevActiveRef = useRef(false);
   useEffect(() => {
     if (isActive && !prevActiveRef.current) {
+      // Reset elapsed time immediately so the timer effect (which runs later
+      // in this same effect batch) doesn't see stale accumulated time from a
+      // previous reveal and fire onComplete instantly.
+      elapsedRef.current = 0;
+      segmentStartRef.current = null;
       setGeneration((g) => g + 1); // eslint-disable-line react-hooks/set-state-in-effect
     }
     prevActiveRef.current = isActive;
   }, [isActive]);
-
-  // Visual countdown state
-  const [remainingMs, setRemainingMs] = useState(durationMs);
-
-  // Track accumulated elapsed time across pause/resume cycles
-  const elapsedRef = useRef(0);
-  const segmentStartRef = useRef<number | null>(null);
 
   // Reset timer state when generation or durationMs changes.
   // Merging elapsed ref reset here avoids a race condition between
