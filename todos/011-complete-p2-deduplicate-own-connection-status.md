@@ -45,8 +45,8 @@ Option B: Align lobby to match vote page 2-branch ternary (simplest, no new file
 
 ## Acceptance Criteria
 
-- [ ] ownConnectionStatus derivation logic exists in one place (or is identically simple in both)
-- [ ] Lobby page type is narrowed to exclude unreachable "disconnected"
+- [x] ownConnectionStatus derivation logic exists in one place (or is identically simple in both)
+- [x] Lobby page type is narrowed to exclude unreachable "disconnected"
 
 ## Work Log
 

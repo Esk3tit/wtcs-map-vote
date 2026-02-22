@@ -1,5 +1,5 @@
 ---
-status: done
+status: complete
 priority: p3
 issue_id: "016"
 tags: [code-review, duplication, connection-status]

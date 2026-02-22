@@ -52,9 +52,9 @@ Option B: Only show connection badge for activated players (simplest fix)
 
 ## Acceptance Criteria
 
-- [ ] Unactivated players do NOT show red "Disconnected" badge
-- [ ] Activated but disconnected players still show "Disconnected" correctly
-- [ ] Admin can distinguish between unactivated and disconnected states
+- [x] Unactivated players do NOT show red "Disconnected" badge
+- [x] Activated but disconnected players still show "Disconnected" correctly
+- [x] Admin can distinguish between unactivated and disconnected states (via existing "Not activated" badge)
 
 ## Work Log
 

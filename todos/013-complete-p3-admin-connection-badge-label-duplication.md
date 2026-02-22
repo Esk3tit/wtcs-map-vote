@@ -39,7 +39,7 @@ Option A: Add label support to ConnectionStatusBadge directly
 
 ## Acceptance Criteria
 
-- [ ] Label logic exists in one place, or duplication is documented as intentional
+- [x] Label logic exists in one place, or duplication is documented as intentional
 
 ## Work Log
 

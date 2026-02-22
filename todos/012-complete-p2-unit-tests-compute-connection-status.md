@@ -10,12 +10,12 @@ dependencies: []
 
 ## Problem Statement
 
-The `computeConnectionStatus()` function in `convex/sessions.ts` has multiple branches based on `isConnected`, `lastHeartbeat`, and timing thresholds, but has zero unit test coverage. This is a critical piece of logic that determines what admins and players see for connection state.
+The `computeConnectionStatus()` function in `convex/lib/connectionStatus.ts` (extracted from `convex/sessions.ts` via todo #010) has multiple branches based on `isConnected`, `lastHeartbeat`, and timing thresholds, but had zero unit test coverage. This is a critical piece of logic that determines what admins and players see for connection state.
 
 ## Findings
 
 - **Source**: kieran-typescript-reviewer, architecture-strategist, data-integrity-guardian
-- **Location**: `convex/sessions.ts` — `computeConnectionStatus()` (currently a file-private function)
+- **Location**: `convex/lib/connectionStatus.ts` — `computeConnectionStatus()` (exported function, extracted via todo #010)
 - **Branches to test**:
   1. `isConnected: false` → "disconnected"
   2. `isConnected: true`, no `lastHeartbeat` → "connected"
@@ -44,14 +44,13 @@ Option A: Export function and test directly with vitest (pairs with #010 extract
 
 ## Technical Details
 
-- **Affected files**: `convex/sessions.ts`, new test file `convex/connectionStatus.test.ts`
-- **If extracting**: Move to `convex/lib/connectionStatus.ts` (aligns with todo #010)
+- **Affected files**: `convex/lib/connectionStatus.ts`, `convex/connectionStatus.test.ts`
 
 ## Acceptance Criteria
 
-- [ ] All 5 branches of computeConnectionStatus have test coverage
-- [ ] Edge cases at exact boundary values (HEARTBEAT_INTERVAL_MS, HEARTBEAT_TIMEOUT_MS) are tested
-- [ ] Tests pass in CI
+- [x] All 5 branches of computeConnectionStatus have test coverage
+- [x] Edge cases at exact boundary values (HEARTBEAT_INTERVAL_MS, HEARTBEAT_TIMEOUT_MS) are tested
+- [x] Tests pass in CI
 
 ## Work Log
 
@@ -61,4 +60,4 @@ Option A: Export function and test directly with vitest (pairs with #010 extract
 ## Resources
 
 - PR #76: Enhanced connection status indicators
-- `convex/sessions.ts`: `computeConnectionStatus()` function
+- `convex/lib/connectionStatus.ts`: `computeConnectionStatus()` function
