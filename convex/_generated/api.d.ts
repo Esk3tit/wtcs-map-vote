@@ -16,6 +16,7 @@ import type * as http from "../http.js";
 import type * as lib_adminAudit from "../lib/adminAudit.js";
 import type * as lib_auth from "../lib/auth.js";
 import type * as lib_cascadeDelete from "../lib/cascadeDelete.js";
+import type * as lib_connectionStatus from "../lib/connectionStatus.js";
 import type * as lib_constants from "../lib/constants.js";
 import type * as lib_imageConstants from "../lib/imageConstants.js";
 import type * as lib_random from "../lib/random.js";
@@ -51,6 +52,7 @@ declare const fullApi: ApiFromModules<{
   "lib/adminAudit": typeof lib_adminAudit;
   "lib/auth": typeof lib_auth;
   "lib/cascadeDelete": typeof lib_cascadeDelete;
+  "lib/connectionStatus": typeof lib_connectionStatus;
   "lib/constants": typeof lib_constants;
   "lib/imageConstants": typeof lib_imageConstants;
   "lib/random": typeof lib_random;

@@ -18,7 +18,10 @@ import { TokenErrorPage } from "@/components/session/TokenErrorPage";
 import { CountdownTimer } from "@/components/session/CountdownTimer";
 import { SessionPausedOverlay } from "@/components/session/SessionPausedOverlay";
 import { VoteMapCard } from "@/components/session/VoteMapCard";
-import { ConnectionStatusBadge } from "@/components/session/ConnectionStatusBadge";
+import {
+  ConnectionStatusBadge,
+  STATUS_CONFIG,
+} from "@/components/session/ConnectionStatusBadge";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
 import { useRevealPhase } from "@/hooks/useRevealPhase";
 import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
@@ -422,7 +425,6 @@ function PlayerVotingPage() {
               <ConnectionStatusBadge
                 status={ownConnectionStatus}
                 showLabel={false}
-                size="sm"
               />
             </div>
           </div>
@@ -661,11 +663,12 @@ function PlayerVotingPage() {
                     <div className="flex items-center gap-4">
                       <div className="flex items-center gap-2">
                         <div
-                          className={`w-3 h-3 rounded-full ${
+                          className={cn(
+                            "w-3 h-3 rounded-full",
                             player.hasVotedThisRound
-                              ? "bg-green-500"
+                              ? STATUS_CONFIG.connected.dotColor
                               : "bg-muted-foreground animate-pulse"
-                          }`}
+                          )}
                         />
                         <span className="text-sm font-medium">
                           {player.teamName}
@@ -677,18 +680,18 @@ function PlayerVotingPage() {
                         )}
                       </div>
                       {otherPlayers.map((op) => {
-                        // Dot color: voted=green, disconnected=red, reconnecting=amber, waiting=pulsing gray
+                        // Dot color: voted=green, otherwise derive from connection status config
                         const dotClass = op.hasVotedThisRound
-                          ? "bg-green-500"
+                          ? STATUS_CONFIG.connected.dotColor
                           : op.connectionStatus === "disconnected"
-                            ? "bg-red-500"
+                            ? STATUS_CONFIG.disconnected.dotColor
                             : op.connectionStatus === "reconnecting"
-                              ? "bg-amber-500 animate-pulse"
+                              ? `${STATUS_CONFIG.reconnecting.dotColor} animate-pulse`
                               : "bg-muted-foreground animate-pulse";
                         return (
                           <div key={op._id} className="flex items-center gap-2">
                             <div
-                              className={`w-3 h-3 rounded-full ${dotClass}`}
+                              className={cn("w-3 h-3 rounded-full", dotClass)}
                             />
                             <span className="text-sm font-medium">
                               {op.teamName}
@@ -716,7 +719,7 @@ function PlayerVotingPage() {
               <Lock className="w-4 h-4 flex-shrink-0" />
               <span>Session locked to your device</span>
             </div>
-            <ConnectionStatusBadge status={ownConnectionStatus} size="sm" />
+            <ConnectionStatusBadge status={ownConnectionStatus} />
           </div>
         </footer>
 
