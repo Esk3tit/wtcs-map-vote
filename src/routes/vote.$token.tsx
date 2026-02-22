@@ -99,11 +99,7 @@ function PlayerVotingPage() {
   // Keep subscription active during "reconnecting" and "disconnected" to maintain real-time data
   const data = useQuery(
     api.sessions.getSessionByToken,
-    auth.status === "authenticated" ||
-      auth.status === "reconnecting" ||
-      auth.status === "disconnected"
-      ? { token }
-      : "skip"
+    auth.isSubscriptionActive ? { token } : "skip"
   );
 
   const [pendingAction, setPendingAction] = useState<{
@@ -264,9 +260,6 @@ function PlayerVotingPage() {
         ? "reconnecting"
         : "disconnected";
 
-  const isDisconnected =
-    auth.status === "reconnecting" || auth.status === "disconnected";
-
   // Combine players for display purposes
   const allPlayers = [player, ...otherPlayers];
 
@@ -350,6 +343,7 @@ function PlayerVotingPage() {
 
   const submitAction = async () => {
     if (!pendingAction || isSubmitting || isPaused) return;
+    if (auth.status === "reconnecting" || auth.status === "disconnected") return;
 
     const endpoint =
       pendingAction.type === "ban"
@@ -403,8 +397,8 @@ function PlayerVotingPage() {
     <>
     <div
       className="min-h-screen bg-background text-foreground flex flex-col"
-      aria-hidden={isDisconnected || undefined}
-      inert={isDisconnected || undefined}
+      aria-hidden={auth.isOverlayVisible || undefined}
+      inert={auth.isOverlayVisible || undefined}
     >
       <SessionPausedOverlay isPaused={isPaused} />
 
@@ -802,9 +796,9 @@ function PlayerVotingPage() {
     </div>
 
     {/* Disconnected overlay (shows during reconnecting + disconnected) */}
-    {isDisconnected && (
+    {auth.isOverlayVisible && (
       <DisconnectedOverlay
-        status={auth.status as "reconnecting" | "disconnected"}
+        status={auth.status === "reconnecting" ? "reconnecting" : "disconnected"}
         retryAttempt={auth.retryAttempt}
         maxRetries={auth.maxRetries}
         onRetry={auth.retry}

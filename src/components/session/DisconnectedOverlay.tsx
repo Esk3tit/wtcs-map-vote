@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { useScrollLock } from "@/hooks/useScrollLock";
 import { Loader2, WifiOff } from "lucide-react";
 
 interface DisconnectedOverlayProps {
@@ -27,25 +28,14 @@ export function DisconnectedOverlay({
         : null;
     headingRef.current?.focus();
     return () => {
-      previouslyFocused?.focus();
+      if (previouslyFocused && document.body.contains(previouslyFocused)) {
+        previouslyFocused.focus();
+      }
     };
   }, []);
 
-  // Lock body scroll and compensate for scrollbar removal
-  useEffect(() => {
-    const scrollbarWidth = Math.max(
-      0,
-      window.innerWidth - document.documentElement.clientWidth,
-    );
-    const originalOverflow = document.body.style.overflow;
-    const originalPaddingRight = document.body.style.paddingRight;
-    document.body.style.overflow = "hidden";
-    document.body.style.paddingRight = `${scrollbarWidth}px`;
-    return () => {
-      document.body.style.overflow = originalOverflow;
-      document.body.style.paddingRight = originalPaddingRight;
-    };
-  }, []);
+  // Lock body scroll (reference-counted to handle stacking with SessionPausedOverlay)
+  useScrollLock(true);
 
   return (
     <div

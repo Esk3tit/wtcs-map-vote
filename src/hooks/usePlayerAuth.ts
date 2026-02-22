@@ -44,6 +44,10 @@ export interface UsePlayerAuthResult {
   retryAttempt: number;
   /** Maximum number of retry attempts before giving up. */
   maxRetries: number;
+  /** Whether the overlay should be shown (reconnecting or disconnected). */
+  isOverlayVisible: boolean;
+  /** Whether the Convex subscription should remain active. */
+  isSubscriptionActive: boolean;
 }
 
 /**
@@ -71,14 +75,12 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
 
   // Ref to track current status for visibility handler (avoids stale closure)
   const statusRef = useRef<AuthStatus>("loading");
-  useEffect(() => {
-    statusRef.current = status;
-  }, [status]);
 
   // Timer refs
   const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastAttemptRef = useRef(0);
+  const generationRef = useRef(0);
 
   const retry = useCallback(() => {
     setRetryTrigger((c) => c + 1);
@@ -87,11 +89,15 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
   useEffect(() => {
     const controller = new AbortController();
 
+    // Increment generation to invalidate any in-flight callbacks from previous effect runs
+    const generation = ++generationRef.current;
+
     // Reset state when token changes or manual retry triggers
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional: reset auth state synchronously when token/retryTrigger changes before async validation begins
-    setStatus("loading");
+    /* eslint-disable react-hooks/set-state-in-effect -- Intentional: reset auth state synchronously when token/retryTrigger changes before async validation begins */
+    updateStatus("loading");
     setError(null);
     setRetryAttempt(0);
+    /* eslint-enable react-hooks/set-state-in-effect */
 
     // ================================================================
     // Timer helpers (scoped to this effect instance)
@@ -116,13 +122,19 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
       clearRetryTimeout();
     }
 
+    /** Update status both as React state and synchronously in ref (for event handlers). */
+    function updateStatus(newStatus: AuthStatus) {
+      statusRef.current = newStatus;
+      setStatus(newStatus);
+    }
+
     // ================================================================
     // Early exit for empty token
     // ================================================================
 
     const normalizedToken = token.trim();
     if (!normalizedToken) {
-      setStatus("error");
+      updateStatus("error");
       setError("INVALID_TOKEN");
       return () => {
         controller.abort();
@@ -173,17 +185,18 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
     // --- Normal mode: 30s interval ---
     function startNormalHeartbeat() {
       stopAll();
+      const gen = generation; // capture for closure
       heartbeatRef.current = setInterval(async () => {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || gen !== generationRef.current) return;
         lastAttemptRef.current = Date.now();
         const r = await sendHeartbeat();
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || gen !== generationRef.current) return;
 
         if (r.kind === "ok") {
-          setStatus("authenticated");
+          updateStatus("authenticated");
           setError(null);
         } else if (r.kind === "auth_error") {
-          setStatus("error");
+          updateStatus("error");
           setError(r.error);
           stopAll();
         } else {
@@ -196,31 +209,34 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
 
     // --- Retry mode: chained setTimeout with backoff ---
     function startRetrySequence(attempt: number) {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || generation !== generationRef.current)
+        return;
 
       if (attempt >= MAX_RETRIES) {
-        setStatus("disconnected");
+        updateStatus("disconnected");
         setError("NETWORK_ERROR");
         setRetryAttempt(MAX_RETRIES);
         return;
       }
 
-      setStatus("reconnecting");
+      updateStatus("reconnecting");
       setRetryAttempt(attempt + 1);
 
       retryTimeoutRef.current = setTimeout(async () => {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || generation !== generationRef.current)
+          return;
         lastAttemptRef.current = Date.now();
         const r = await sendHeartbeat();
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted || generation !== generationRef.current)
+          return;
 
         if (r.kind === "ok") {
-          setStatus("authenticated");
+          updateStatus("authenticated");
           setError(null);
           setRetryAttempt(0);
           startNormalHeartbeat();
         } else if (r.kind === "auth_error") {
-          setStatus("error");
+          updateStatus("error");
           setError(r.error);
           stopAll();
         } else {
@@ -231,19 +247,21 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
 
     // --- Immediate attempt (visibility handler) ---
     async function attemptImmediateHeartbeat() {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || generation !== generationRef.current)
+        return;
       lastAttemptRef.current = Date.now();
       stopAll();
       const r = await sendHeartbeat();
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted || generation !== generationRef.current)
+        return;
 
       if (r.kind === "ok") {
-        setStatus("authenticated");
+        updateStatus("authenticated");
         setError(null);
         setRetryAttempt(0);
         startNormalHeartbeat();
       } else if (r.kind === "auth_error") {
-        setStatus("error");
+        updateStatus("error");
         setError(r.error);
       } else {
         // Failed → start retry from attempt 0
@@ -288,7 +306,10 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token: normalizedToken }),
-          signal: controller.signal,
+          signal: AbortSignal.any([
+            controller.signal,
+            AbortSignal.timeout(HEARTBEAT_FETCH_TIMEOUT_MS),
+          ]),
         });
 
         if (controller.signal.aborted) return;
@@ -298,17 +319,17 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
         if (controller.signal.aborted) return;
 
         if (data.status === "ok") {
-          setStatus("authenticated");
+          updateStatus("authenticated");
           setError(null);
           setRetryAttempt(0);
           startNormalHeartbeat();
         } else {
-          setStatus("error");
+          updateStatus("error");
           setError(data.error);
         }
       } catch {
         if (!controller.signal.aborted) {
-          setStatus("error");
+          updateStatus("error");
           setError("NETWORK_ERROR");
         }
       }
@@ -330,5 +351,12 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
     };
   }, [token, retryTrigger]);
 
-  return { status, error, retry, retryAttempt, maxRetries: MAX_RETRIES };
+  const isOverlayVisible = status === "reconnecting" || status === "disconnected";
+  const isSubscriptionActive = status === "authenticated" || status === "reconnecting" || status === "disconnected";
+
+  return {
+    status, error, retry, retryAttempt, maxRetries: MAX_RETRIES,
+    isOverlayVisible,
+    isSubscriptionActive,
+  };
 }

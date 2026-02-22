@@ -32,11 +32,7 @@ function PlayerLobbyPage() {
   // Keep subscription active during "reconnecting" and "disconnected" to maintain real-time data
   const data = useQuery(
     api.sessions.getSessionByToken,
-    auth.status === "authenticated" ||
-      auth.status === "reconnecting" ||
-      auth.status === "disconnected"
-      ? { token }
-      : "skip"
+    auth.isSubscriptionActive ? { token } : "skip"
   );
 
   // Tick every second when WAITING so ready badges stay current
@@ -131,9 +127,6 @@ function PlayerLobbyPage() {
         ? "reconnecting"
         : "disconnected";
 
-  const isDisconnected =
-    auth.status === "reconnecting" || auth.status === "disconnected";
-
   const playerIsReady = isReadyActive(player.readyAt, now);
   const showReadyButton = session.status === "WAITING";
 
@@ -162,8 +155,8 @@ function PlayerLobbyPage() {
     <>
       <div
         className="min-h-screen bg-background p-6 flex items-center justify-center"
-        aria-hidden={isDisconnected || undefined}
-        inert={isDisconnected || undefined}
+        aria-hidden={auth.isOverlayVisible || undefined}
+        inert={auth.isOverlayVisible || undefined}
       >
         <div className="w-full max-w-2xl space-y-8">
           {/* Header */}
@@ -314,9 +307,9 @@ function PlayerLobbyPage() {
       </div>
 
       {/* Disconnected overlay (shows during reconnecting + disconnected) */}
-      {isDisconnected && (
+      {auth.isOverlayVisible && (
         <DisconnectedOverlay
-          status={auth.status as "reconnecting" | "disconnected"}
+          status={auth.status === "reconnecting" ? "reconnecting" : "disconnected"}
           retryAttempt={auth.retryAttempt}
           maxRetries={auth.maxRetries}
           onRetry={auth.retry}
