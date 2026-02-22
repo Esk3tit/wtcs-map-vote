@@ -47,6 +47,10 @@ export function sortPlayersByJoinOrder<T extends { _creationTime: number; _id: s
   );
 }
 
+// Reveal phase duration (client-side reveal between rounds)
+export const REVEAL_DURATION_MS = 3_000; // 3 seconds
+export const WINNER_REVEAL_DURATION_MS = 5_000; // 5 seconds
+
 // Player ready indicator
 export const READY_EXPIRY_MS = 60_000; // 60 seconds
 /** Skip redundant ready writes within this window (5 seconds). */

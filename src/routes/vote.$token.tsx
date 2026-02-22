@@ -17,17 +17,23 @@ import {
 import { TokenErrorPage } from "@/components/session/TokenErrorPage";
 import { CountdownTimer } from "@/components/session/CountdownTimer";
 import { SessionPausedOverlay } from "@/components/session/SessionPausedOverlay";
+import { VoteMapCard } from "@/components/session/VoteMapCard";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
+import { useRevealPhase } from "@/hooks/useRevealPhase";
 import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
 import { SITE_URL } from "@/lib/convexHttp";
 import { cn } from "@/lib/utils";
-import { Check, Lock, X, Loader2 } from "lucide-react";
+import { Check, Lock, X, Loader2, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import type { Id } from "../../convex/_generated/dataModel";
 
 export const Route = createFileRoute("/vote/$token")({
   component: PlayerVotingPage,
 });
+
+// ============================================================================
+// Voting Error Handling
+// ============================================================================
 
 // Union type for all known voting error codes
 type VotingErrorCode =
@@ -74,6 +80,10 @@ function getVotingErrorMessage(error: VotingErrorCode): string {
   }
 }
 
+// ============================================================================
+// Component
+// ============================================================================
+
 function PlayerVotingPage() {
   const { token } = Route.useParams();
   // Step 1: Validate token and lock IP via HTTP action
@@ -91,13 +101,62 @@ function PlayerVotingPage() {
     type: "ban" | "vote";
   } | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [optimisticVotedMapId, setOptimisticVotedMapId] = useState<Id<"sessionMaps"> | null>(null);
+  const [optimisticVote, setOptimisticVote] = useState<{
+    mapId: Id<"sessionMaps">;
+    forRound: number;
+  } | null>(null);
 
-  // Auto-redirect based on session status (hook must be before early returns)
-  const isRedirecting = useSessionStatusRedirect(data, token, "vote");
+  // Derive session values
+  const currentRound =
+    data?.status === "valid" ? data.session.currentRound : undefined;
+  const sessionStatus =
+    data?.status === "valid" ? data.session.status : undefined;
+  const sessionFormat =
+    data?.status === "valid" ? data.session.format : undefined;
+  const isPaused = sessionStatus === "PAUSED";
+  const isMultiplayer = sessionFormat === "MULTIPLAYER";
+
+  // Derive the effective optimistic ID synchronously during render.
+  // When currentRound changes (e.g. deadlock revote), this evaluates to null
+  // immediately — no effect needed.
+  const optimisticVotedMapId =
+    optimisticVote && optimisticVote.forRound === currentRound
+      ? optimisticVote.mapId
+      : null;
+
+  // Round phase state machine (multiplayer reveal)
+  const {
+    phaseState,
+    isRevealPhase,
+    isWinnerReveal,
+    isAnyReveal,
+    revealData,
+    remainingMs,
+  } = useRevealPhase({
+    currentRound,
+    sessionStatus,
+    maps: data?.status === "valid" ? data.maps : [],
+    sessionWinnerMapId:
+      data?.status === "valid" ? data.session.winnerMapId : undefined,
+    isRevoteRound:
+      data?.status === "valid" ? (data.session.isRevoteRound ?? false) : false,
+    isMultiplayer,
+    isPaused,
+  });
+
+  // Auto-redirect based on session status (suppressed during reveal phases)
+  // By passing undefined during reveal, the hook's guard prevents it from firing.
+  const redirectData =
+    phaseState.phase === "REVEALING" ||
+    phaseState.phase === "WINNER_REVEAL" ||
+    // Suppress redirect while winner detection effect catches up (1-render gap)
+    (isMultiplayer && sessionStatus === "COMPLETE" && phaseState.phase === "VOTING")
+      ? undefined
+      : data;
+  const isRedirecting = useSessionStatusRedirect(redirectData, token, "vote");
 
   // Auto-dismiss confirmation dialog when the pending action is no longer valid.
-  // Covers: map banned by opponent, turn expired, session paused.
+  // Covers: map banned by opponent, turn expired, session paused, reveal phase.
   // INVARIANT: AlertDialog renders via portal to document.body, escaping the
   // inert wrapper. This effect ensures the dialog is dismissed when paused,
   // since the portal cannot be blocked by the inert attribute.
@@ -109,12 +168,13 @@ function PlayerVotingPage() {
       !map ||
       map.state !== "AVAILABLE" ||
       !data.isYourTurn ||
-      data.session.status === "PAUSED";
+      data.session.status === "PAUSED" ||
+      isAnyReveal;
 
     if (shouldDismiss) {
       setPendingAction(null);
     }
-  }, [data, pendingAction]);
+  }, [data, pendingAction, isAnyReveal]);
 
   // Clear optimistic vote indicator once server state confirms the same vote
   useEffect(() => {
@@ -123,17 +183,9 @@ function PlayerVotingPage() {
       optimisticVotedMapId &&
       data.playerVotedMapId === optimisticVotedMapId
     ) {
-      setOptimisticVotedMapId(null);
+      setOptimisticVote(null);
     }
   }, [data, optimisticVotedMapId]);
-
-  // Clear optimistic vote on round transition
-  useEffect(() => {
-    if (optimisticVotedMapId) {
-      setOptimisticVotedMapId(null);
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data?.status === "valid" ? data.session.currentRound : undefined]);
 
   // Auth loading
   if (auth.status === "loading") {
@@ -204,10 +256,58 @@ function PlayerVotingPage() {
 
   const currentStep = banSteps.findIndex((step) => !step.completed);
 
-  const isPaused = session.status === "PAUSED";
+  // Separate maps into active (current round) and previously eliminated
+  const activeMaps = isAnyReveal
+    ? maps.filter(
+        (m) =>
+          m.state === "AVAILABLE" ||
+          m.state === "WINNER" ||
+          (m.state === "BANNED" &&
+            revealData &&
+            m.bannedAtRound === revealData.completedRound)
+      )
+    : maps.filter((m) => m.state !== "BANNED");
+
+  const previouslyEliminatedMaps =
+    session.format === "MULTIPLAYER"
+      ? maps.filter(
+          (m) =>
+            m.state === "BANNED" &&
+            m.bannedAtRound !== undefined &&
+            (!isAnyReveal ||
+              !revealData ||
+              m.bannedAtRound < revealData.completedRound)
+        )
+      : [];
+
+  // Check if a specific map was just eliminated in the current reveal
+  const isJustEliminated = (mapId: Id<"sessionMaps">) =>
+    isAnyReveal &&
+    revealData !== null &&
+    revealData.eliminatedMapIds.includes(mapId);
+
+  // Check if a map survived the current reveal round
+  const isSurvivor = (mapId: Id<"sessionMaps">, mapState: string) =>
+    isRevealPhase &&
+    revealData !== null &&
+    revealData.outcome === "ROUND_ADVANCED" &&
+    mapState === "AVAILABLE" &&
+    !revealData.eliminatedMapIds.includes(mapId);
+
+  // Check if a map is the winner during winner reveal
+  const isWinnerMap = (mapId: Id<"sessionMaps">) =>
+    isWinnerReveal && phaseState.phase === "WINNER_REVEAL" && phaseState.winnerMapId === mapId;
+
+  // Find the winner map name for accessibility announcements
+  const winnerMapName = (phaseState.phase === "WINNER_REVEAL" || phaseState.phase === "REDIRECTING")
+    ? maps.find((m) => m._id === phaseState.winnerMapId)?.name
+    : undefined;
+
+  // Whether the UI is interactive (not paused and not in a reveal phase)
+  const isInteractive = !isPaused && !isAnyReveal;
 
   const handleMapClick = (mapId: Id<"sessionMaps">, mapName: string) => {
-    if (!isYourTurn || isSubmitting || isPaused) return;
+    if (!isYourTurn || isSubmitting || !isInteractive) return;
 
     setPendingAction({
       _id: mapId,
@@ -241,12 +341,14 @@ function PlayerVotingPage() {
       const result: { status: string; error?: string } = await res.json();
 
       if (result.status === "ok") {
-        if (pendingAction.type === "vote") {
-          setOptimisticVotedMapId(pendingAction._id);
+        if (pendingAction.type === "vote" && currentRound !== undefined) {
+          setOptimisticVote({ mapId: pendingAction._id, forRound: currentRound });
         }
         setPendingAction(null);
       } else {
-        toast.error(getVotingErrorMessage((result.error ?? "") as VotingErrorCode));
+        toast.error(
+          getVotingErrorMessage((result.error ?? "") as VotingErrorCode)
+        );
       }
     } catch (error) {
       console.error("Vote submission failed:", error);
@@ -256,300 +358,395 @@ function PlayerVotingPage() {
     }
   };
 
+  // Compute countdown text for reveal
+  const revealCountdown = Math.max(1, Math.ceil(remainingMs / 1000));
+
+  // Compute accessibility announcement
+  const eliminatedCount = revealData?.eliminatedMapIds.length ?? 0;
+  const survivingCount = activeMaps.filter(
+    (m) => m.state === "AVAILABLE"
+  ).length;
+
   return (
     <div className="min-h-screen bg-background text-foreground flex flex-col">
       <SessionPausedOverlay isPaused={isPaused} />
 
-      <div inert={isPaused}>
-      {/* Header */}
-      <header className="border-b border-border bg-card px-4 py-3 sm:px-6 sm:py-4">
-        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-          <div className="flex items-center gap-2 sm:gap-4">
-            <h1 className="text-lg sm:text-xl font-bold">
-              {session.matchName}
-            </h1>
-            <Badge variant="secondary" className="bg-muted text-xs sm:text-sm">
-              {session.format === "ABBA" ? "ABBA Ban" : "Multiplayer Vote"}
-            </Badge>
-          </div>
-          <div className="flex items-center gap-2 text-sm">
-            <span className="text-muted-foreground">You are:</span>
-            <span className="font-bold text-foreground">{player.role}</span>
-            <span className="text-muted-foreground">({player.teamName})</span>
-          </div>
-        </div>
-      </header>
+      {/* ARIA live region for screen reader announcements */}
+      <div
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+        className="sr-only"
+      >
+        {isRevealPhase &&
+          revealData &&
+          (revealData.outcome === "REVOTE"
+            ? `Round ${revealData.completedRound} complete. Deadlock! All maps eliminated. Revoting with same maps. Next round in ${revealCountdown} seconds.`
+            : `Round ${revealData.completedRound} complete. ${eliminatedCount} map${eliminatedCount !== 1 ? "s" : ""} eliminated. ${survivingCount} map${survivingCount !== 1 ? "s" : ""} remaining. Next round in ${revealCountdown} seconds.`)}
+        {isWinnerReveal &&
+          winnerMapName &&
+          `Session complete. Winner: ${winnerMapName}.`}
+      </div>
 
-      {/* Main Content */}
-      <main className="flex-1 px-6 py-8">
-        {/* Turn Status Section */}
-        <div className="max-w-5xl mx-auto mb-8">
-          <div
-            className={`rounded-lg p-6 text-center mb-4 ${
-              isYourTurn
-                ? "bg-green-950/50 border-2 border-green-600"
-                : "bg-muted border-2 border-border"
-            }`}
-          >
-            <div className="text-2xl font-bold mb-2">
-              {session.format === "ABBA"
-                ? isYourTurn
-                  ? "YOUR TURN TO BAN"
-                  : `Waiting for ${opponentTeam} to ban...`
-                : isYourTurn
-                  ? "CAST YOUR VOTE"
-                  : "Waiting for others to vote..."}
+      <div inert={!isInteractive}>
+        {/* Header */}
+        <header className="border-b border-border bg-card px-4 py-3 sm:px-6 sm:py-4">
+          <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-center gap-2 sm:gap-4">
+              <h1 className="text-lg sm:text-xl font-bold">
+                {session.matchName}
+              </h1>
+              <Badge
+                variant="secondary"
+                className="bg-muted text-xs sm:text-sm"
+              >
+                {session.format === "ABBA" ? "ABBA Ban" : "Multiplayer Vote"}
+              </Badge>
             </div>
-          </div>
-
-          <div
-            className={`text-center mb-4 font-mono text-4xl sm:text-5xl md:text-7xl font-bold ${
-              isYourTurn ? "text-primary" : "text-muted-foreground"
-            }`}
-          >
-            {/* Key resets the timer when turn changes */}
-            <CountdownTimer
-              key={`${session.currentTurn}-${session.currentRound}`}
-              turnTimerSeconds={session.turnTimerSeconds}
-              timerStartedAt={session.timerStartedAt}
-              timerPausedAt={session.timerPausedAt}
-              isActive={session.status === "IN_PROGRESS"}
-            />
-          </div>
-
-          {isYourTurn && (
-            <p className="text-center text-muted-foreground text-lg">
-              {session.format === "ABBA"
-                ? "Select a map to ban"
-                : "Select a map to vote for"}
-            </p>
-          )}
-        </div>
-
-        {/* Map Grid */}
-        <div className="max-w-6xl mx-auto mb-12">
-          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
-            {maps.map((map) => {
-              const bannedByPlayer = map.bannedByPlayerId
-                ? allPlayers.find((p) => p._id === map.bannedByPlayerId)
-                : null;
-              const isMyVote =
-                (map._id === data.playerVotedMapId || map._id === optimisticVotedMapId) &&
-                map.state === "AVAILABLE";
-
-              return (
-                <Card
-                  key={map._id}
-                  className={cn(
-                    "overflow-hidden transition-all duration-200 relative group",
-                    map.state === "AVAILABLE" && isYourTurn && !isSubmitting && !isPaused &&
-                      "cursor-pointer hover:ring-2 hover:ring-primary hover:shadow-lg hover:shadow-primary/20 active:ring-2 active:ring-primary",
-                    isMyVote && "ring-2 ring-amber-400 shadow-lg shadow-amber-400/20",
-                    map.state === "BANNED" && "opacity-60",
-                    isSubmitting && "pointer-events-none opacity-80",
-                  )}
-                  onClick={() => {
-                    if (map.state === "AVAILABLE" && isYourTurn && !isSubmitting && !isPaused) {
-                      handleMapClick(map._id, map.name);
-                    }
-                  }}
-                >
-                  <div className="aspect-video relative overflow-hidden">
-                    <img
-                      src={map.imageUrl || "/placeholder.svg"}
-                      alt={map.name}
-                      className={`w-full h-full object-cover ${map.state === "BANNED" ? "grayscale" : ""}`}
-                    />
-
-                    {/* Banned Overlay */}
-                    {map.state === "BANNED" && (
-                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                        <X className="w-16 h-16 text-red-600" strokeWidth={4} />
-                      </div>
-                    )}
-
-                    {/* Winner Overlay */}
-                    {map.state === "WINNER" && (
-                      <div className="absolute inset-0 bg-primary/20 flex items-center justify-center">
-                        <Check
-                          className="w-16 h-16 text-primary"
-                          strokeWidth={4}
-                        />
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="p-3">
-                    <div className="font-semibold text-center">{map.name}</div>
-                    {isMyVote && (
-                      <div className="text-xs text-center text-amber-400 mt-1">
-                        Your vote
-                      </div>
-                    )}
-                    {map.state === "BANNED" && bannedByPlayer && (
-                      <div className="text-xs text-center text-muted-foreground mt-1">
-                        Banned by {bannedByPlayer.teamName}
-                      </div>
-                    )}
-                  </div>
-                </Card>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Progress Tracker (ABBA format only) */}
-        {session.format === "ABBA" && banSteps.length > 0 && (
-          <div className="max-w-4xl mx-auto">
-            <div className="flex items-center justify-between">
-              {banSteps.map((step, index) => (
-                <div key={index} className="flex items-center flex-1">
-                  <div className="flex flex-col items-center">
-                    <div
-                      className={`w-10 h-10 rounded-full flex items-center justify-center border-2 mb-2 ${
-                        step.completed
-                          ? "bg-primary border-primary"
-                          : currentStep === index
-                            ? "bg-primary/20 border-primary"
-                            : "bg-muted border-border"
-                      }`}
-                    >
-                      {step.completed ? (
-                        <Check className="w-5 h-5 text-primary-foreground" />
-                      ) : (
-                        <span
-                          className={
-                            currentStep === index
-                              ? "text-primary font-bold"
-                              : "text-muted-foreground"
-                          }
-                        >
-                          {step.step}
-                        </span>
-                      )}
-                    </div>
-                    <span
-                      className={`text-sm text-center ${
-                        currentStep === index
-                          ? "text-foreground font-semibold"
-                          : "text-muted-foreground"
-                      }`}
-                    >
-                      {step.team}
-                    </span>
-                  </div>
-                  {index < banSteps.length - 1 && (
-                    <div
-                      className={`flex-1 h-0.5 mx-4 ${step.completed ? "bg-primary" : "bg-border"}`}
-                    />
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        {/* Multiplayer Vote Status */}
-        {session.format === "MULTIPLAYER" && (
-          <div className="max-w-4xl mx-auto">
-            <div className="flex items-center justify-center gap-6 p-4 bg-muted/50 rounded-lg">
-              <span className="text-sm text-muted-foreground">
-                Round {session.currentRound}
+            <div className="flex items-center gap-2 text-sm">
+              <span className="text-muted-foreground">You are:</span>
+              <span className="font-bold text-foreground">{player.role}</span>
+              <span className="text-muted-foreground">
+                ({player.teamName})
               </span>
-              <div className="flex items-center gap-4">
-                <div className="flex items-center gap-2">
-                  <div
-                    className={`w-3 h-3 rounded-full ${
-                      player.hasVotedThisRound
-                        ? "bg-green-500"
-                        : "bg-muted-foreground animate-pulse"
-                    }`}
-                  />
-                  <span className="text-sm font-medium">{player.teamName}</span>
-                  {player.hasVotedThisRound ? (
-                    <Check className="w-4 h-4 text-green-500" />
-                  ) : (
-                    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-                  )}
+            </div>
+          </div>
+        </header>
+
+        {/* Main Content */}
+        <main className="flex-1 px-6 py-8">
+          {/* Turn Status / Reveal Banner Section */}
+          <div className="max-w-5xl mx-auto mb-8">
+            {/* Banner */}
+            {isWinnerReveal ? (
+              /* Winner Reveal Banner */
+              <div className="rounded-lg p-6 text-center mb-4 bg-amber-950/50 border-2 border-amber-500 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500">
+                <div className="flex items-center justify-center gap-3 mb-2">
+                  <Trophy className="w-8 h-8 text-amber-400" />
+                  <div className="text-3xl sm:text-4xl font-bold text-amber-400">
+                    {revealData?.outcome === "RANDOM_WINNER"
+                      ? "RANDOM WINNER!"
+                      : "WINNER!"}
+                  </div>
+                  <Trophy className="w-8 h-8 text-amber-400" />
                 </div>
-                {otherPlayers.map((op) => (
-                  <div key={op._id} className="flex items-center gap-2">
-                    <div
-                      className={`w-3 h-3 rounded-full ${
-                        op.hasVotedThisRound
-                          ? "bg-green-500"
-                          : "bg-muted-foreground animate-pulse"
-                      }`}
-                    />
-                    <span className="text-sm font-medium">{op.teamName}</span>
-                    {op.hasVotedThisRound ? (
-                      <Check className="w-4 h-4 text-green-500" />
-                    ) : (
-                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                {winnerMapName && (
+                  <p className="text-lg text-amber-200/80">{winnerMapName}</p>
+                )}
+                <p className="text-sm text-muted-foreground mt-2">
+                  Redirecting to results in {revealCountdown}s...
+                </p>
+              </div>
+            ) : isRevealPhase && revealData ? (
+              /* Round Results Reveal Banner */
+              <div
+                className={cn(
+                  "rounded-lg p-6 text-center mb-4 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300",
+                  revealData.outcome === "REVOTE"
+                    ? "bg-red-950/50 border-2 border-red-600"
+                    : "bg-amber-950/50 border-2 border-amber-600"
+                )}
+              >
+                <div className="text-2xl sm:text-3xl font-bold mb-2">
+                  ROUND {revealData.completedRound} RESULTS
+                </div>
+                {revealData.outcome === "REVOTE" && (
+                  <p className="text-red-400 font-medium">
+                    Deadlock! Revoting with same maps...
+                  </p>
+                )}
+                <p className="text-sm text-muted-foreground mt-2">
+                  Next round in {revealCountdown}s...
+                </p>
+              </div>
+            ) : (
+              /* Normal Voting Banner */
+              <>
+                <div
+                  className={cn(
+                    "rounded-lg p-6 text-center mb-4",
+                    isYourTurn
+                      ? "bg-green-950/50 border-2 border-green-600"
+                      : "bg-muted border-2 border-border"
+                  )}
+                >
+                  <div className="text-2xl font-bold mb-2">
+                    {session.format === "ABBA"
+                      ? isYourTurn
+                        ? "YOUR TURN TO BAN"
+                        : `Waiting for ${opponentTeam} to ban...`
+                      : isYourTurn
+                        ? "CAST YOUR VOTE"
+                        : "Waiting for others to vote..."}
+                  </div>
+                </div>
+
+                <div
+                  className={cn(
+                    "text-center mb-4 font-mono text-4xl sm:text-5xl md:text-7xl font-bold",
+                    isYourTurn ? "text-primary" : "text-muted-foreground"
+                  )}
+                >
+                  {/* Key resets the timer when turn changes */}
+                  <CountdownTimer
+                    key={`${session.currentTurn}-${session.currentRound}`}
+                    turnTimerSeconds={session.turnTimerSeconds}
+                    timerStartedAt={session.timerStartedAt}
+                    timerPausedAt={session.timerPausedAt}
+                    isActive={session.status === "IN_PROGRESS"}
+                  />
+                </div>
+
+                {isYourTurn && (
+                  <p className="text-center text-muted-foreground text-lg">
+                    {session.format === "ABBA"
+                      ? "Select a map to ban"
+                      : "Select a map to vote for"}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Map Grid */}
+          <div className="max-w-6xl mx-auto mb-12">
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+              {(session.format === "MULTIPLAYER"
+                ? activeMaps
+                : maps
+              ).map((map) => {
+                const bannedByPlayer = map.bannedByPlayerId
+                  ? allPlayers.find((p) => p._id === map.bannedByPlayerId)
+                  : null;
+                const isMyVote =
+                  (map._id === data.playerVotedMapId ||
+                    map._id === optimisticVotedMapId) &&
+                  map.state === "AVAILABLE";
+
+                return (
+                  <VoteMapCard
+                    key={map._id}
+                    map={map}
+                    isMyVote={isMyVote}
+                    isYourTurn={isYourTurn}
+                    isSubmitting={isSubmitting}
+                    isInteractive={isInteractive}
+                    isAnyReveal={isAnyReveal}
+                    justEliminated={isJustEliminated(map._id)}
+                    survivor={isSurvivor(map._id, map.state)}
+                    winner={isWinnerMap(map._id)}
+                    bannedByTeamName={bannedByPlayer?.teamName}
+                    onMapClick={handleMapClick}
+                  />
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Previously Eliminated Maps (Multiplayer only) */}
+          {session.format === "MULTIPLAYER" &&
+            previouslyEliminatedMaps.length > 0 && (
+              <div className="max-w-6xl mx-auto mb-8">
+                <h3 className="text-sm text-muted-foreground mb-3">
+                  Previously Eliminated
+                </h3>
+                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
+                  {previouslyEliminatedMaps.map((map) => (
+                    <Card key={map._id} className="opacity-50 overflow-hidden">
+                      <div className="aspect-video relative overflow-hidden">
+                        <img
+                          src={map.imageUrl || "/placeholder.svg"}
+                          alt={map.name}
+                          className="w-full h-full object-cover grayscale"
+                        />
+                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
+                          <X
+                            className="w-6 h-6 text-red-500"
+                            strokeWidth={3}
+                          />
+                        </div>
+                      </div>
+                      <div className="p-1.5 text-xs text-center truncate text-muted-foreground">
+                        {map.name}
+                      </div>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            )}
+
+          {/* Progress Tracker (ABBA format only) */}
+          {session.format === "ABBA" && banSteps.length > 0 && (
+            <div className="max-w-4xl mx-auto">
+              <div className="flex items-center justify-between">
+                {banSteps.map((step, index) => (
+                  <div key={index} className="flex items-center flex-1">
+                    <div className="flex flex-col items-center">
+                      <div
+                        className={cn(
+                          "w-10 h-10 rounded-full flex items-center justify-center border-2 mb-2",
+                          step.completed
+                            ? "bg-primary border-primary"
+                            : currentStep === index
+                              ? "bg-primary/20 border-primary"
+                              : "bg-muted border-border"
+                        )}
+                      >
+                        {step.completed ? (
+                          <Check className="w-5 h-5 text-primary-foreground" />
+                        ) : (
+                          <span
+                            className={
+                              currentStep === index
+                                ? "text-primary font-bold"
+                                : "text-muted-foreground"
+                            }
+                          >
+                            {step.step}
+                          </span>
+                        )}
+                      </div>
+                      <span
+                        className={`text-sm text-center ${
+                          currentStep === index
+                            ? "text-foreground font-semibold"
+                            : "text-muted-foreground"
+                        }`}
+                      >
+                        {step.team}
+                      </span>
+                    </div>
+                    {index < banSteps.length - 1 && (
+                      <div
+                        className={`flex-1 h-0.5 mx-4 ${step.completed ? "bg-primary" : "bg-border"}`}
+                      />
                     )}
                   </div>
                 ))}
               </div>
             </div>
+          )}
+
+          {/* Multiplayer Vote Status */}
+          {session.format === "MULTIPLAYER" && (
+            <div className="max-w-4xl mx-auto">
+              <div className="flex items-center justify-center gap-6 p-4 bg-muted/50 rounded-lg">
+                {isAnyReveal ? (
+                  /* Reveal: show "Round complete" */
+                  <span className="text-sm font-medium text-green-500 flex items-center gap-2">
+                    <Check className="w-4 h-4" />
+                    Round {revealData?.completedRound ?? session.currentRound - 1} complete
+                  </span>
+                ) : (
+                  /* Normal voting: show round + player status */
+                  <>
+                    <span className="text-sm text-muted-foreground">
+                      Round {session.currentRound}
+                    </span>
+                    <div className="flex items-center gap-4">
+                      <div className="flex items-center gap-2">
+                        <div
+                          className={`w-3 h-3 rounded-full ${
+                            player.hasVotedThisRound
+                              ? "bg-green-500"
+                              : "bg-muted-foreground animate-pulse"
+                          }`}
+                        />
+                        <span className="text-sm font-medium">
+                          {player.teamName}
+                        </span>
+                        {player.hasVotedThisRound ? (
+                          <Check className="w-4 h-4 text-green-500" />
+                        ) : (
+                          <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                        )}
+                      </div>
+                      {otherPlayers.map((op) => (
+                        <div key={op._id} className="flex items-center gap-2">
+                          <div
+                            className={`w-3 h-3 rounded-full ${
+                              op.hasVotedThisRound
+                                ? "bg-green-500"
+                                : "bg-muted-foreground animate-pulse"
+                            }`}
+                          />
+                          <span className="text-sm font-medium">
+                            {op.teamName}
+                          </span>
+                          {op.hasVotedThisRound ? (
+                            <Check className="w-4 h-4 text-green-500" />
+                          ) : (
+                            <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            </div>
+          )}
+        </main>
+
+        {/* Footer */}
+        <footer className="border-t border-border bg-card px-4 py-3 sm:px-6 sm:py-4">
+          <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground max-w-6xl mx-auto">
+            <Lock className="w-4 h-4 flex-shrink-0" />
+            <span>Session locked to your device</span>
           </div>
-        )}
-      </main>
+        </footer>
 
-      {/* Footer */}
-      <footer className="border-t border-border bg-card px-4 py-3 sm:px-6 sm:py-4">
-        <div className="flex items-center gap-2 text-xs sm:text-sm text-muted-foreground max-w-6xl mx-auto">
-          <Lock className="w-4 h-4 flex-shrink-0" />
-          <span>Session locked to your device</span>
-        </div>
-      </footer>
-
-      {/* Confirmation Dialog (Ban / Vote) */}
-      <AlertDialog
-        open={!!pendingAction && !isPaused}
-        onOpenChange={(open) =>
-          !open && !isSubmitting && setPendingAction(null)
-        }
-      >
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>
-              {pendingAction?.type === "ban" ? "Confirm Ban" : "Confirm Vote"}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {pendingAction?.type === "ban"
-                ? "Are you sure you want to ban "
-                : "Vote to eliminate "}
-              <span className="font-semibold text-foreground">
-                {pendingAction?.name}
-              </span>
-              {pendingAction?.type === "ban"
-                ? "? This action cannot be undone."
-                : "? This cannot be changed."}
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel disabled={isSubmitting}>
-              Cancel
-            </AlertDialogCancel>
-            <AlertDialogAction
-              onClick={submitAction}
-              disabled={isSubmitting}
-              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-            >
-              {isSubmitting ? (
-                <>
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                  {pendingAction?.type === "ban" ? "Banning..." : "Voting..."}
-                </>
-              ) : pendingAction?.type === "ban" ? (
-                "Confirm Ban"
-              ) : (
-                "Confirm Vote"
-              )}
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
+        {/* Confirmation Dialog (Ban / Vote) */}
+        <AlertDialog
+          open={!!pendingAction && !isPaused && !isAnyReveal}
+          onOpenChange={(open) =>
+            !open && !isSubmitting && setPendingAction(null)
+          }
+        >
+          <AlertDialogContent>
+            <AlertDialogHeader>
+              <AlertDialogTitle>
+                {pendingAction?.type === "ban"
+                  ? "Confirm Ban"
+                  : "Confirm Vote"}
+              </AlertDialogTitle>
+              <AlertDialogDescription>
+                {pendingAction?.type === "ban"
+                  ? "Are you sure you want to ban "
+                  : "Vote to eliminate "}
+                <span className="font-semibold text-foreground">
+                  {pendingAction?.name}
+                </span>
+                {pendingAction?.type === "ban"
+                  ? "? This action cannot be undone."
+                  : "? This cannot be changed."}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel disabled={isSubmitting}>
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                onClick={submitAction}
+                disabled={isSubmitting}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {isSubmitting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                    {pendingAction?.type === "ban"
+                      ? "Banning..."
+                      : "Voting..."}
+                  </>
+                ) : pendingAction?.type === "ban" ? (
+                  "Confirm Ban"
+                ) : (
+                  "Confirm Vote"
+                )}
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
       </div>
     </div>
   );

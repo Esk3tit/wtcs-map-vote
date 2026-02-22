@@ -18,6 +18,7 @@ import {
 } from "./test.factories";
 import { api, internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
+import { REVEAL_DURATION_MS } from "./lib/constants";
 
 // ============================================================================
 // Test Helpers
@@ -2285,8 +2286,10 @@ describe("voting.resolveRound", () => {
 
       const dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
       expect(dbSession?.status).toBe("IN_PROGRESS");
-      expect(dbSession?.timerStartedAt).toBeGreaterThanOrEqual(before);
-      expect(dbSession?.timerStartedAt).toBeLessThanOrEqual(after);
+      // timerStartedAt is offset by REVEAL_DURATION_MS to account for
+      // the client-side reveal phase before the next round starts.
+      expect(dbSession?.timerStartedAt).toBeGreaterThanOrEqual(before + REVEAL_DURATION_MS);
+      expect(dbSession?.timerStartedAt).toBeLessThanOrEqual(after + REVEAL_DURATION_MS);
       expect(dbSession?.timerPausedAt).toBeUndefined();
     });
 
@@ -2306,8 +2309,9 @@ describe("voting.resolveRound", () => {
 
       const dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
       expect(dbSession?.isRevoteRound).toBe(true);
-      expect(dbSession?.timerStartedAt).toBeGreaterThanOrEqual(before);
-      expect(dbSession?.timerStartedAt).toBeLessThanOrEqual(after);
+      // timerStartedAt is offset by REVEAL_DURATION_MS for the reveal phase
+      expect(dbSession?.timerStartedAt).toBeGreaterThanOrEqual(before + REVEAL_DURATION_MS);
+      expect(dbSession?.timerStartedAt).toBeLessThanOrEqual(after + REVEAL_DURATION_MS);
     });
 
     it("clears timers on session completion (WINNER)", async () => {
