@@ -34,6 +34,7 @@ import {
   EDITABLE_STATUSES,
   RESETTABLE_STATUSES,
   HEARTBEAT_INTERVAL_MS,
+  HEARTBEAT_TIMEOUT_MS,
 } from "./lib/constants";
 import { validateName, validateRange } from "./lib/validation";
 import {
@@ -149,6 +150,7 @@ function computeConnectionStatus(
   if (!isConnected) return "disconnected";
   if (!lastHeartbeat) return "connected";
   const elapsed = Date.now() - lastHeartbeat;
+  if (elapsed > HEARTBEAT_TIMEOUT_MS) return "disconnected";
   if (elapsed > HEARTBEAT_INTERVAL_MS) return "reconnecting";
   return "connected";
 }

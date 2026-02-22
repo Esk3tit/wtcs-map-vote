@@ -118,21 +118,27 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
                 stopHeartbeat();
               } else {
                 // Heartbeat success — reset missed counter and restore status
-                missedHeartbeatsRef.current = 0;
-                setStatus("authenticated");
-                setError(null);
+                // Guard: ignore stale responses if heartbeat was already stopped
+                if (heartbeatRef.current !== null) {
+                  missedHeartbeatsRef.current = 0;
+                  setStatus("authenticated");
+                  setError(null);
+                }
               }
             } catch {
               if (controller.signal.aborted) return;
 
               // Network failure — track consecutive misses
-              missedHeartbeatsRef.current += 1;
-              if (missedHeartbeatsRef.current >= MAX_MISSED_HEARTBEATS) {
-                setStatus("error");
-                setError("NETWORK_ERROR");
-                stopHeartbeat();
-              } else {
-                setStatus("reconnecting");
+              // Guard: ignore stale responses if heartbeat was already stopped
+              if (heartbeatRef.current !== null) {
+                missedHeartbeatsRef.current += 1;
+                if (missedHeartbeatsRef.current >= MAX_MISSED_HEARTBEATS) {
+                  setStatus("error");
+                  setError("NETWORK_ERROR");
+                  stopHeartbeat();
+                } else {
+                  setStatus("reconnecting");
+                }
               }
             }
           }, HEARTBEAT_INTERVAL_MS);
