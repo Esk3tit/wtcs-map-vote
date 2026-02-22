@@ -2,7 +2,8 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { SITE_URL } from "@/lib/convexHttp";
 import { HEARTBEAT_INTERVAL_MS } from "../../convex/lib/constants";
 
-// Retry with exponential backoff: 2s, 4s, 8s, 16s (total ~30s, within 60s server timeout)
+// Retry with exponential backoff: 2s, 4s, 8s, 16s delays + 8s fetch timeout per attempt
+// Worst-case ~62s total — may exceed 60s server heartbeat window on final attempt
 const RETRY_DELAYS_MS = [2_000, 4_000, 8_000, 16_000] as const;
 const MAX_RETRIES = RETRY_DELAYS_MS.length;
 /** Timeout per heartbeat/retry fetch to keep timing predictable. */
@@ -313,6 +314,8 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
       }
     }
 
+    // Debounce-protect against visibility handler firing during initial validation
+    lastAttemptRef.current = Date.now();
     validateToken();
 
     // ================================================================
