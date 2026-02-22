@@ -2,10 +2,21 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import { SITE_URL } from "@/lib/convexHttp";
 import { HEARTBEAT_INTERVAL_MS } from "../../convex/lib/constants";
 
-/** Consecutive heartbeat failures before transitioning to "error". */
-const MAX_MISSED_HEARTBEATS = 2;
+// Retry with exponential backoff: 2s, 4s, 8s, 16s (total ~30s, within 60s server timeout)
+const RETRY_DELAYS_MS = [2_000, 4_000, 8_000, 16_000] as const;
+const MAX_RETRIES = RETRY_DELAYS_MS.length;
+/** Timeout per heartbeat/retry fetch to keep timing predictable. */
+const HEARTBEAT_FETCH_TIMEOUT_MS = 8_000;
+/** Minimum interval between heartbeat attempts (visibility handler debounce). */
+const ATTEMPT_DEBOUNCE_MS = 2_000;
 
-type AuthStatus = "loading" | "authenticated" | "reconnecting" | "error";
+export type AuthStatus =
+  | "loading"
+  | "authenticated"
+  | "reconnecting"
+  | "disconnected"
+  | "error";
+
 type AuthError =
   | "INVALID_TOKEN"
   | "TOKEN_EXPIRED"
@@ -23,45 +34,90 @@ type HeartbeatResponse =
   | { status: "ok" }
   | { status: "error"; error: AuthError };
 
-interface UsePlayerAuthResult {
+export interface UsePlayerAuthResult {
   status: AuthStatus;
   error: AuthError | null;
+  /** Trigger manual reconnection (full token re-validation). Only useful when disconnected. */
+  retry: () => void;
+  /** Current retry attempt (0 = not retrying, 1–4 during backoff). */
+  retryAttempt: number;
+  /** Maximum number of retry attempts before giving up. */
+  maxRetries: number;
 }
 
 /**
- * Hook for player token authentication with IP locking and heartbeat.
+ * Hook for player token authentication with IP locking, heartbeat, and reconnection.
  *
  * On mount: calls the HTTP validate-token endpoint to lock the token
  * to the client's IP. On success, starts a periodic heartbeat.
- * On error: returns the error for display via TokenErrorPage.
+ * On heartbeat network failure: retries with exponential backoff (2s, 4s, 8s, 16s).
+ * If all retries fail: transitions to "disconnected" with manual retry option.
+ * On server auth error: transitions to "error" (permanent, no retry).
  *
  * Connection status states:
  * - "loading" → initial token validation in progress
  * - "authenticated" → connected and heartbeat is healthy
- * - "reconnecting" → 1 missed heartbeat, retrying
- * - "error" → 2+ missed heartbeats or server-side auth error
+ * - "reconnecting" → heartbeat failed, auto-retrying with backoff
+ * - "disconnected" → all retries exhausted, manual retry required
+ * - "error" → permanent server auth error (IP_MISMATCH, TOKEN_EXPIRED, etc.)
  */
 export function usePlayerAuth(token: string): UsePlayerAuthResult {
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [error, setError] = useState<AuthError | null>(null);
-  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const missedHeartbeatsRef = useRef(0);
+  const [retryAttempt, setRetryAttempt] = useState(0);
+  // Incrementing retryTrigger re-runs the effect (full token re-validation)
+  const [retryTrigger, setRetryTrigger] = useState(0);
 
-  const stopHeartbeat = useCallback(() => {
-    if (heartbeatRef.current) {
-      clearInterval(heartbeatRef.current);
-      heartbeatRef.current = null;
-    }
+  // Ref to track current status for visibility handler (avoids stale closure)
+  const statusRef = useRef<AuthStatus>("loading");
+  useEffect(() => {
+    statusRef.current = status;
+  }, [status]);
+
+  // Timer refs
+  const heartbeatRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastAttemptRef = useRef(0);
+
+  const retry = useCallback(() => {
+    setRetryTrigger((c) => c + 1);
   }, []);
 
   useEffect(() => {
     const controller = new AbortController();
 
-    // Reset state when token changes
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional: reset auth state synchronously when token prop changes before async validation
+    // Reset state when token changes or manual retry triggers
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- Intentional: reset auth state synchronously when token/retryTrigger changes before async validation begins
     setStatus("loading");
     setError(null);
-    missedHeartbeatsRef.current = 0;
+    setRetryAttempt(0);
+
+    // ================================================================
+    // Timer helpers (scoped to this effect instance)
+    // ================================================================
+
+    function stopNormalHeartbeat() {
+      if (heartbeatRef.current) {
+        clearInterval(heartbeatRef.current);
+        heartbeatRef.current = null;
+      }
+    }
+
+    function clearRetryTimeout() {
+      if (retryTimeoutRef.current) {
+        clearTimeout(retryTimeoutRef.current);
+        retryTimeoutRef.current = null;
+      }
+    }
+
+    function stopAll() {
+      stopNormalHeartbeat();
+      clearRetryTimeout();
+    }
+
+    // ================================================================
+    // Early exit for empty token
+    // ================================================================
 
     const normalizedToken = token.trim();
     if (!normalizedToken) {
@@ -69,9 +125,161 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
       setError("INVALID_TOKEN");
       return () => {
         controller.abort();
-        stopHeartbeat();
+        stopAll();
       };
     }
+
+    // ================================================================
+    // Heartbeat sender (bounded by HEARTBEAT_FETCH_TIMEOUT_MS)
+    // ================================================================
+
+    type HeartbeatResult =
+      | { kind: "ok" }
+      | { kind: "auth_error"; error: AuthError }
+      | { kind: "network_error" };
+
+    async function sendHeartbeat(): Promise<HeartbeatResult> {
+      try {
+        const res = await fetch(`${SITE_URL}/api/player/heartbeat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: normalizedToken }),
+          signal: AbortSignal.any([
+            controller.signal,
+            AbortSignal.timeout(HEARTBEAT_FETCH_TIMEOUT_MS),
+          ]),
+        });
+
+        if (controller.signal.aborted) return { kind: "network_error" };
+
+        const data = (await res.json()) as HeartbeatResponse;
+
+        if (controller.signal.aborted) return { kind: "network_error" };
+
+        if (data.status === "error") {
+          return { kind: "auth_error", error: data.error };
+        }
+        return { kind: "ok" };
+      } catch {
+        return { kind: "network_error" };
+      }
+    }
+
+    // ================================================================
+    // Two-mode heartbeat system
+    // ================================================================
+
+    // --- Normal mode: 30s interval ---
+    function startNormalHeartbeat() {
+      stopAll();
+      heartbeatRef.current = setInterval(async () => {
+        if (controller.signal.aborted) return;
+        lastAttemptRef.current = Date.now();
+        const r = await sendHeartbeat();
+        if (controller.signal.aborted) return;
+
+        if (r.kind === "ok") {
+          setStatus("authenticated");
+          setError(null);
+        } else if (r.kind === "auth_error") {
+          setStatus("error");
+          setError(r.error);
+          stopAll();
+        } else {
+          // Network error → switch to retry mode
+          stopNormalHeartbeat();
+          startRetrySequence(0);
+        }
+      }, HEARTBEAT_INTERVAL_MS);
+    }
+
+    // --- Retry mode: chained setTimeout with backoff ---
+    function startRetrySequence(attempt: number) {
+      if (controller.signal.aborted) return;
+
+      if (attempt >= MAX_RETRIES) {
+        setStatus("disconnected");
+        setError("NETWORK_ERROR");
+        setRetryAttempt(MAX_RETRIES);
+        return;
+      }
+
+      setStatus("reconnecting");
+      setRetryAttempt(attempt + 1);
+
+      retryTimeoutRef.current = setTimeout(async () => {
+        if (controller.signal.aborted) return;
+        lastAttemptRef.current = Date.now();
+        const r = await sendHeartbeat();
+        if (controller.signal.aborted) return;
+
+        if (r.kind === "ok") {
+          setStatus("authenticated");
+          setError(null);
+          setRetryAttempt(0);
+          startNormalHeartbeat();
+        } else if (r.kind === "auth_error") {
+          setStatus("error");
+          setError(r.error);
+          stopAll();
+        } else {
+          startRetrySequence(attempt + 1);
+        }
+      }, RETRY_DELAYS_MS[attempt]);
+    }
+
+    // --- Immediate attempt (visibility handler) ---
+    async function attemptImmediateHeartbeat() {
+      if (controller.signal.aborted) return;
+      lastAttemptRef.current = Date.now();
+      stopAll();
+      const r = await sendHeartbeat();
+      if (controller.signal.aborted) return;
+
+      if (r.kind === "ok") {
+        setStatus("authenticated");
+        setError(null);
+        setRetryAttempt(0);
+        startNormalHeartbeat();
+      } else if (r.kind === "auth_error") {
+        setStatus("error");
+        setError(r.error);
+      } else {
+        // Failed → start retry from attempt 0
+        startRetrySequence(0);
+      }
+    }
+
+    // ================================================================
+    // Tab visibility handler
+    // ================================================================
+
+    function handleVisibilityChange() {
+      if (document.visibilityState !== "visible") return;
+      const currentStatus = statusRef.current;
+      // Only act when authenticated or reconnecting
+      if (currentStatus !== "authenticated" && currentStatus !== "reconnecting")
+        return;
+      // Debounce: skip if we attempted recently
+      if (Date.now() - lastAttemptRef.current < ATTEMPT_DEBOUNCE_MS) return;
+      clearRetryTimeout();
+      stopNormalHeartbeat();
+      attemptImmediateHeartbeat();
+    }
+
+    // iOS Safari bfcache recovery
+    function handlePageShow(event: PageTransitionEvent) {
+      if (event.persisted) {
+        handleVisibilityChange();
+      }
+    }
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("pageshow", handlePageShow);
+
+    // ================================================================
+    // Initial token validation
+    // ================================================================
 
     async function validateToken() {
       try {
@@ -89,62 +297,10 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
         if (controller.signal.aborted) return;
 
         if (data.status === "ok") {
-          stopHeartbeat();
           setStatus("authenticated");
           setError(null);
-          missedHeartbeatsRef.current = 0;
-
-          // Start heartbeat
-          heartbeatRef.current = setInterval(async () => {
-            if (controller.signal.aborted) return;
-            try {
-              const hbRes = await fetch(`${SITE_URL}/api/player/heartbeat`, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ token: normalizedToken }),
-                signal: controller.signal,
-              });
-
-              if (controller.signal.aborted) return;
-
-              const hbData = (await hbRes.json()) as HeartbeatResponse;
-
-              if (controller.signal.aborted) return;
-
-              if (hbData.status === "error") {
-                // Server-side auth error (token expired, IP mismatch, etc.)
-                // Guard: ignore stale responses if heartbeat was already stopped
-                if (heartbeatRef.current !== null) {
-                  setStatus("error");
-                  setError(hbData.error);
-                  stopHeartbeat();
-                }
-              } else {
-                // Heartbeat success — reset missed counter and restore status
-                // Guard: ignore stale responses if heartbeat was already stopped
-                if (heartbeatRef.current !== null) {
-                  missedHeartbeatsRef.current = 0;
-                  setStatus("authenticated");
-                  setError(null);
-                }
-              }
-            } catch {
-              if (controller.signal.aborted) return;
-
-              // Network failure — track consecutive misses
-              // Guard: ignore stale responses if heartbeat was already stopped
-              if (heartbeatRef.current !== null) {
-                missedHeartbeatsRef.current += 1;
-                if (missedHeartbeatsRef.current >= MAX_MISSED_HEARTBEATS) {
-                  setStatus("error");
-                  setError("NETWORK_ERROR");
-                  stopHeartbeat();
-                } else {
-                  setStatus("reconnecting");
-                }
-              }
-            }
-          }, HEARTBEAT_INTERVAL_MS);
+          setRetryAttempt(0);
+          startNormalHeartbeat();
         } else {
           setStatus("error");
           setError(data.error);
@@ -159,11 +315,17 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
 
     validateToken();
 
+    // ================================================================
+    // Cleanup
+    // ================================================================
+
     return () => {
       controller.abort();
-      stopHeartbeat();
+      stopAll();
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("pageshow", handlePageShow);
     };
-  }, [token, stopHeartbeat]);
+  }, [token, retryTrigger]);
 
-  return { status, error };
+  return { status, error, retry, retryAttempt, maxRetries: MAX_RETRIES };
 }
