@@ -113,9 +113,12 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
 
               if (hbData.status === "error") {
                 // Server-side auth error (token expired, IP mismatch, etc.)
-                setStatus("error");
-                setError(hbData.error);
-                stopHeartbeat();
+                // Guard: ignore stale responses if heartbeat was already stopped
+                if (heartbeatRef.current !== null) {
+                  setStatus("error");
+                  setError(hbData.error);
+                  stopHeartbeat();
+                }
               } else {
                 // Heartbeat success — reset missed counter and restore status
                 // Guard: ignore stale responses if heartbeat was already stopped
