@@ -67,13 +67,13 @@ import {
 } from "@/components/session/utils";
 import { ConnectionStatusBadge, STATUS_CONFIG } from "@/components/session/ConnectionStatusBadge";
 import type { ConnectionStatus } from "../../../convex/lib/connectionStatus";
+import { useConnectionToasts } from "@/hooks/useConnectionToasts";
 
 // ============================================================================
 // Constants
 // ============================================================================
 
 const AUDIT_LOG_PAGE_SIZE = 50;
-const TOAST_DEBOUNCE_MS = 5000;
 
 export const Route = createFileRoute("/admin/session/$sessionId")({
   component: SessionDetailPage,
@@ -391,76 +391,17 @@ function SessionDetailPage() {
   );
 
   const isWaiting = session?.status === "WAITING";
-  const isActiveSession =
-    session?.status === "IN_PROGRESS" || session?.status === "PAUSED";
 
-  // --- Disconnect/reconnect toast notifications ---
-  const prevPlayerStatesRef = useRef<Map<Id<"sessionPlayers">, boolean> | null>(null);
-  const prevSessionStatusRef = useRef<string | null>(null);
-  const lastToastTimeRef = useRef<Map<Id<"sessionPlayers">, number>>(new Map());
-  const manualPauseRef = useRef(false);
+  // ============================================================================
+  // Connection Toast Notifications
+  // ============================================================================
 
-  useEffect(() => {
-    if (!session || !isActiveSession) {
-      // Reset all tracking when session is not active
-      prevPlayerStatesRef.current = null;
-      prevSessionStatusRef.current = null;
-      lastToastTimeRef.current.clear();
-      return;
-    }
-
-    const currentStates = new Map(
-      session.players.map((p) => [p._id, p.isConnected] as const)
-    );
-
-    // Skip initial render — just store state, don't fire toasts
-    if (prevPlayerStatesRef.current === null) {
-      prevPlayerStatesRef.current = currentStates;
-      prevSessionStatusRef.current = session.status;
-      return;
-    }
-
-    // Detect auto-pause transition (not triggered by manual admin pause)
-    const isAutoPauseTransition =
-      prevSessionStatusRef.current !== "PAUSED" &&
-      session.status === "PAUSED" &&
-      !manualPauseRef.current;
-    manualPauseRef.current = false;
-
-    const now = Date.now();
-
-    for (const player of session.players) {
-      const prevConnected = prevPlayerStatesRef.current.get(player._id);
-      if (prevConnected === undefined || prevConnected === player.isConnected)
-        continue;
-
-      const lastToast = lastToastTimeRef.current.get(player._id) ?? 0;
-      if (now - lastToast < TOAST_DEBOUNCE_MS) continue;
-
-      if (!player.isConnected) {
-        // Skip individual disconnect toast if auto-pause toast will fire
-        if (!isAutoPauseTransition) {
-          toast.warning(`${player.teamName} disconnected`);
-        }
-      } else {
-        toast.success(`${player.teamName} reconnected`);
-      }
-      lastToastTimeRef.current.set(player._id, now);
-    }
-
-    // Fire auto-pause toast
-    if (isAutoPauseTransition) {
-      const disconnectedPlayer = session.players.find((p) => !p.isConnected);
-      if (disconnectedPlayer) {
-        toast(
-          `Session auto-paused — ${disconnectedPlayer.teamName} disconnected`
-        );
-      }
-    }
-
-    prevPlayerStatesRef.current = currentStates;
-    prevSessionStatusRef.current = session.status;
-  }, [session, isActiveSession]);
+  const { markManualPause } = useConnectionToasts({
+    players: session?.players ?? [],
+    sessionStatus: session?.status,
+    isActive:
+      session?.status === "IN_PROGRESS" || session?.status === "PAUSED",
+  });
 
   // Invalid session ID state
   if (!isValidId) {
@@ -669,7 +610,7 @@ function SessionDetailPage() {
                   disabled={isAnyLoading}
                   className="gap-2"
                   onClick={() => {
-                    manualPauseRef.current = true;
+                    markManualPause();
                     handleAction(
                       "pause",
                       () => pauseMutation({ sessionId: typedSessionId }),
