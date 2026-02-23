@@ -1,6 +1,7 @@
 import { useRef, useEffect, useCallback } from "react";
 import { toast } from "sonner";
 import type { Id } from "../../convex/_generated/dataModel";
+import type { SessionStatus } from "../../convex/lib/constants";
 
 // ============================================================================
 // Constants
@@ -20,7 +21,7 @@ interface PlayerConnectionInfo {
 
 interface UseConnectionToastsOptions {
   players: PlayerConnectionInfo[];
-  sessionStatus: string | undefined;
+  sessionStatus: SessionStatus | undefined;
   isActive: boolean;
 }
 
@@ -47,7 +48,7 @@ export function useConnectionToasts({
   const prevPlayerStatesRef = useRef<Map<Id<"sessionPlayers">, boolean> | null>(
     null
   );
-  const prevSessionStatusRef = useRef<string | null>(null);
+  const prevSessionStatusRef = useRef<SessionStatus | null>(null);
   const lastToastTimeRef = useRef<Map<Id<"sessionPlayers">, number>>(
     new Map()
   );
