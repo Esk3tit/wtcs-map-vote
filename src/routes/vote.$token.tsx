@@ -15,6 +15,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { TokenErrorPage } from "@/components/session/TokenErrorPage";
+import { SessionEndedPage } from "@/components/session/SessionEndedPage";
 import { CountdownTimer } from "@/components/session/CountdownTimer";
 import { SessionPausedOverlay } from "@/components/session/SessionPausedOverlay";
 import { DisconnectedOverlay } from "@/components/session/DisconnectedOverlay";
@@ -245,6 +246,11 @@ function PlayerVotingPage() {
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
       </div>
     );
+  }
+
+  // Terminal session state: show dedicated error page
+  if (data.session.status === "EXPIRED") {
+    return <SessionEndedPage reason="EXPIRED" />;
   }
 
   const { player, session, maps, otherPlayers, isYourTurn } = data;

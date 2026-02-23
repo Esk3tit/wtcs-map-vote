@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TokenErrorPage } from "@/components/session/TokenErrorPage";
+import { SessionEndedPage } from "@/components/session/SessionEndedPage";
 import { ReadyCountdown } from "@/components/session/ReadyCountdown";
 import { ConnectionStatusBadge } from "@/components/session/ConnectionStatusBadge";
 import { DisconnectedOverlay } from "@/components/session/DisconnectedOverlay";
@@ -112,6 +113,11 @@ function PlayerLobbyPage() {
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
       </div>
     );
+  }
+
+  // Terminal session state: show dedicated error page
+  if (data.session.status === "EXPIRED") {
+    return <SessionEndedPage reason="EXPIRED" />;
   }
 
   const { player, session, maps, otherPlayers } = data;
