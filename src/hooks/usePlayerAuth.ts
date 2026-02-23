@@ -95,6 +95,8 @@ export function usePlayerAuth(token: string, options?: UsePlayerAuthOptions): Us
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastAttemptRef = useRef(0);
   const generationRef = useRef(0);
+  // Ref mirror of sessionExpired so in-flight callbacks can check synchronously
+  const sessionExpiredRef = useRef(false);
 
   const retry = useCallback(() => {
     setRetryTrigger((c) => c + 1);
@@ -220,6 +222,7 @@ export function usePlayerAuth(token: string, options?: UsePlayerAuthOptions): Us
         lastAttemptRef.current = Date.now();
         const r = await sendHeartbeat();
         if (controller.signal.aborted || gen !== generationRef.current) return;
+        if (sessionExpiredRef.current) return;
 
         if (r.kind === "ok") {
           updateStatus("authenticated");
@@ -258,6 +261,7 @@ export function usePlayerAuth(token: string, options?: UsePlayerAuthOptions): Us
         const r = await sendHeartbeat();
         if (controller.signal.aborted || generation !== generationRef.current)
           return;
+        if (sessionExpiredRef.current) return;
 
         if (r.kind === "ok") {
           updateStatus("authenticated");
@@ -283,6 +287,7 @@ export function usePlayerAuth(token: string, options?: UsePlayerAuthOptions): Us
       const r = await sendHeartbeat();
       if (controller.signal.aborted || generation !== generationRef.current)
         return;
+      if (sessionExpiredRef.current) return;
 
       if (r.kind === "ok") {
         updateStatus("authenticated");
@@ -382,7 +387,9 @@ export function usePlayerAuth(token: string, options?: UsePlayerAuthOptions): Us
 
   // Stop heartbeat and retry timers when session reaches a terminal state (e.g., EXPIRED).
   // This is a separate effect so it doesn't re-run the main auth/heartbeat lifecycle.
+  // Set ref first so in-flight callbacks bail out before restarting timers.
   useEffect(() => {
+    sessionExpiredRef.current = sessionExpired;
     if (!sessionExpired) return;
 
     if (heartbeatRef.current) {
