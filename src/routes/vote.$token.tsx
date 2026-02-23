@@ -15,6 +15,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { TokenErrorPage } from "@/components/session/TokenErrorPage";
+import { SessionEndedPage } from "@/components/session/SessionEndedPage";
 import { CountdownTimer } from "@/components/session/CountdownTimer";
 import { SessionPausedOverlay } from "@/components/session/SessionPausedOverlay";
 import { DisconnectedOverlay } from "@/components/session/DisconnectedOverlay";
@@ -91,8 +92,13 @@ function getVotingErrorMessage(error: VotingErrorCode): string {
 
 function PlayerVotingPage() {
   const { token } = Route.useParams();
+
+  // Track terminal session state (EXPIRED) to stop heartbeat and subscription.
+  // Latches to true once detected — EXPIRED is a terminal state.
+  const [sessionExpired, setSessionExpired] = useState(false);
+
   // Step 1: Validate token and lock IP via HTTP action
-  const auth = usePlayerAuth(token);
+  const auth = usePlayerAuth(token, { sessionExpired });
 
   // Step 2: Subscribe to reactive session data (only after auth succeeds)
   // Keep subscription active during "reconnecting" and "disconnected" to maintain real-time data
@@ -245,6 +251,12 @@ function PlayerVotingPage() {
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
       </div>
     );
+  }
+
+  // Terminal session state: latch expired flag to stop heartbeat, then show error page
+  if (data.session.status === "EXPIRED" || sessionExpired) {
+    if (!sessionExpired) setSessionExpired(true);
+    return <SessionEndedPage reason="EXPIRED" />;
   }
 
   const { player, session, maps, otherPlayers, isYourTurn } = data;

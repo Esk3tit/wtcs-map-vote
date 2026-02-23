@@ -5,6 +5,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TokenErrorPage } from "@/components/session/TokenErrorPage";
+import { SessionEndedPage } from "@/components/session/SessionEndedPage";
 import { ReadyCountdown } from "@/components/session/ReadyCountdown";
 import { ConnectionStatusBadge } from "@/components/session/ConnectionStatusBadge";
 import { DisconnectedOverlay } from "@/components/session/DisconnectedOverlay";
@@ -15,7 +16,7 @@ import { READY_EXPIRY_MS } from "../../convex/lib/constants";
 import { isReadyActive } from "@/lib/ready";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { Lock, Loader2, Clock, CheckCircle2 } from "lucide-react";
+import { Lock, Loader2, CheckCircle2 } from "lucide-react";
 import { useEffect, useState, useCallback } from "react";
 
 export const Route = createFileRoute("/lobby/$token")({
@@ -24,8 +25,13 @@ export const Route = createFileRoute("/lobby/$token")({
 
 function PlayerLobbyPage() {
   const { token } = Route.useParams();
+
+  // Track terminal session state (EXPIRED) to stop heartbeat and subscription.
+  // Latches to true once detected — EXPIRED is a terminal state.
+  const [sessionExpired, setSessionExpired] = useState(false);
+
   // Step 1: Validate token and lock IP via HTTP action
-  const auth = usePlayerAuth(token);
+  const auth = usePlayerAuth(token, { sessionExpired });
 
   // Step 2: Subscribe to reactive session data (only after auth succeeds)
   // Keep subscription active during "reconnecting" and "disconnected" to maintain real-time data
@@ -112,6 +118,12 @@ function PlayerLobbyPage() {
         <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
       </div>
     );
+  }
+
+  // Terminal session state: latch expired flag to stop heartbeat, then show error page
+  if (data.session.status === "EXPIRED" || sessionExpired) {
+    if (!sessionExpired) setSessionExpired(true);
+    return <SessionEndedPage reason="EXPIRED" />;
   }
 
   const { player, session, maps, otherPlayers } = data;
@@ -211,11 +223,7 @@ function PlayerLobbyPage() {
 
           {/* Waiting Indicator */}
           <div className="flex flex-col items-center gap-4 py-8">
-            {session.status === "EXPIRED" ? (
-              <Clock className="h-8 w-8 text-muted-foreground" />
-            ) : (
-              <Loader2 className="h-8 w-8 text-primary animate-spin" />
-            )}
+            <Loader2 className="h-8 w-8 text-primary animate-spin" />
             <p className="text-lg text-muted-foreground">{getWaitingMessage()}</p>
           </div>
 

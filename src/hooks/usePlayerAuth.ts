@@ -36,6 +36,15 @@ type HeartbeatResponse =
   | { status: "ok" }
   | { status: "error"; error: AuthError };
 
+export interface UsePlayerAuthOptions {
+  /**
+   * When true, stops the heartbeat interval and marks the subscription as inactive.
+   * Use this when the session has reached a terminal state (e.g., EXPIRED) to prevent
+   * unnecessary DB writes and network requests.
+   */
+  sessionExpired?: boolean;
+}
+
 export interface UsePlayerAuthResult {
   status: AuthStatus;
   error: AuthError | null;
@@ -69,7 +78,9 @@ export interface UsePlayerAuthResult {
  * - "disconnected" → all retries exhausted, manual retry required
  * - "error" → permanent server auth error (IP_MISMATCH, TOKEN_EXPIRED, etc.)
  */
-export function usePlayerAuth(token: string): UsePlayerAuthResult {
+export function usePlayerAuth(token: string, options?: UsePlayerAuthOptions): UsePlayerAuthResult {
+  const sessionExpired = options?.sessionExpired ?? false;
+
   const [status, setStatus] = useState<AuthStatus>("loading");
   const [error, setError] = useState<AuthError | null>(null);
   const [retryAttempt, setRetryAttempt] = useState(0);
@@ -84,6 +95,8 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
   const retryTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const lastAttemptRef = useRef(0);
   const generationRef = useRef(0);
+  // Ref mirror of sessionExpired so in-flight callbacks can check synchronously
+  const sessionExpiredRef = useRef(false);
 
   const retry = useCallback(() => {
     setRetryTrigger((c) => c + 1);
@@ -209,6 +222,7 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
         lastAttemptRef.current = Date.now();
         const r = await sendHeartbeat();
         if (controller.signal.aborted || gen !== generationRef.current) return;
+        if (sessionExpiredRef.current) return;
 
         if (r.kind === "ok") {
           updateStatus("authenticated");
@@ -247,6 +261,7 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
         const r = await sendHeartbeat();
         if (controller.signal.aborted || generation !== generationRef.current)
           return;
+        if (sessionExpiredRef.current) return;
 
         if (r.kind === "ok") {
           updateStatus("authenticated");
@@ -272,6 +287,7 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
       const r = await sendHeartbeat();
       if (controller.signal.aborted || generation !== generationRef.current)
         return;
+      if (sessionExpiredRef.current) return;
 
       if (r.kind === "ok") {
         updateStatus("authenticated");
@@ -369,8 +385,25 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
     };
   }, [token, retryTrigger]);
 
+  // Stop heartbeat and retry timers when session reaches a terminal state (e.g., EXPIRED).
+  // This is a separate effect so it doesn't re-run the main auth/heartbeat lifecycle.
+  // Set ref first so in-flight callbacks bail out before restarting timers.
+  useEffect(() => {
+    sessionExpiredRef.current = sessionExpired;
+    if (!sessionExpired) return;
+
+    if (heartbeatRef.current) {
+      clearInterval(heartbeatRef.current);
+      heartbeatRef.current = null;
+    }
+    if (retryTimeoutRef.current) {
+      clearTimeout(retryTimeoutRef.current);
+      retryTimeoutRef.current = null;
+    }
+  }, [sessionExpired]);
+
   const isOverlayVisible = status === "reconnecting" || status === "disconnected";
-  const isSubscriptionActive = status === "authenticated" || status === "reconnecting" || status === "disconnected";
+  const isSubscriptionActive = !sessionExpired && (status === "authenticated" || status === "reconnecting" || status === "disconnected");
   // "loading" and "error" fall through to "disconnected" — safe because consumers
   // early-return before rendering ConnectionStatusBadge in those states.
   const connectionStatus: ConnectionStatus =
