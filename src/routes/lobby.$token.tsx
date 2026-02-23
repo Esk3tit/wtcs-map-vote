@@ -16,7 +16,7 @@ import { READY_EXPIRY_MS } from "../../convex/lib/constants";
 import { isReadyActive } from "@/lib/ready";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { Lock, Loader2, Clock, CheckCircle2 } from "lucide-react";
+import { Lock, Loader2, CheckCircle2 } from "lucide-react";
 import { useEffect, useState, useCallback } from "react";
 
 export const Route = createFileRoute("/lobby/$token")({
@@ -217,11 +217,7 @@ function PlayerLobbyPage() {
 
           {/* Waiting Indicator */}
           <div className="flex flex-col items-center gap-4 py-8">
-            {session.status === "EXPIRED" ? (
-              <Clock className="h-8 w-8 text-muted-foreground" />
-            ) : (
-              <Loader2 className="h-8 w-8 text-primary animate-spin" />
-            )}
+            <Loader2 className="h-8 w-8 text-primary animate-spin" />
             <p className="text-lg text-muted-foreground">{getWaitingMessage()}</p>
           </div>
 

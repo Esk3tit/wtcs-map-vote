@@ -1,11 +1,11 @@
 import { Card } from "@/components/ui/card";
-import { Clock, Ban } from "lucide-react";
+import { type LucideIcon, Clock, Ban } from "lucide-react";
 
 export type SessionEndReason = "EXPIRED" | "ENDED_BY_ADMIN" | "DELETED";
 
 const reasonMessages: Record<
   SessionEndReason,
-  { title: string; message: string; icon: typeof Clock }
+  { title: string; message: string; icon: LucideIcon }
 > = {
   EXPIRED: {
     title: "Session Expired",
