@@ -390,6 +390,69 @@ function SessionDetailPage() {
   );
 
   const isWaiting = session?.status === "WAITING";
+  const isActiveSession =
+    session?.status === "IN_PROGRESS" || session?.status === "PAUSED";
+
+  // --- Disconnect/reconnect toast notifications ---
+  const prevPlayerStatesRef = useRef<Map<string, boolean> | null>(null);
+  const prevSessionStatusRef = useRef<string | null>(null);
+  const lastToastTimeRef = useRef<Map<string, number>>(new Map());
+
+  useEffect(() => {
+    if (!session || !isActiveSession) {
+      // Reset tracking when session is not active
+      prevPlayerStatesRef.current = null;
+      prevSessionStatusRef.current = null;
+      return;
+    }
+
+    const currentStates = new Map(
+      session.players.map((p) => [p._id as string, p.isConnected])
+    );
+
+    // Skip initial render — just store state, don't fire toasts
+    if (prevPlayerStatesRef.current === null) {
+      prevPlayerStatesRef.current = currentStates;
+      prevSessionStatusRef.current = session.status;
+      return;
+    }
+
+    const now = Date.now();
+    const DEBOUNCE_MS = 5000;
+
+    for (const player of session.players) {
+      const id = player._id as string;
+      const prevConnected = prevPlayerStatesRef.current.get(id);
+      if (prevConnected === undefined || prevConnected === player.isConnected)
+        continue;
+
+      const lastToast = lastToastTimeRef.current.get(id) ?? 0;
+      if (now - lastToast < DEBOUNCE_MS) continue;
+
+      if (!player.isConnected) {
+        toast.warning(`${player.teamName} disconnected`);
+      } else {
+        toast.success(`${player.teamName} reconnected`);
+      }
+      lastToastTimeRef.current.set(id, now);
+    }
+
+    // Detect auto-pause transition
+    if (
+      prevSessionStatusRef.current !== "PAUSED" &&
+      session.status === "PAUSED"
+    ) {
+      const disconnectedPlayer = session.players.find((p) => !p.isConnected);
+      if (disconnectedPlayer) {
+        toast(
+          `Session auto-paused — ${disconnectedPlayer.teamName} disconnected`
+        );
+      }
+    }
+
+    prevPlayerStatesRef.current = currentStates;
+    prevSessionStatusRef.current = session.status;
+  }, [session, isActiveSession]);
 
   // Invalid session ID state
   if (!isValidId) {
