@@ -36,7 +36,7 @@ After `SessionEndedPage` renders for an EXPIRED session, `usePlayerAuth` continu
 - **Risk**: Low
 
 ## Recommended Action
-Option 1 is simpler — skip the Convex subscription when session is EXPIRED. The heartbeat naturally stops when the subscription is inactive.
+Option 2 was implemented — `usePlayerAuth` accepts a `sessionExpired` option. A separate `useEffect` clears heartbeat/retry timers when the flag latches to `true`, and a `sessionExpiredRef` guards in-flight callbacks from restarting timers. The `isSubscriptionActive` flag also checks `!sessionExpired` to skip the Convex subscription.
 
 ## Technical Details
 - **Affected Files**: `src/routes/lobby.$token.tsx`, `src/routes/vote.$token.tsx`, possibly `src/hooks/usePlayerAuth.ts`
@@ -48,11 +48,11 @@ Option 1 is simpler — skip the Convex subscription when session is EXPIRED. Th
 - Security sentinel review finding
 
 ## Acceptance Criteria
-- [ ] Heartbeat stops firing after SessionEndedPage renders
-- [ ] No unnecessary DB writes for expired sessions
-- [ ] Existing auth/reconnection flows unaffected
-- [ ] TypeScript strict mode passes
-- [ ] Tests pass
+- [x] Heartbeat stops firing after SessionEndedPage renders
+- [x] No unnecessary DB writes for expired sessions
+- [x] Existing auth/reconnection flows unaffected
+- [x] TypeScript strict mode passes
+- [x] Tests pass
 
 ## Work Log
 
