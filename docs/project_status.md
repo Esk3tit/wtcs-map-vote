@@ -2,7 +2,7 @@
 
 Current progress and next steps for the WTCS Map Vote project.
 
-**Last Updated:** February 20, 2026
+**Last Updated:** February 23, 2026
 
 ---
 
@@ -156,13 +156,14 @@ Current progress and next steps for the WTCS Map Vote project.
 ### Phase 6: Player Experience Polish (IN PROGRESS)
 - [x] Player session state auto-redirects (WAR-54, PR #73) — `useSessionStatusRedirect` hook for lobby→vote→results transitions
 - [x] Session paused overlay on vote page (WAR-55, PR #74) — semi-transparent overlay replaces full-page replacement
+- [x] Multiplayer round results reveal (WAR-58, PR #75) — 3-second reveal phase with vote counts, winner banner, deadlock display
+- [x] 3-state connection status indicators (WAR-56, PR #76) — Connected/Reconnecting/Disconnected badges with server-computed status
+- [x] Player reconnection flow with retry logic (WAR-57, PR #77) — exponential backoff, DisconnectedOverlay, tab visibility handler
+- [x] Session error states for active players (WAR-60, PR #78) — SessionEndedPage for EXPIRED sessions, heartbeat stop on terminal state
 
 ---
 
 ## Next Steps
-
-### Player-Facing UI
-   - [ ] Player reconnection UI (auto-reconnect on heartbeat resume)
 
 ### Future Work
 

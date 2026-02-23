@@ -6,6 +6,81 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.20.0] - 2026-02-23 - Session Error States for Active Players (WAR-60, PR #78)
+
+### Added
+- **`SessionEndedPage` component** (`src/components/session/SessionEndedPage.tsx`) — Full-page error component for terminal session states (EXPIRED, ENDED_BY_ADMIN, DELETED) with per-reason icon, title, and message
+- **EXPIRED session guards** on lobby and vote pages — detects EXPIRED status and renders `SessionEndedPage` instead of broken/frozen UI
+- **Heartbeat stop on EXPIRED** — `usePlayerAuth` accepts `sessionExpired` option to stop heartbeat interval and retry timers when session reaches terminal state, preventing unnecessary DB writes
+- **Latching pattern** — `sessionExpired` state latches to `true` once detected to prevent flash of loading spinner when subscription is skipped
+
+### Changed
+- **`usePlayerAuth` hook** — Added `UsePlayerAuthOptions` interface with `sessionExpired` boolean; `isSubscriptionActive` now checks `!sessionExpired`
+- **Icon type** in `SessionEndedPage` — Uses `LucideIcon` type instead of `typeof Clock` for proper icon prop typing
+
+### Technical Notes
+- Separate `useEffect` for cleanup avoids re-running the main auth/heartbeat lifecycle
+- TypeScript narrowing limitation: `case "EXPIRED"` kept in `getWaitingMessage()` switch because TS doesn't propagate early-return narrowing through destructuring
+
+---
+
+## [0.19.0] - 2026-02-23 - Player Reconnection Flow (WAR-57, PR #77)
+
+### Added
+- **Exponential backoff retry** in `usePlayerAuth` — 2s, 4s, 8s, 16s delays on heartbeat network failure instead of transitioning to permanent error
+- **`disconnected` auth state** — New state after all retries exhaust with manual "Retry Connection" button
+- **`DisconnectedOverlay` component** — Shows reconnection progress with retry attempt counter, accessible UI (ARIA live region, focus management, scroll lock)
+- **Tab visibility handler** — Immediate heartbeat when tab regains focus via `visibilitychange` + `pageshow` (iOS bfcache) with 2s debounce
+- **Per-request timeout** — `AbortSignal.timeout(8s)` keeps retry window predictable
+
+### Changed
+- **Two-mode heartbeat system** — Normal 30s `setInterval` switches to chained `setTimeout` with backoff on network failure
+- **Error distinction** — Network errors → retry → `disconnected`; server auth errors → permanent `error`
+
+### Technical Notes
+- `DisconnectedOverlay` at `z-[45]` (above `SessionPausedOverlay` z-40, below dialogs z-50)
+- Manual `retry()` re-validates token from scratch via `retryTrigger` counter
+
+---
+
+## [0.18.0] - 2026-02-22 - 3-State Connection Status Indicators (WAR-56, PR #76)
+
+### Added
+- **`ConnectionStatusBadge` component** — Reusable 3-state indicator (Connected/Reconnecting/Disconnected) with dot, optional label, size variants, and WCAG accessibility (`role="status"`, `aria-label`)
+- **`computeConnectionStatus()` helper** — Server-side derivation from `isConnected` + `lastHeartbeat` staleness
+- **`connectionStatusValidator`** added to shared validators
+- **`HEARTBEAT_INTERVAL_MS`** moved to server-side constants for shared use
+
+### Changed
+- **Player-facing and admin-facing queries** — `toSanitizedPlayer` and `toAdminPlayer` now include `connectionStatus` field
+- **Heartbeat disconnect cron** — Extended to scan WAITING sessions (marks disconnected but does NOT auto-pause)
+- **`usePlayerAuth` hook** — Added `reconnecting` state with consecutive heartbeat failure tracking (1 miss → reconnecting, 2+ → error)
+
+---
+
+## [0.17.0] - 2026-02-22 - Multiplayer Round Results Reveal (WAR-58, PR #75)
+
+### Added
+- **3-second reveal phase** after multiplayer voting round completes — shows round results before auto-advancing to next round
+- **Eliminated maps** display vote counts, grayscale overlay, and red X marker
+- **Surviving maps** get "Safe" badge with green ring
+- **Previously eliminated maps** from prior rounds shown in smaller section below main grid
+- **Winner determination** — 5-second "WINNER!" banner with trophy icons and gold highlights before redirecting to `/results`
+- **Deadlock display** — "Deadlock! Revoting with same maps..." banner for 3 seconds
+- **`usePrevious` hook** — Detects `currentRound` changes from Convex subscription to trigger reveals
+- **`useRevealTimer` hook** — Pause-aware countdown timer for reveal phases
+
+### Changed
+- **Server timer offset** — `timerStartedAt` offset by 3 seconds so players get full configured timer after reveal phase
+- **`useSessionStatusRedirect`** suppressed during reveal phases by passing `undefined` data
+
+### Technical Notes
+- Client-side reveal phase using `useReducer` state machine (`VOTING` → `REVEALING` → `VOTING` / `WINNER_REVEAL` → `REDIRECTING`)
+- Pause support: reveal timer pauses when session is paused by admin, resumes on unpause
+- Accessibility: ARIA live region announces round results, `motion-safe:` prefix respects `prefers-reduced-motion`
+
+---
+
 ## [0.16.0] - 2026-02-20 - Session Paused Overlay (WAR-55, PR #74)
 
 ### Changed
