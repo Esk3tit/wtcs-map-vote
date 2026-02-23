@@ -92,8 +92,13 @@ function getVotingErrorMessage(error: VotingErrorCode): string {
 
 function PlayerVotingPage() {
   const { token } = Route.useParams();
+
+  // Track terminal session state (EXPIRED) to stop heartbeat and subscription.
+  // Latches to true once detected — EXPIRED is a terminal state.
+  const [sessionExpired, setSessionExpired] = useState(false);
+
   // Step 1: Validate token and lock IP via HTTP action
-  const auth = usePlayerAuth(token);
+  const auth = usePlayerAuth(token, { sessionExpired });
 
   // Step 2: Subscribe to reactive session data (only after auth succeeds)
   // Keep subscription active during "reconnecting" and "disconnected" to maintain real-time data
@@ -248,8 +253,9 @@ function PlayerVotingPage() {
     );
   }
 
-  // Terminal session state: show dedicated error page
-  if (data.session.status === "EXPIRED") {
+  // Terminal session state: latch expired flag to stop heartbeat, then show error page
+  if (data.session.status === "EXPIRED" || sessionExpired) {
+    if (!sessionExpired) setSessionExpired(true);
     return <SessionEndedPage reason="EXPIRED" />;
   }
 
