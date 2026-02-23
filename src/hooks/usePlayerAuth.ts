@@ -371,6 +371,8 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
 
   const isOverlayVisible = status === "reconnecting" || status === "disconnected";
   const isSubscriptionActive = status === "authenticated" || status === "reconnecting" || status === "disconnected";
+  // "loading" and "error" fall through to "disconnected" — safe because consumers
+  // early-return before rendering ConnectionStatusBadge in those states.
   const connectionStatus: ConnectionStatus =
     status === "authenticated"
       ? "connected"
