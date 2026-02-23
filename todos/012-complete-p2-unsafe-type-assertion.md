@@ -47,8 +47,8 @@ Fix via #011. If #011 is deferred, use Option 2.
 - **Affected Files**: `src/routes/lobby.$token.tsx`, `src/routes/vote.$token.tsx`
 
 ## Acceptance Criteria
-- [ ] No `as` type assertions for auth.status in route files
-- [ ] TypeScript correctly narrows the status type for DisconnectedOverlay
+- [x] No `as` type assertions for auth.status in route files
+- [x] TypeScript correctly narrows the status type for DisconnectedOverlay
 
 ## Work Log
 

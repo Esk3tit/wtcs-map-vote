@@ -41,8 +41,8 @@ Option 1 — add the same timeout pattern used by `sendHeartbeat`.
 - **Affected Files**: `src/hooks/usePlayerAuth.ts`
 
 ## Acceptance Criteria
-- [ ] `validateToken` fetch has a bounded timeout
-- [ ] Timeout triggers `NETWORK_ERROR` state (same as other fetch failures)
+- [x] `validateToken` fetch has a bounded timeout
+- [x] Timeout triggers `NETWORK_ERROR` state (same as other fetch failures)
 
 ## Work Log
 

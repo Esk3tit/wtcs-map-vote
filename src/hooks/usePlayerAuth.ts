@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { SITE_URL } from "@/lib/convexHttp";
 import { HEARTBEAT_INTERVAL_MS } from "../../convex/lib/constants";
+import type { ConnectionStatus } from "../../convex/lib/connectionStatus";
 
 // Retry with exponential backoff: 2s, 4s, 8s, 16s delays + 8s fetch timeout per attempt
 // Worst-case ~62s total — may exceed 60s server heartbeat window on final attempt
@@ -48,6 +49,8 @@ export interface UsePlayerAuthResult {
   isOverlayVisible: boolean;
   /** Whether the Convex subscription should remain active. */
   isSubscriptionActive: boolean;
+  /** Derived connection status for display components. */
+  connectionStatus: ConnectionStatus;
 }
 
 /**
@@ -128,6 +131,21 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
       setStatus(newStatus);
     }
 
+    /** Create an AbortSignal that aborts when either the effect controller or a timeout fires. */
+    function createTimeoutSignal(timeoutMs: number): { signal: AbortSignal; cleanup: () => void } {
+      const timeoutController = new AbortController();
+      const timeoutId = setTimeout(() => timeoutController.abort(), timeoutMs);
+      const onAbort = () => timeoutController.abort();
+      controller.signal.addEventListener("abort", onAbort);
+      return {
+        signal: timeoutController.signal,
+        cleanup: () => {
+          clearTimeout(timeoutId);
+          controller.signal.removeEventListener("abort", onAbort);
+        },
+      };
+    }
+
     // ================================================================
     // Early exit for empty token
     // ================================================================
@@ -152,15 +170,13 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
       | { kind: "network_error" };
 
     async function sendHeartbeat(): Promise<HeartbeatResult> {
+      const { signal, cleanup } = createTimeoutSignal(HEARTBEAT_FETCH_TIMEOUT_MS);
       try {
         const res = await fetch(`${SITE_URL}/api/player/heartbeat`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token: normalizedToken }),
-          signal: AbortSignal.any([
-            controller.signal,
-            AbortSignal.timeout(HEARTBEAT_FETCH_TIMEOUT_MS),
-          ]),
+          signal,
         });
 
         if (controller.signal.aborted) return { kind: "network_error" };
@@ -175,6 +191,8 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
         return { kind: "ok" };
       } catch {
         return { kind: "network_error" };
+      } finally {
+        cleanup();
       }
     }
 
@@ -301,15 +319,13 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
     // ================================================================
 
     async function validateToken() {
+      const { signal, cleanup } = createTimeoutSignal(HEARTBEAT_FETCH_TIMEOUT_MS);
       try {
         const res = await fetch(`${SITE_URL}/api/player/validate-token`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ token: normalizedToken }),
-          signal: AbortSignal.any([
-            controller.signal,
-            AbortSignal.timeout(HEARTBEAT_FETCH_TIMEOUT_MS),
-          ]),
+          signal,
         });
 
         if (controller.signal.aborted) return;
@@ -332,6 +348,8 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
           updateStatus("error");
           setError("NETWORK_ERROR");
         }
+      } finally {
+        cleanup();
       }
     }
 
@@ -353,10 +371,17 @@ export function usePlayerAuth(token: string): UsePlayerAuthResult {
 
   const isOverlayVisible = status === "reconnecting" || status === "disconnected";
   const isSubscriptionActive = status === "authenticated" || status === "reconnecting" || status === "disconnected";
+  const connectionStatus: ConnectionStatus =
+    status === "authenticated"
+      ? "connected"
+      : status === "reconnecting"
+        ? "reconnecting"
+        : "disconnected";
 
   return {
     status, error, retry, retryAttempt, maxRetries: MAX_RETRIES,
     isOverlayVisible,
     isSubscriptionActive,
+    connectionStatus,
   };
 }

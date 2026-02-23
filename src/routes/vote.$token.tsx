@@ -24,7 +24,6 @@ import {
   STATUS_CONFIG,
 } from "@/components/session/ConnectionStatusBadge";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
-import type { ConnectionStatus } from "../../convex/lib/connectionStatus";
 import { useRevealPhase } from "@/hooks/useRevealPhase";
 import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
 import { SITE_URL } from "@/lib/convexHttp";
@@ -250,16 +249,6 @@ function PlayerVotingPage() {
 
   const { player, session, maps, otherPlayers, isYourTurn } = data;
 
-  // Derive own connection status from auth hook.
-  // Only "authenticated", "reconnecting", and "disconnected" are reachable here —
-  // "loading" and "error" are handled by early returns above.
-  const ownConnectionStatus: ConnectionStatus =
-    auth.status === "authenticated"
-      ? "connected"
-      : auth.status === "reconnecting"
-        ? "reconnecting"
-        : "disconnected";
-
   // Combine players for display purposes
   const allPlayers = [player, ...otherPlayers];
 
@@ -441,7 +430,7 @@ function PlayerVotingPage() {
                 ({player.teamName})
               </span>
               <ConnectionStatusBadge
-                status={ownConnectionStatus}
+                status={auth.connectionStatus}
                 showLabel={false}
               />
             </div>
@@ -737,7 +726,7 @@ function PlayerVotingPage() {
               <Lock className="w-4 h-4 flex-shrink-0" />
               <span>Session locked to your device</span>
             </div>
-            <ConnectionStatusBadge status={ownConnectionStatus} />
+            <ConnectionStatusBadge status={auth.connectionStatus} />
           </div>
         </footer>
 

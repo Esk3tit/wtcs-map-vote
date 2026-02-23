@@ -59,8 +59,8 @@ Use Option 1 (generation counter). It's a well-established pattern for cancellin
 - **Related Components**: DisconnectedOverlay (indirectly — state flickers affect overlay)
 
 ## Acceptance Criteria
-- [ ] No leaked intervals when visibility change and retry timeout overlap
-- [ ] Generation counter prevents stale callbacks from modifying state
+- [x] No leaked intervals when visibility change and retry timeout overlap
+- [x] Generation counter prevents stale callbacks from modifying state
 - [ ] Manual test: rapidly switch tabs during retry sequence — only one heartbeat interval runs
 
 ## Work Log

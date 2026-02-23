@@ -60,9 +60,9 @@ Use Option 1 — create an `updateStatus` helper that writes both ref and state 
 - **Affected Files**: `src/hooks/usePlayerAuth.ts`
 
 ## Acceptance Criteria
-- [ ] `statusRef.current` is always in sync with latest status at the time event handlers read it
-- [ ] No stale reads possible between `setStatus` and effect execution
-- [ ] Lint rule is properly suppressed with justification comment
+- [x] `statusRef.current` is always in sync with latest status at the time event handlers read it
+- [x] No stale reads possible between `setStatus` and effect execution
+- [x] Lint rule is properly suppressed with justification comment
 
 ## Work Log
 

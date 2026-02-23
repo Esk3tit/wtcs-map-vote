@@ -63,9 +63,9 @@ Option 1 — add derived properties to the hook's return value. This is the most
 - **Related Components**: DisconnectedOverlay
 
 ## Acceptance Criteria
-- [ ] `ownConnectionStatus`, `isDisconnected`, and subscription gate logic exist only once
-- [ ] No `as` type assertion needed in route files
-- [ ] Both route files use the same derived properties from the hook
+- [x] `ownConnectionStatus`, `isDisconnected`, and subscription gate logic exist only once
+- [x] No `as` type assertion needed in route files
+- [x] Both route files use the same derived properties from the hook
 
 ## Work Log
 

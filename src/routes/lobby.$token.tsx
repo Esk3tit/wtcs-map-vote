@@ -9,7 +9,6 @@ import { ReadyCountdown } from "@/components/session/ReadyCountdown";
 import { ConnectionStatusBadge } from "@/components/session/ConnectionStatusBadge";
 import { DisconnectedOverlay } from "@/components/session/DisconnectedOverlay";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
-import type { ConnectionStatus } from "../../convex/lib/connectionStatus";
 import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
 import { SITE_URL } from "@/lib/convexHttp";
 import { READY_EXPIRY_MS } from "../../convex/lib/constants";
@@ -117,16 +116,6 @@ function PlayerLobbyPage() {
 
   const { player, session, maps, otherPlayers } = data;
 
-  // Derive own connection status from auth hook.
-  // Only "authenticated", "reconnecting", and "disconnected" are reachable here —
-  // "loading" and "error" are handled by early returns above.
-  const ownConnectionStatus: ConnectionStatus =
-    auth.status === "authenticated"
-      ? "connected"
-      : auth.status === "reconnecting"
-        ? "reconnecting"
-        : "disconnected";
-
   const playerIsReady = isReadyActive(player.readyAt, now);
   const showReadyButton = session.status === "WAITING";
 
@@ -185,7 +174,7 @@ function PlayerLobbyPage() {
                   <Lock className="h-4 w-4" />
                   <span>Session locked to your device</span>
                 </div>
-                <ConnectionStatusBadge status={ownConnectionStatus} />
+                <ConnectionStatusBadge status={auth.connectionStatus} />
               </div>
             </div>
           </Card>
