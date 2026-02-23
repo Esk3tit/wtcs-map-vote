@@ -1,5 +1,6 @@
 import { useEffect, useRef } from "react";
 import { Card } from "@/components/ui/card";
+import { useScrollLock } from "@/hooks/useScrollLock";
 import { Loader2 } from "lucide-react";
 
 export function SessionPausedOverlay({ isPaused }: { isPaused: boolean }) {
@@ -19,23 +20,8 @@ export function SessionPausedOverlay({ isPaused }: { isPaused: boolean }) {
     }
   }, [isPaused]);
 
-  // Lock body scroll and compensate for scrollbar removal while paused
-  useEffect(() => {
-    if (isPaused) {
-      const scrollbarWidth = Math.max(
-        0,
-        window.innerWidth - document.documentElement.clientWidth,
-      );
-      const originalOverflow = document.body.style.overflow;
-      const originalPaddingRight = document.body.style.paddingRight;
-      document.body.style.overflow = "hidden";
-      document.body.style.paddingRight = `${scrollbarWidth}px`;
-      return () => {
-        document.body.style.overflow = originalOverflow;
-        document.body.style.paddingRight = originalPaddingRight;
-      };
-    }
-  }, [isPaused]);
+  // Lock body scroll (reference-counted to handle stacking with DisconnectedOverlay)
+  useScrollLock(isPaused);
 
   if (!isPaused) return null;
 

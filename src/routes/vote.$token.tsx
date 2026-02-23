@@ -17,6 +17,7 @@ import {
 import { TokenErrorPage } from "@/components/session/TokenErrorPage";
 import { CountdownTimer } from "@/components/session/CountdownTimer";
 import { SessionPausedOverlay } from "@/components/session/SessionPausedOverlay";
+import { DisconnectedOverlay } from "@/components/session/DisconnectedOverlay";
 import { VoteMapCard } from "@/components/session/VoteMapCard";
 import {
   ConnectionStatusBadge,
@@ -94,12 +95,10 @@ function PlayerVotingPage() {
   const auth = usePlayerAuth(token);
 
   // Step 2: Subscribe to reactive session data (only after auth succeeds)
-  // Keep subscription active during "reconnecting" to maintain real-time data
+  // Keep subscription active during "reconnecting" and "disconnected" to maintain real-time data
   const data = useQuery(
     api.sessions.getSessionByToken,
-    auth.status === "authenticated" || auth.status === "reconnecting"
-      ? { token }
-      : "skip"
+    auth.isSubscriptionActive ? { token } : "skip"
   );
 
   const [pendingAction, setPendingAction] = useState<{
@@ -163,12 +162,20 @@ function PlayerVotingPage() {
   const isRedirecting = useSessionStatusRedirect(redirectData, token, "vote");
 
   // Auto-dismiss confirmation dialog when the pending action is no longer valid.
-  // Covers: map banned by opponent, turn expired, session paused, reveal phase.
+  // Covers: map banned by opponent, turn expired, session paused, reveal phase, disconnect.
   // INVARIANT: AlertDialog renders via portal to document.body, escaping the
-  // inert wrapper. This effect ensures the dialog is dismissed when paused,
-  // since the portal cannot be blocked by the inert attribute.
+  // inert wrapper. This effect ensures the dialog is dismissed when paused or
+  // disconnected, since the portal cannot be blocked by the inert attribute.
   useEffect(() => {
-    if (!pendingAction || data?.status !== "valid") return;
+    if (!pendingAction) return;
+
+    // Dismiss immediately on disconnect — prevents stale vote submission through portal
+    if (auth.status === "reconnecting" || auth.status === "disconnected") {
+      setPendingAction(null);
+      return;
+    }
+
+    if (data?.status !== "valid") return;
 
     const map = data.maps.find((m) => m._id === pendingAction._id);
     const shouldDismiss =
@@ -181,7 +188,7 @@ function PlayerVotingPage() {
     if (shouldDismiss) {
       setPendingAction(null);
     }
-  }, [data, pendingAction, isAnyReveal]);
+  }, [data, pendingAction, isAnyReveal, auth.status]);
 
   // Clear optimistic vote indicator once server state confirms the same vote
   useEffect(() => {
@@ -205,7 +212,7 @@ function PlayerVotingPage() {
 
   // Auth error
   if (auth.status === "error") {
-    return <TokenErrorPage error={auth.error ?? "INVALID_TOKEN"} />;
+    return <TokenErrorPage error={auth.error ?? "INVALID_TOKEN"} onRetry={auth.error === "NETWORK_ERROR" ? auth.retry : undefined} />;
   }
 
   // Loading state (waiting for reactive query after auth)
@@ -241,12 +248,6 @@ function PlayerVotingPage() {
   }
 
   const { player, session, maps, otherPlayers, isYourTurn } = data;
-
-  // Derive own connection status from auth hook.
-  // Only "authenticated" and "reconnecting" are reachable here — "loading"
-  // and "error" are handled by early returns above.
-  const ownConnectionStatus: "connected" | "reconnecting" =
-    auth.status === "authenticated" ? "connected" : "reconnecting";
 
   // Combine players for display purposes
   const allPlayers = [player, ...otherPlayers];
@@ -331,6 +332,7 @@ function PlayerVotingPage() {
 
   const submitAction = async () => {
     if (!pendingAction || isSubmitting || isPaused) return;
+    if (auth.status === "reconnecting" || auth.status === "disconnected") return;
 
     const endpoint =
       pendingAction.type === "ban"
@@ -381,7 +383,12 @@ function PlayerVotingPage() {
   ).length;
 
   return (
-    <div className="min-h-screen bg-background text-foreground flex flex-col">
+    <>
+    <div
+      className="min-h-screen bg-background text-foreground flex flex-col"
+      aria-hidden={auth.isOverlayVisible || undefined}
+      inert={auth.isOverlayVisible || undefined}
+    >
       <SessionPausedOverlay isPaused={isPaused} />
 
       {/* ARIA live region for screen reader announcements */}
@@ -423,7 +430,7 @@ function PlayerVotingPage() {
                 ({player.teamName})
               </span>
               <ConnectionStatusBadge
-                status={ownConnectionStatus}
+                status={auth.connectionStatus}
                 showLabel={false}
               />
             </div>
@@ -719,7 +726,7 @@ function PlayerVotingPage() {
               <Lock className="w-4 h-4 flex-shrink-0" />
               <span>Session locked to your device</span>
             </div>
-            <ConnectionStatusBadge status={ownConnectionStatus} />
+            <ConnectionStatusBadge status={auth.connectionStatus} />
           </div>
         </footer>
 
@@ -776,5 +783,16 @@ function PlayerVotingPage() {
         </AlertDialog>
       </div>
     </div>
+
+    {/* Disconnected overlay (shows during reconnecting + disconnected) */}
+    {auth.isOverlayVisible && (
+      <DisconnectedOverlay
+        status={auth.status === "reconnecting" ? "reconnecting" : "disconnected"}
+        retryAttempt={auth.retryAttempt}
+        maxRetries={auth.maxRetries}
+        onRetry={auth.retry}
+      />
+    )}
+    </>
   );
 }

@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { TokenErrorPage } from "@/components/session/TokenErrorPage";
 import { ReadyCountdown } from "@/components/session/ReadyCountdown";
 import { ConnectionStatusBadge } from "@/components/session/ConnectionStatusBadge";
+import { DisconnectedOverlay } from "@/components/session/DisconnectedOverlay";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
 import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
 import { SITE_URL } from "@/lib/convexHttp";
@@ -27,12 +28,10 @@ function PlayerLobbyPage() {
   const auth = usePlayerAuth(token);
 
   // Step 2: Subscribe to reactive session data (only after auth succeeds)
-  // Keep subscription active during "reconnecting" to maintain real-time data
+  // Keep subscription active during "reconnecting" and "disconnected" to maintain real-time data
   const data = useQuery(
     api.sessions.getSessionByToken,
-    auth.status === "authenticated" || auth.status === "reconnecting"
-      ? { token }
-      : "skip"
+    auth.isSubscriptionActive ? { token } : "skip"
   );
 
   // Tick every second when WAITING so ready badges stay current
@@ -80,7 +79,7 @@ function PlayerLobbyPage() {
 
   // Auth error
   if (auth.status === "error") {
-    return <TokenErrorPage error={auth.error ?? "INVALID_TOKEN"} />;
+    return <TokenErrorPage error={auth.error ?? "INVALID_TOKEN"} onRetry={auth.error === "NETWORK_ERROR" ? auth.retry : undefined} />;
   }
 
   // Loading state (waiting for reactive query after auth)
@@ -117,12 +116,6 @@ function PlayerLobbyPage() {
 
   const { player, session, maps, otherPlayers } = data;
 
-  // Derive own connection status from auth hook.
-  // Only "authenticated" and "reconnecting" are reachable here — "loading"
-  // and "error" are handled by early returns above.
-  const ownConnectionStatus: "connected" | "reconnecting" =
-    auth.status === "authenticated" ? "connected" : "reconnecting";
-
   const playerIsReady = isReadyActive(player.readyAt, now);
   const showReadyButton = session.status === "WAITING";
 
@@ -148,153 +141,169 @@ function PlayerLobbyPage() {
   };
 
   return (
-    <div className="min-h-screen bg-background p-6 flex items-center justify-center">
-      <div className="w-full max-w-2xl space-y-8">
-        {/* Header */}
-        <div className="text-center space-y-3">
-          <h1 className="text-4xl font-bold text-foreground">
-            {session.matchName}
-          </h1>
-          <Badge variant="outline" className="text-base px-4 py-1">
-            {session.format === "ABBA" ? "ABBA Ban" : "Multiplayer Vote"}
-          </Badge>
-        </div>
+    <>
+      <div
+        className="min-h-screen bg-background p-6 flex items-center justify-center"
+        aria-hidden={auth.isOverlayVisible || undefined}
+        inert={auth.isOverlayVisible || undefined}
+      >
+        <div className="w-full max-w-2xl space-y-8">
+          {/* Header */}
+          <div className="text-center space-y-3">
+            <h1 className="text-4xl font-bold text-foreground">
+              {session.matchName}
+            </h1>
+            <Badge variant="outline" className="text-base px-4 py-1">
+              {session.format === "ABBA" ? "ABBA Ban" : "Multiplayer Vote"}
+            </Badge>
+          </div>
 
-        {/* Identity Card */}
-        <Card className="p-6 border-primary/20">
-          <div className="space-y-4">
-            <p className="text-sm text-muted-foreground">You are joining as:</p>
-            <div className="space-y-2">
-              <h2 className="text-3xl font-bold text-foreground">
-                {player.teamName}
-              </h2>
-              <p className="text-lg text-muted-foreground">({player.role})</p>
-            </div>
-
-            <div className="pt-4 border-t border-border space-y-3">
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <Lock className="h-4 w-4" />
-                <span>Session locked to your device</span>
+          {/* Identity Card */}
+          <Card className="p-6 border-primary/20">
+            <div className="space-y-4">
+              <p className="text-sm text-muted-foreground">You are joining as:</p>
+              <div className="space-y-2">
+                <h2 className="text-3xl font-bold text-foreground">
+                  {player.teamName}
+                </h2>
+                <p className="text-lg text-muted-foreground">({player.role})</p>
               </div>
-              <ConnectionStatusBadge status={ownConnectionStatus} />
-            </div>
-          </div>
-        </Card>
 
-        {/* Ready Button (WAITING only) */}
-        {showReadyButton && (
-          <div className="flex flex-col items-center gap-3">
-            {playerIsReady && player.readyAt ? (
-              <>
-                <ReadyCountdown
-                  readyAt={player.readyAt}
-                  durationMs={READY_EXPIRY_MS}
-                  now={now}
-                />
-                <p className="text-sm font-medium text-green-500">Ready!</p>
-              </>
-            ) : (
-              <Button
-                size="lg"
-                className="gap-2 bg-green-600 hover:bg-green-700 text-white px-8"
-                disabled={readyLoading}
-                onClick={handleReady}
-              >
-                {readyLoading ? (
-                  <Loader2 className="w-4 h-4 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="w-5 h-5" />
-                )}
-                Ready Up
-              </Button>
-            )}
-          </div>
-        )}
-
-        {/* Waiting Indicator */}
-        <div className="flex flex-col items-center gap-4 py-8">
-          {session.status === "EXPIRED" ? (
-            <Clock className="h-8 w-8 text-muted-foreground" />
-          ) : (
-            <Loader2 className="h-8 w-8 text-primary animate-spin" />
-          )}
-          <p className="text-lg text-muted-foreground">{getWaitingMessage()}</p>
-        </div>
-
-        {/* Map Preview */}
-        <div className="space-y-4">
-          <h3 className="text-sm font-medium text-muted-foreground text-center">
-            Maps in this session:
-          </h3>
-          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
-            {maps.map((map) => (
-              <div key={map._id} className="space-y-2">
-                <div className="relative aspect-video rounded-lg overflow-hidden border border-border">
-                  <img
-                    src={map.imageUrl || "/placeholder.svg"}
-                    alt={map.name}
-                    className="absolute inset-0 w-full h-full object-cover"
-                  />
+              <div className="pt-4 border-t border-border space-y-3">
+                <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                  <Lock className="h-4 w-4" />
+                  <span>Session locked to your device</span>
                 </div>
-                <p className="text-xs text-center text-muted-foreground">
-                  {map.name}
-                </p>
+                <ConnectionStatusBadge status={auth.connectionStatus} />
               </div>
-            ))}
-          </div>
-        </div>
-
-        {/* Other Players Status */}
-        {otherPlayers.length > 0 && (
-          <Card className="p-4 bg-card/50">
-            <div className="space-y-3">
-              {otherPlayers.map((otherPlayer) => {
-                const otherIsReady = isReadyActive(otherPlayer.readyAt, now);
-                return (
-                  <div
-                    key={otherPlayer._id}
-                    className="flex items-center justify-between"
-                  >
-                    <span className="text-lg font-semibold text-foreground">
-                      {otherPlayer.teamName}
-                    </span>
-                    <div className="flex items-center gap-3">
-                      {showReadyButton && (
-                        <div className="flex items-center gap-1.5">
-                          <div
-                            className={cn(
-                              "h-2 w-2 rounded-full",
-                              otherIsReady ? "bg-green-500" : "bg-muted"
-                            )}
-                          />
-                          <span
-                            className={cn(
-                              "text-xs font-medium",
-                              otherIsReady
-                                ? "text-green-500"
-                                : "text-muted-foreground"
-                            )}
-                          >
-                            {otherIsReady ? "Ready" : "Not ready"}
-                          </span>
-                        </div>
-                      )}
-                      <ConnectionStatusBadge
-                        status={otherPlayer.connectionStatus}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
             </div>
           </Card>
-        )}
 
-        {/* Footer */}
-        <p className="text-sm text-center text-muted-foreground">
-          The admin will start the session when all players are ready.
-        </p>
+          {/* Ready Button (WAITING only) */}
+          {showReadyButton && (
+            <div className="flex flex-col items-center gap-3">
+              {playerIsReady && player.readyAt ? (
+                <>
+                  <ReadyCountdown
+                    readyAt={player.readyAt}
+                    durationMs={READY_EXPIRY_MS}
+                    now={now}
+                  />
+                  <p className="text-sm font-medium text-green-500">Ready!</p>
+                </>
+              ) : (
+                <Button
+                  size="lg"
+                  className="gap-2 bg-green-600 hover:bg-green-700 text-white px-8"
+                  disabled={readyLoading}
+                  onClick={handleReady}
+                >
+                  {readyLoading ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <CheckCircle2 className="w-5 h-5" />
+                  )}
+                  Ready Up
+                </Button>
+              )}
+            </div>
+          )}
+
+          {/* Waiting Indicator */}
+          <div className="flex flex-col items-center gap-4 py-8">
+            {session.status === "EXPIRED" ? (
+              <Clock className="h-8 w-8 text-muted-foreground" />
+            ) : (
+              <Loader2 className="h-8 w-8 text-primary animate-spin" />
+            )}
+            <p className="text-lg text-muted-foreground">{getWaitingMessage()}</p>
+          </div>
+
+          {/* Map Preview */}
+          <div className="space-y-4">
+            <h3 className="text-sm font-medium text-muted-foreground text-center">
+              Maps in this session:
+            </h3>
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+              {maps.map((map) => (
+                <div key={map._id} className="space-y-2">
+                  <div className="relative aspect-video rounded-lg overflow-hidden border border-border">
+                    <img
+                      src={map.imageUrl || "/placeholder.svg"}
+                      alt={map.name}
+                      className="absolute inset-0 w-full h-full object-cover"
+                    />
+                  </div>
+                  <p className="text-xs text-center text-muted-foreground">
+                    {map.name}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Other Players Status */}
+          {otherPlayers.length > 0 && (
+            <Card className="p-4 bg-card/50">
+              <div className="space-y-3">
+                {otherPlayers.map((otherPlayer) => {
+                  const otherIsReady = isReadyActive(otherPlayer.readyAt, now);
+                  return (
+                    <div
+                      key={otherPlayer._id}
+                      className="flex items-center justify-between"
+                    >
+                      <span className="text-lg font-semibold text-foreground">
+                        {otherPlayer.teamName}
+                      </span>
+                      <div className="flex items-center gap-3">
+                        {showReadyButton && (
+                          <div className="flex items-center gap-1.5">
+                            <div
+                              className={cn(
+                                "h-2 w-2 rounded-full",
+                                otherIsReady ? "bg-green-500" : "bg-muted"
+                              )}
+                            />
+                            <span
+                              className={cn(
+                                "text-xs font-medium",
+                                otherIsReady
+                                  ? "text-green-500"
+                                  : "text-muted-foreground"
+                              )}
+                            >
+                              {otherIsReady ? "Ready" : "Not ready"}
+                            </span>
+                          </div>
+                        )}
+                        <ConnectionStatusBadge
+                          status={otherPlayer.connectionStatus}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          )}
+
+          {/* Footer */}
+          <p className="text-sm text-center text-muted-foreground">
+            The admin will start the session when all players are ready.
+          </p>
+        </div>
       </div>
-    </div>
+
+      {/* Disconnected overlay (shows during reconnecting + disconnected) */}
+      {auth.isOverlayVisible && (
+        <DisconnectedOverlay
+          status={auth.status === "reconnecting" ? "reconnecting" : "disconnected"}
+          retryAttempt={auth.retryAttempt}
+          maxRetries={auth.maxRetries}
+          onRetry={auth.retry}
+        />
+      )}
+    </>
   );
 }
