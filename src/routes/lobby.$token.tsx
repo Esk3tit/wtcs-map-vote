@@ -79,7 +79,7 @@ function PlayerLobbyPage() {
 
   // Auth error
   if (auth.status === "error") {
-    return <TokenErrorPage error={auth.error ?? "INVALID_TOKEN"} />;
+    return <TokenErrorPage error={auth.error ?? "INVALID_TOKEN"} onRetry={auth.error === "NETWORK_ERROR" ? auth.retry : undefined} />;
   }
 
   // Loading state (waiting for reactive query after auth)

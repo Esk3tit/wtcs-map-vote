@@ -39,7 +39,7 @@ type HeartbeatResponse =
 export interface UsePlayerAuthResult {
   status: AuthStatus;
   error: AuthError | null;
-  /** Trigger manual reconnection (full token re-validation). Only useful when disconnected. */
+  /** Trigger manual reconnection (full token re-validation). Useful when disconnected or when error is NETWORK_ERROR. */
   retry: () => void;
   /** Current retry attempt (0 = not retrying, 1–4 during backoff). */
   retryAttempt: number;

@@ -1,5 +1,6 @@
+import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { AlertTriangle } from "lucide-react";
+import { AlertTriangle, RefreshCw } from "lucide-react";
 
 export type TokenError =
   | "INVALID_TOKEN"
@@ -10,7 +11,7 @@ export type TokenError =
   | "SESSION_NOT_ACTIVE"
   | "NETWORK_ERROR";
 
-export function TokenErrorPage({ error }: { error: TokenError }) {
+export function TokenErrorPage({ error, onRetry }: { error: TokenError; onRetry?: () => void }) {
   const errorMessages: Record<TokenError, { title: string; message: string }> = {
     INVALID_TOKEN: {
       title: "Invalid Access Code",
@@ -60,6 +61,12 @@ export function TokenErrorPage({ error }: { error: TokenError }) {
         <AlertTriangle className="h-12 w-12 text-destructive mx-auto" />
         <h1 className="text-2xl font-bold">{title}</h1>
         <p className="text-muted-foreground">{message}</p>
+        {onRetry && (
+          <Button onClick={onRetry} variant="outline">
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Retry Connection
+          </Button>
+        )}
       </Card>
     </div>
   );
