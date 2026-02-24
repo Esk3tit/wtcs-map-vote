@@ -1,23 +1,5 @@
-import { cn } from "@/lib/utils";
 import { ChevronDown, X } from "lucide-react";
-import type { Id } from "../../../convex/_generated/dataModel";
-
-interface RoundHistoryBan {
-  mapId: Id<"sessionMaps">;
-  mapName: string;
-  bannedByTeam: string;
-  voteCount?: number;
-}
-
-interface RoundHistoryEntry {
-  round: number;
-  bans: RoundHistoryBan[];
-}
-
-interface MapInfo {
-  _id: Id<"sessionMaps">;
-  imageUrl: string;
-}
+import type { RoundHistoryEntry, MapInfo } from "./types";
 
 interface RoundHistoryProps {
   roundHistory: RoundHistoryEntry[];
@@ -86,11 +68,7 @@ export function RoundHistory({ roundHistory, maps }: RoundHistoryProps) {
                           {ban.mapName}
                         </div>
                         {ban.voteCount !== undefined && ban.voteCount > 0 && (
-                          <div
-                            className={cn(
-                              "text-[10px] text-center text-muted-foreground/70"
-                            )}
-                          >
+                          <div className="text-[10px] text-center text-muted-foreground/70">
                             {ban.voteCount}{" "}
                             {ban.voteCount === 1 ? "vote" : "votes"}
                           </div>

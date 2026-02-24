@@ -1,29 +1,12 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Check } from "lucide-react";
-import type { Id } from "../../../convex/_generated/dataModel";
+import type { RoundHistoryEntry, MapInfo } from "./types";
 
 interface BanStep {
   step: number;
   team: string;
   completed: boolean;
-}
-
-interface RoundHistoryBan {
-  mapId: Id<"sessionMaps">;
-  mapName: string;
-  bannedByTeam: string;
-  voteCount?: number;
-}
-
-interface RoundHistoryEntry {
-  round: number;
-  bans: RoundHistoryBan[];
-}
-
-interface MapInfo {
-  _id: Id<"sessionMaps">;
-  imageUrl: string;
 }
 
 interface ABBAProgressTrackerProps {
@@ -105,6 +88,9 @@ export function ABBAProgressTracker({
                 >
                   {step.team}
                 </span>
+                {currentStep === index && !step.completed && (
+                  <span className="sr-only">Current step</span>
+                )}
                 {/* Banned map info (completed steps only) */}
                 {step.completed && banInfo && (
                   <div className="flex flex-col items-center mt-1.5 gap-1">
