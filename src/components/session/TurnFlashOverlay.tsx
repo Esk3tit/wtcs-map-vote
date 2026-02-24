@@ -26,6 +26,14 @@ export function TurnFlashOverlay({
     prevTurnRef.current = isYourTurn;
   }, [isYourTurn, isSuppressed]);
 
+  // Fallback cleanup: onAnimationEnd won't fire when prefers-reduced-motion
+  // suppresses the animation class. This timer guarantees unmount.
+  useEffect(() => {
+    if (!isFlashing) return;
+    const id = window.setTimeout(() => setIsFlashing(false), 750);
+    return () => window.clearTimeout(id);
+  }, [isFlashing]);
+
   const handleAnimationEnd = useCallback(() => {
     setIsFlashing(false);
   }, []);
@@ -34,7 +42,7 @@ export function TurnFlashOverlay({
 
   return (
     <div
-      className="pointer-events-none fixed inset-0 z-[35] select-none motion-safe:animate-border-flash"
+      className="pointer-events-none fixed inset-0 z-40 select-none motion-safe:animate-border-flash motion-reduce:hidden"
       style={{
         boxShadow:
           "inset 0 0 40px 15px rgba(34, 197, 94, 0.5), inset 0 0 80px 30px rgba(34, 197, 94, 0.2), inset 0 0 120px 40px rgba(34, 197, 94, 0.1)",
