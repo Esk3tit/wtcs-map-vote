@@ -28,6 +28,7 @@ export function ABBAProgressTracker({
   maps,
 }: ABBAProgressTrackerProps) {
   // Build a lookup: round number -> banned map info (round = turn + 1 for ABBA)
+  const mapInfoById = new Map(maps.map((m) => [m._id, m]));
   const banByRound = new Map<
     number,
     { mapName: string; imageUrl: string }
@@ -35,7 +36,7 @@ export function ABBAProgressTracker({
   for (const entry of roundHistory) {
     const ban = entry.bans[0]; // ABBA has exactly 1 ban per round
     if (ban) {
-      const mapData = maps.find((m) => m._id === ban.mapId);
+      const mapData = mapInfoById.get(ban.mapId);
       banByRound.set(entry.round, {
         mapName: ban.mapName,
         imageUrl: mapData?.imageUrl ?? "",
@@ -59,7 +60,7 @@ export function ABBAProgressTracker({
                     step.completed
                       ? "bg-primary border-primary"
                       : currentStep === index
-                        ? "bg-primary/20 border-primary animate-pulse"
+                        ? "bg-primary/20 border-primary motion-safe:animate-pulse"
                         : "bg-muted border-border"
                   )}
                 >
@@ -135,7 +136,7 @@ export function ABBAProgressTracker({
                     step.completed
                       ? "bg-primary border-primary"
                       : currentStep === index
-                        ? "bg-primary/20 border-primary animate-pulse"
+                        ? "bg-primary/20 border-primary motion-safe:animate-pulse"
                         : "bg-muted border-border"
                   )}
                 >
@@ -191,7 +192,7 @@ export function ABBAProgressTracker({
                   </>
                 )}
                 {currentStep === index && !step.completed && (
-                  <Badge variant="outline" className="text-xs animate-pulse">
+                  <Badge variant="outline" className="text-xs motion-safe:animate-pulse">
                     Current
                   </Badge>
                 )}
