@@ -60,6 +60,7 @@ export function useConnectionToasts({
       prevPlayerStatesRef.current = null;
       prevSessionStatusRef.current = null;
       lastToastTimeRef.current.clear();
+      manualPauseRef.current = false;
       return;
     }
 
