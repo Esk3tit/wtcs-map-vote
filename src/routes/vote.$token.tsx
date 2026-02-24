@@ -802,10 +802,12 @@ function PlayerVotingPage() {
     </div>
 
     {/* Turn transition flash (ABBA: fires when isYourTurn goes false→true) */}
-    <TurnFlashOverlay
-      isYourTurn={isYourTurn}
-      isSuppressed={auth.isOverlayVisible}
-    />
+    {session.format === "ABBA" && (
+      <TurnFlashOverlay
+        isYourTurn={isYourTurn}
+        isSuppressed={auth.isOverlayVisible}
+      />
+    )}
 
     {/* Disconnected overlay (shows during reconnecting + disconnected) */}
     {auth.isOverlayVisible && (
