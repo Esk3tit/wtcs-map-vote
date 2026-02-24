@@ -99,20 +99,23 @@ export function useConnectionToasts({
         // Skip individual disconnect toast if auto-pause toast will fire
         if (!isAutoPauseTransition) {
           toast.warning(`${player.teamName} disconnected`);
+          lastToastTimeRef.current.set(player._id, now);
         }
       } else {
         toast.success(`${player.teamName} reconnected`);
+        lastToastTimeRef.current.set(player._id, now);
       }
-      lastToastTimeRef.current.set(player._id, now);
     }
 
     // Fire auto-pause toast
     if (isAutoPauseTransition) {
-      const disconnectedPlayer = players.find((p) => !p.isConnected);
-      if (disconnectedPlayer) {
-        toast.warning(
-          `Session auto-paused — ${disconnectedPlayer.teamName} disconnected`
-        );
+      const disconnectedPlayers = players.filter((p) => !p.isConnected);
+      if (disconnectedPlayers.length > 0) {
+        const names = disconnectedPlayers.map((p) => p.teamName).join(" & ");
+        toast.warning(`Session auto-paused — ${names} disconnected`);
+        for (const p of disconnectedPlayers) {
+          lastToastTimeRef.current.set(p._id, now);
+        }
       }
     }
 
