@@ -109,7 +109,7 @@ This project uses **Base UI** (not Radix UI). Base UI does NOT support `asChild`
 - Use `cn()` helper from `@/lib/utils` for conditional class merging
 - CSS variables are defined in `src/index.css`
 - **Z-index layering scale** (follow this to avoid conflicts):
-  - `z-40`: Full-screen overlays (e.g. session paused overlay)
+  - `z-40`: Full-screen overlays (e.g. session paused overlay, turn flash overlay)
   - `z-[45]`: Priority overlays (e.g. disconnected overlay — above z-40)
   - `z-50`: Dialogs and sheets (shadcn AlertDialog, Sheet, etc.)
   - `z-[100]`: Toasts (Sonner default)

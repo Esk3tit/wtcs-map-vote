@@ -116,6 +116,22 @@
     --radius-4xl: calc(var(--radius) + 16px);
 }
 
+@theme {
+  --animate-border-flash: border-flash 700ms ease-out forwards;
+
+  @keyframes border-flash {
+    0% {
+      opacity: 0;
+    }
+    15% {
+      opacity: 1;
+    }
+    100% {
+      opacity: 0;
+    }
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
