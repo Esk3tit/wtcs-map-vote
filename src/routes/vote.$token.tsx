@@ -19,6 +19,7 @@ import { SessionEndedPage } from "@/components/session/SessionEndedPage";
 import { CountdownTimer } from "@/components/session/CountdownTimer";
 import { SessionPausedOverlay } from "@/components/session/SessionPausedOverlay";
 import { DisconnectedOverlay } from "@/components/session/DisconnectedOverlay";
+import { TurnFlashOverlay } from "@/components/session/TurnFlashOverlay";
 import { VoteMapCard } from "@/components/session/VoteMapCard";
 import {
   ConnectionStatusBadge,
@@ -795,6 +796,12 @@ function PlayerVotingPage() {
         </AlertDialog>
       </div>
     </div>
+
+    {/* Turn transition flash (ABBA: fires when isYourTurn goes false→true) */}
+    <TurnFlashOverlay
+      isYourTurn={isYourTurn}
+      isSuppressed={auth.isOverlayVisible}
+    />
 
     {/* Disconnected overlay (shows during reconnecting + disconnected) */}
     {auth.isOverlayVisible && (
