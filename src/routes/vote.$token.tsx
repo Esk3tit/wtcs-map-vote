@@ -419,6 +419,10 @@ function PlayerVotingPage() {
         {isWinnerReveal &&
           winnerMapName &&
           `Session complete. Winner: ${winnerMapName}.`}
+        {!isAnyReveal &&
+          session.format === "ABBA" &&
+          isYourTurn &&
+          "Your turn to ban."}
       </div>
 
       <div inert={!isInteractive}>
