@@ -419,7 +419,7 @@ function PlayerVotingPage() {
         {isWinnerReveal &&
           winnerMapName &&
           `Session complete. Winner: ${winnerMapName}.`}
-        {!isAnyReveal &&
+        {isInteractive &&
           session.format === "ABBA" &&
           isYourTurn &&
           "Your turn to ban."}
