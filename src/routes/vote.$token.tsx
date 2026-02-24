@@ -282,7 +282,7 @@ function PlayerVotingPage() {
         }))
       : [];
 
-  const currentStep = banSteps.findIndex((step) => !step.completed);
+  const currentStepIndex = banSteps.findIndex((step) => !step.completed);
 
   // Separate maps into active (current round) and previously eliminated
   const activeMaps = isAnyReveal
@@ -582,7 +582,7 @@ function PlayerVotingPage() {
           {session.format === "ABBA" && banSteps.length > 0 && (
             <ABBAProgressTracker
               banSteps={banSteps}
-              currentStep={currentStep}
+              currentStepIndex={currentStepIndex}
               roundHistory={roundHistory}
               maps={maps}
             />

@@ -11,7 +11,7 @@ interface BanStep {
 
 interface ABBAProgressTrackerProps {
   banSteps: BanStep[];
-  currentStep: number;
+  currentStepIndex: number;
   roundHistory: RoundHistoryEntry[];
   maps: MapInfo[];
 }
@@ -23,7 +23,7 @@ interface ABBAProgressTrackerProps {
  */
 export function ABBAProgressTracker({
   banSteps,
-  currentStep,
+  currentStepIndex,
   roundHistory,
   maps,
 }: ABBAProgressTrackerProps) {
@@ -59,7 +59,7 @@ export function ABBAProgressTracker({
                     "w-10 h-10 rounded-full flex items-center justify-center border-2 mb-2 flex-shrink-0",
                     step.completed
                       ? "bg-primary border-primary"
-                      : currentStep === index
+                      : currentStepIndex === index
                         ? "bg-primary/20 border-primary motion-safe:animate-pulse"
                         : "bg-muted border-border"
                   )}
@@ -69,7 +69,7 @@ export function ABBAProgressTracker({
                   ) : (
                     <span
                       className={
-                        currentStep === index
+                        currentStepIndex === index
                           ? "text-primary font-bold"
                           : "text-muted-foreground"
                       }
@@ -82,14 +82,14 @@ export function ABBAProgressTracker({
                 <span
                   className={cn(
                     "text-sm text-center",
-                    currentStep === index
+                    currentStepIndex === index
                       ? "text-foreground font-semibold"
                       : "text-muted-foreground"
                   )}
                 >
                   {step.team}
                 </span>
-                {currentStep === index && !step.completed && (
+                {currentStepIndex === index && !step.completed && (
                   <span className="sr-only">Current step</span>
                 )}
                 {/* Banned map info (completed steps only) */}
@@ -135,7 +135,7 @@ export function ABBAProgressTracker({
                     "w-8 h-8 rounded-full flex items-center justify-center border-2 flex-shrink-0",
                     step.completed
                       ? "bg-primary border-primary"
-                      : currentStep === index
+                      : currentStepIndex === index
                         ? "bg-primary/20 border-primary motion-safe:animate-pulse"
                         : "bg-muted border-border"
                   )}
@@ -146,7 +146,7 @@ export function ABBAProgressTracker({
                     <span
                       className={cn(
                         "text-sm",
-                        currentStep === index
+                        currentStepIndex === index
                           ? "text-primary font-bold"
                           : "text-muted-foreground"
                       )}
@@ -169,7 +169,7 @@ export function ABBAProgressTracker({
                 <span
                   className={cn(
                     "text-sm flex-shrink-0",
-                    currentStep === index
+                    currentStepIndex === index
                       ? "text-foreground font-semibold"
                       : "text-muted-foreground"
                   )}
@@ -191,7 +191,7 @@ export function ABBAProgressTracker({
                     </span>
                   </>
                 )}
-                {currentStep === index && !step.completed && (
+                {currentStepIndex === index && !step.completed && (
                   <Badge variant="outline" className="text-xs motion-safe:animate-pulse">
                     Current
                   </Badge>
