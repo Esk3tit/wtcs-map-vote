@@ -67,6 +67,7 @@ import {
 } from "@/components/session/utils";
 import { ConnectionStatusBadge, STATUS_CONFIG } from "@/components/session/ConnectionStatusBadge";
 import type { ConnectionStatus } from "../../../convex/lib/connectionStatus";
+import { useConnectionToasts } from "@/hooks/useConnectionToasts";
 
 // ============================================================================
 // Constants
@@ -391,6 +392,17 @@ function SessionDetailPage() {
 
   const isWaiting = session?.status === "WAITING";
 
+  // ============================================================================
+  // Connection Toast Notifications
+  // ============================================================================
+
+  const { markManualPause } = useConnectionToasts({
+    players: session?.players ?? [],
+    sessionStatus: session?.status,
+    isActive:
+      session?.status === "IN_PROGRESS" || session?.status === "PAUSED",
+  });
+
   // Invalid session ID state
   if (!isValidId) {
     return (
@@ -597,13 +609,14 @@ function SessionDetailPage() {
                   variant="secondary"
                   disabled={isAnyLoading}
                   className="gap-2"
-                  onClick={() =>
+                  onClick={() => {
+                    markManualPause();
                     handleAction(
                       "pause",
                       () => pauseMutation({ sessionId: typedSessionId }),
                       () => { toast.success("Session paused"); },
-                    )
-                  }
+                    );
+                  }}
                 >
                   {actionLoading === "pause" ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
