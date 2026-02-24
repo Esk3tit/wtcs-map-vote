@@ -4504,6 +4504,9 @@ describe("WAR-35: getSessionByToken enhancements", () => {
         expect(result.roundHistory[2].round).toBe(3);
         expect(result.roundHistory[2].bans[0].mapName).toBe("Inferno");
         expect(result.roundHistory[2].bans[0].bannedByTeam).toBe("Team B");
+
+        // ABBA bans don't have vote counts
+        expect(result.roundHistory[0].bans[0].voteCount).toBeUndefined();
       }
     });
 
@@ -4542,13 +4545,14 @@ describe("WAR-35: getSessionByToken enhancements", () => {
           )
         );
 
-        // Round 1: Maps 0 and 1 banned (MULTIPLAYER bans don't set bannedByPlayerId)
+        // Round 1: Maps 0 and 1 banned with vote counts
         await ctx.db.insert(
           "sessionMaps",
           sessionMapFactory(sessionId, mapIds[0], {
             name: "Map1",
             state: "BANNED",
             bannedAtRound: 1,
+            voteCount: 3,
           })
         );
         await ctx.db.insert(
@@ -4557,6 +4561,7 @@ describe("WAR-35: getSessionByToken enhancements", () => {
             name: "Map2",
             state: "BANNED",
             bannedAtRound: 1,
+            voteCount: 2,
           })
         );
         // Remaining maps still available
@@ -4582,6 +4587,16 @@ describe("WAR-35: getSessionByToken enhancements", () => {
         expect(result.roundHistory[0].bans.map((b) => b.mapName)).toContain(
           "Map2"
         );
+
+        // Vote counts are included for MULTIPLAYER
+        const map1Ban = result.roundHistory[0].bans.find(
+          (b) => b.mapName === "Map1"
+        );
+        const map2Ban = result.roundHistory[0].bans.find(
+          (b) => b.mapName === "Map2"
+        );
+        expect(map1Ban?.voteCount).toBe(3);
+        expect(map2Ban?.voteCount).toBe(2);
       }
     });
   });

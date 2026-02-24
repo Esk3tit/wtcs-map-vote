@@ -209,6 +209,7 @@ function buildRoundHistory(
     mapId: Id<"sessionMaps">;
     mapName: string;
     bannedByTeam: string;
+    voteCount?: number;
   }>;
 }> {
   const playerMap = new Map(players.map((p) => [p._id.toString(), p]));
@@ -230,6 +231,7 @@ function buildRoundHistory(
       mapId: Id<"sessionMaps">;
       mapName: string;
       bannedByTeam: string;
+      voteCount?: number;
     }>;
   }> = [];
 
@@ -243,6 +245,7 @@ function buildRoundHistory(
       mapId: m._id,
       mapName: m.name,
       bannedByTeam: bannedBy?.teamName ?? "Unknown",
+      voteCount: m.voteCount ?? undefined,
     };
 
     const last = result[result.length - 1];
@@ -1548,6 +1551,7 @@ const roundHistoryEntryValidator = v.object({
       mapId: v.id("sessionMaps"),
       mapName: v.string(),
       bannedByTeam: v.string(),
+      voteCount: v.optional(v.number()),
     })
   ),
 });
