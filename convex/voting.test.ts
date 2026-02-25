@@ -2212,6 +2212,7 @@ describe("voting.resolveRound", () => {
 
       const final = await t.run(async (ctx) => ctx.db.get(session.sessionId));
       expect(final?.status).toBe("COMPLETE");
+      expect(final?.winnerMapId).toBe(r2Result.resolution!.winnerMapId);
     });
   });
 
