@@ -245,7 +245,8 @@ export const clearCompletedSessionIps = internalMutation({
  * fires, the guard detects the changed timerStartedAt and exits cleanly.
  *
  * ABBA: auto-bans a random available map for the active player.
- * MULTIPLAYER: auto-votes a random available map for each unvoted player.
+ * MULTIPLAYER: resolves with submitted votes only (ignores non-voters).
+ *   Zero votes → random single map elimination. Partial votes → resolveRound().
  *
  * @param sessionId - Session whose timer expired
  * @param expectedTimerStartedAt - The timerStartedAt value at scheduling time

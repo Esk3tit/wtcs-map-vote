@@ -791,6 +791,7 @@ export const regeneratePlayerToken = mutation({
       tokenExpiresAt: now + TOKEN_EXPIRY_MS,
       ipAddress: undefined,
       isConnected: false,
+      readyAt: undefined,
     });
 
     await logAction(ctx, {
