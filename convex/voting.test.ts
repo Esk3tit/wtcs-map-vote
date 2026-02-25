@@ -2334,10 +2334,13 @@ describe("voting.resolveRound", () => {
 
       const actions = logs.map((l) => l.action);
 
-      expect(actions.filter((a) => a === "VOTE_SUBMITTED")).toHaveLength(2);
-      // Resolution: ROUND_RESOLVED + WINNER_DECLARED
-      expect(actions.filter((a) => a === "ROUND_RESOLVED")).toHaveLength(1);
-      expect(actions.filter((a) => a === "WINNER_DECLARED")).toHaveLength(1);
+      // Verify exact sequence: votes first, then resolution, then winner
+      expect(actions).toEqual([
+        "VOTE_SUBMITTED",
+        "VOTE_SUBMITTED",
+        "ROUND_RESOLVED",
+        "WINNER_DECLARED",
+      ]);
     });
   });
 

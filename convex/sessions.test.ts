@@ -454,7 +454,7 @@ describe("sessions.createSession", () => {
       ).rejects.toThrow(/must be at least 10/i);
     });
 
-    it("throws for turn timer above maximum (1200 seconds)", async () => {
+    it("throws for turn timer above maximum (3200 seconds)", async () => {
       const { authT } = await createAuthenticatedAdmin();
 
       await expect(
@@ -462,9 +462,9 @@ describe("sessions.createSession", () => {
           matchName: "Test",
           format: "ABBA",
           playerCount: 2,
-          turnTimerSeconds: 1201,
+          turnTimerSeconds: 3201,
         })
-      ).rejects.toThrow(/cannot exceed 1200/i);
+      ).rejects.toThrow(/cannot exceed 3200/i);
     });
 
     it("throws for map pool size below minimum (3)", async () => {
@@ -1209,9 +1209,9 @@ describe("sessions.updateSession", () => {
       await expect(
         authT.mutation(api.sessions.updateSession, {
           sessionId,
-          turnTimerSeconds: 1201,
+          turnTimerSeconds: 3201,
         })
-      ).rejects.toThrow(/cannot exceed 1200/i);
+      ).rejects.toThrow(/cannot exceed 3200/i);
     });
   });
 
