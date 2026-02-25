@@ -1,5 +1,5 @@
 import { ChevronDown, X } from "lucide-react";
-import type { RoundHistoryEntry, MapInfo } from "./types";
+import type { RoundHistoryEntry, MapInfo } from "@/components/session/types";
 
 interface RoundHistoryProps {
   roundHistory: RoundHistoryEntry[];

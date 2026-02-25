@@ -1,7 +1,7 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Check } from "lucide-react";
-import type { RoundHistoryEntry, MapInfo, BanStep } from "./types";
+import type { RoundHistoryEntry, MapInfo, BanStep } from "@/components/session/types";
 
 interface ABBAProgressTrackerProps {
   banSteps: BanStep[];
