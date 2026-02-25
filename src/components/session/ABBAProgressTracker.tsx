@@ -1,19 +1,54 @@
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Check } from "lucide-react";
-import type { RoundHistoryEntry, MapInfo } from "./types";
-
-interface BanStep {
-  step: number;
-  team: string;
-  completed: boolean;
-}
+import type { RoundHistoryEntry, MapInfo, BanStep } from "./types";
 
 interface ABBAProgressTrackerProps {
   banSteps: BanStep[];
   currentStepIndex: number;
   roundHistory: RoundHistoryEntry[];
   maps: MapInfo[];
+}
+
+function StepCircle({
+  completed,
+  isCurrent,
+  stepNumber,
+  size = "md",
+}: {
+  completed: boolean;
+  isCurrent: boolean;
+  stepNumber: number;
+  size?: "sm" | "md";
+}) {
+  const sizeClasses = size === "sm" ? "w-8 h-8" : "w-10 h-10 mb-2";
+  const iconSize = size === "sm" ? "w-4 h-4" : "w-5 h-5";
+  return (
+    <div
+      className={cn(
+        sizeClasses,
+        "rounded-full flex items-center justify-center border-2 flex-shrink-0",
+        completed
+          ? "bg-primary border-primary"
+          : isCurrent
+            ? "bg-primary/20 border-primary motion-safe:animate-pulse"
+            : "bg-muted border-border"
+      )}
+    >
+      {completed ? (
+        <Check className={cn(iconSize, "text-primary-foreground")} />
+      ) : (
+        <span
+          className={cn(
+            size === "sm" && "text-sm",
+            isCurrent ? "text-primary font-bold" : "text-muted-foreground"
+          )}
+        >
+          {stepNumber}
+        </span>
+      )}
+    </div>
+  );
 }
 
 /**
@@ -51,33 +86,15 @@ export function ABBAProgressTracker({
         {banSteps.map((step, index) => {
           const banInfo = banByRound.get(step.step);
           return (
-            <div key={index} className="flex items-start flex-1">
+            <div key={step.step} className="flex items-start flex-1">
               <div className="flex flex-col items-center min-w-0">
                 {/* Step circle */}
-                <div
-                  className={cn(
-                    "w-10 h-10 rounded-full flex items-center justify-center border-2 mb-2 flex-shrink-0",
-                    step.completed
-                      ? "bg-primary border-primary"
-                      : currentStepIndex === index
-                        ? "bg-primary/20 border-primary motion-safe:animate-pulse"
-                        : "bg-muted border-border"
-                  )}
-                >
-                  {step.completed ? (
-                    <Check className="w-5 h-5 text-primary-foreground" />
-                  ) : (
-                    <span
-                      className={
-                        currentStepIndex === index
-                          ? "text-primary font-bold"
-                          : "text-muted-foreground"
-                      }
-                    >
-                      {step.step}
-                    </span>
-                  )}
-                </div>
+                <StepCircle
+                  completed={step.completed}
+                  isCurrent={currentStepIndex === index}
+                  stepNumber={step.step}
+                  size="md"
+                />
                 {/* Team name */}
                 <span
                   className={cn(
@@ -127,34 +144,15 @@ export function ABBAProgressTracker({
         {banSteps.map((step, index) => {
           const banInfo = banByRound.get(step.step);
           return (
-            <div key={index} className="flex items-center gap-3">
+            <div key={step.step} className="flex items-center gap-3">
               {/* Step circle + connecting line */}
               <div className="flex flex-col items-center">
-                <div
-                  className={cn(
-                    "w-8 h-8 rounded-full flex items-center justify-center border-2 flex-shrink-0",
-                    step.completed
-                      ? "bg-primary border-primary"
-                      : currentStepIndex === index
-                        ? "bg-primary/20 border-primary motion-safe:animate-pulse"
-                        : "bg-muted border-border"
-                  )}
-                >
-                  {step.completed ? (
-                    <Check className="w-4 h-4 text-primary-foreground" />
-                  ) : (
-                    <span
-                      className={cn(
-                        "text-sm",
-                        currentStepIndex === index
-                          ? "text-primary font-bold"
-                          : "text-muted-foreground"
-                      )}
-                    >
-                      {step.step}
-                    </span>
-                  )}
-                </div>
+                <StepCircle
+                  completed={step.completed}
+                  isCurrent={currentStepIndex === index}
+                  stepNumber={step.step}
+                  size="sm"
+                />
                 {index < banSteps.length - 1 && (
                   <div
                     className={cn(

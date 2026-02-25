@@ -20,7 +20,7 @@ export function RoundHistory({ roundHistory, maps }: RoundHistoryProps) {
 
   // Build map image lookup
   const imageByMapId = new Map(
-    maps.map((m) => [m._id as string, m.imageUrl])
+    maps.map((m) => [m._id, m.imageUrl])
   );
 
   return (
@@ -44,10 +44,10 @@ export function RoundHistory({ roundHistory, maps }: RoundHistoryProps) {
               </h4>
               <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-2">
                 {entry.bans.map((ban) => {
-                  const imageUrl = imageByMapId.get(ban.mapId as string) ?? "";
+                  const imageUrl = imageByMapId.get(ban.mapId) ?? "";
                   return (
                     <div
-                      key={ban.mapId as string}
+                      key={ban.mapId}
                       className="opacity-60 rounded-lg overflow-hidden border border-border/50 bg-card"
                     >
                       <div className="aspect-video relative overflow-hidden">

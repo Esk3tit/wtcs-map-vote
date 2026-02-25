@@ -16,3 +16,9 @@ export interface MapInfo {
   _id: Id<"sessionMaps">;
   imageUrl: string;
 }
+
+export interface BanStep {
+  step: number;
+  team: string;
+  completed: boolean;
+}

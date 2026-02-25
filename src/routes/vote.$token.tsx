@@ -21,6 +21,7 @@ import { DisconnectedOverlay } from "@/components/session/DisconnectedOverlay";
 import { TurnFlashOverlay } from "@/components/session/TurnFlashOverlay";
 import { VoteMapCard } from "@/components/session/VoteMapCard";
 import { ABBAProgressTracker } from "@/components/session/ABBAProgressTracker";
+import type { BanStep } from "@/components/session/types";
 import { RoundHistory } from "@/components/session/RoundHistory";
 import {
   ConnectionStatusBadge,
@@ -273,7 +274,7 @@ function PlayerVotingPage() {
   // Build ban steps for progress tracker (ABBA format)
   // Note: This is for display only. Turn detection is server-authoritative via isYourTurn.
   // Pattern shows alternating teams: Team A, Team B, Team B, Team A
-  const banSteps =
+  const banSteps: BanStep[] =
     session.format === "ABBA"
       ? [0, 1, 1, 0].map((pIndex, stepIndex) => ({
           step: stepIndex + 1,
