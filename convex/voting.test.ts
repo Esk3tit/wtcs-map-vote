@@ -2184,6 +2184,36 @@ describe("voting.resolveRound", () => {
       dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
       expect(dbSession?.status).toBe("COMPLETE");
     });
+
+    it("deadlock → pause → resume → second deadlock → random winner", async () => {
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
+      const session = await createMultiplayerSession(t, {
+        adminId,
+        playerCount: 4,
+        mapPoolSize: 4,
+      });
+
+      // Round 1: deadlock → REVOTE
+      const r1Result = await allPlayersVoteDifferent(t, session);
+      if (r1Result.status !== "ok") throw new Error("Expected ok");
+      expect(r1Result.resolution!.outcome).toBe("REVOTE");
+
+      // Pause/resume must preserve isRevoteRound (the bug this fixes)
+      await authT.mutation(api.sessions.pauseSession, { sessionId: session.sessionId });
+      await authT.mutation(api.sessions.resumeSession, { sessionId: session.sessionId });
+
+      const afterResume = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+      expect(afterResume?.isRevoteRound).toBe(true);
+
+      // Round 2 (revote): same deadlock → random winner
+      const r2Result = await allPlayersVoteDifferent(t, session);
+      if (r2Result.status !== "ok") throw new Error("Expected ok");
+      expect(r2Result.resolution!.outcome).toBe("RANDOM_WINNER");
+
+      const final = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+      expect(final?.status).toBe("COMPLETE");
+      expect(final?.winnerMapId).toBe(r2Result.resolution!.winnerMapId);
+    });
   });
 
   // ============================================================================

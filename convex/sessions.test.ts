@@ -5832,7 +5832,7 @@ describe("sessions.resumeSession", () => {
     expect(session?.timerPausedAt).toBeUndefined();
   });
 
-  it("resets isRevoteRound to false (schema.ts TODO)", async () => {
+  it("preserves isRevoteRound through pause/resume", async () => {
     const { t, authT, adminId } = await createAuthenticatedAdmin();
 
     const sessionId = await t.run(async (ctx) => {
@@ -5850,7 +5850,7 @@ describe("sessions.resumeSession", () => {
     await authT.mutation(api.sessions.resumeSession, { sessionId });
 
     const session = await t.run(async (ctx) => ctx.db.get(sessionId));
-    expect(session?.isRevoteRound).toBe(false);
+    expect(session?.isRevoteRound).toBe(true);
   });
 
   it("handles null timer fields safely (defaults to 0 elapsed)", async () => {
@@ -5946,6 +5946,23 @@ describe("sessions.endSession", () => {
     expect(session?.completedAt).toBeLessThanOrEqual(after);
     expect(session?.timerStartedAt).toBeUndefined();
     expect(session?.timerPausedAt).toBeUndefined();
+    expect(session?.isRevoteRound).toBe(false);
+  });
+
+  it("clears isRevoteRound when force-ending a paused revote session", async () => {
+    const { t, authT, adminId } = await createAuthenticatedAdmin();
+
+    const sessionId = await t.run(async (ctx) => {
+      return ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, { status: "PAUSED", isRevoteRound: true })
+      );
+    });
+
+    await authT.mutation(api.sessions.endSession, { sessionId });
+
+    const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+    expect(session?.status).toBe("COMPLETE");
     expect(session?.isRevoteRound).toBe(false);
   });
 

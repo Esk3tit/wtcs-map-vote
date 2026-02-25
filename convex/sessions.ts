@@ -1247,7 +1247,7 @@ export const pauseSession = mutation({
 /**
  * Resume a paused session, transitioning PAUSED → IN_PROGRESS.
  * Timer arithmetic preserves remaining time from before pause.
- * Clears isRevoteRound per schema.ts TODO (line 69-72).
+ * Preserves isRevoteRound so deadlock state survives pause/resume cycles.
  *
  * @param sessionId - Session to resume
  * @returns success flag
@@ -1273,7 +1273,6 @@ export const resumeSession = mutation({
       patches: {
         timerStartedAt: adjustedTimerStart,
         timerPausedAt: undefined,
-        isRevoteRound: false,
       },
     });
 
