@@ -2,7 +2,6 @@ import { useState, useEffect } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
-import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import {
   AlertDialog,
@@ -21,6 +20,9 @@ import { SessionPausedOverlay } from "@/components/session/SessionPausedOverlay"
 import { DisconnectedOverlay } from "@/components/session/DisconnectedOverlay";
 import { TurnFlashOverlay } from "@/components/session/TurnFlashOverlay";
 import { VoteMapCard } from "@/components/session/VoteMapCard";
+import { ABBAProgressTracker } from "@/components/session/ABBAProgressTracker";
+import type { BanStep } from "@/components/session/types";
+import { RoundHistory } from "@/components/session/RoundHistory";
 import {
   ConnectionStatusBadge,
   STATUS_CONFIG,
@@ -30,7 +32,7 @@ import { useRevealPhase } from "@/hooks/useRevealPhase";
 import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
 import { SITE_URL } from "@/lib/convexHttp";
 import { cn } from "@/lib/utils";
-import { Check, Lock, X, Loader2, Trophy } from "lucide-react";
+import { Check, Lock, Loader2, Trophy } from "lucide-react";
 import { toast } from "sonner";
 import type { Id } from "../../convex/_generated/dataModel";
 
@@ -260,7 +262,7 @@ function PlayerVotingPage() {
     return <SessionEndedPage reason="EXPIRED" />;
   }
 
-  const { player, session, maps, otherPlayers, isYourTurn } = data;
+  const { player, session, maps, otherPlayers, isYourTurn, roundHistory } = data;
 
   // Combine players for display purposes
   const allPlayers = [player, ...otherPlayers];
@@ -272,7 +274,7 @@ function PlayerVotingPage() {
   // Build ban steps for progress tracker (ABBA format)
   // Note: This is for display only. Turn detection is server-authoritative via isYourTurn.
   // Pattern shows alternating teams: Team A, Team B, Team B, Team A
-  const banSteps =
+  const banSteps: BanStep[] =
     session.format === "ABBA"
       ? [0, 1, 1, 0].map((pIndex, stepIndex) => ({
           step: stepIndex + 1,
@@ -281,7 +283,7 @@ function PlayerVotingPage() {
         }))
       : [];
 
-  const currentStep = banSteps.findIndex((step) => !step.completed);
+  const currentStepIndex = banSteps.findIndex((step) => !step.completed);
 
   // Separate maps into active (current round) and previously eliminated
   const activeMaps = isAnyReveal
@@ -294,18 +296,6 @@ function PlayerVotingPage() {
             m.bannedAtRound === revealData.completedRound)
       )
     : maps.filter((m) => m.state !== "BANNED");
-
-  const previouslyEliminatedMaps =
-    session.format === "MULTIPLAYER"
-      ? maps.filter(
-          (m) =>
-            m.state === "BANNED" &&
-            m.bannedAtRound !== undefined &&
-            (!isAnyReveal ||
-              !revealData ||
-              m.bannedAtRound < revealData.completedRound)
-        )
-      : [];
 
   // Check if a specific map was just eliminated in the current reveal
   const isJustEliminated = (mapId: Id<"sessionMaps">) =>
@@ -584,88 +574,19 @@ function PlayerVotingPage() {
             </div>
           </div>
 
-          {/* Previously Eliminated Maps (Multiplayer only) */}
-          {session.format === "MULTIPLAYER" &&
-            previouslyEliminatedMaps.length > 0 && (
-              <div className="max-w-6xl mx-auto mb-8">
-                <h3 className="text-sm text-muted-foreground mb-3">
-                  Previously Eliminated
-                </h3>
-                <div className="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-6 gap-2">
-                  {previouslyEliminatedMaps.map((map) => (
-                    <Card key={map._id} className="opacity-50 overflow-hidden">
-                      <div className="aspect-video relative overflow-hidden">
-                        <img
-                          src={map.imageUrl || "/placeholder.svg"}
-                          alt={map.name}
-                          className="w-full h-full object-cover grayscale"
-                        />
-                        <div className="absolute inset-0 bg-black/40 flex items-center justify-center">
-                          <X
-                            className="w-6 h-6 text-red-500"
-                            strokeWidth={3}
-                          />
-                        </div>
-                      </div>
-                      <div className="p-1.5 text-xs text-center truncate text-muted-foreground">
-                        {map.name}
-                      </div>
-                    </Card>
-                  ))}
-                </div>
-              </div>
-            )}
+          {/* Round History (Multiplayer only) */}
+          {session.format === "MULTIPLAYER" && roundHistory.length > 0 && (
+            <RoundHistory roundHistory={roundHistory} maps={maps} />
+          )}
 
           {/* Progress Tracker (ABBA format only) */}
           {session.format === "ABBA" && banSteps.length > 0 && (
-            <div className="max-w-4xl mx-auto">
-              <div className="flex items-center justify-between">
-                {banSteps.map((step, index) => (
-                  <div key={index} className="flex items-center flex-1">
-                    <div className="flex flex-col items-center">
-                      <div
-                        className={cn(
-                          "w-10 h-10 rounded-full flex items-center justify-center border-2 mb-2",
-                          step.completed
-                            ? "bg-primary border-primary"
-                            : currentStep === index
-                              ? "bg-primary/20 border-primary"
-                              : "bg-muted border-border"
-                        )}
-                      >
-                        {step.completed ? (
-                          <Check className="w-5 h-5 text-primary-foreground" />
-                        ) : (
-                          <span
-                            className={
-                              currentStep === index
-                                ? "text-primary font-bold"
-                                : "text-muted-foreground"
-                            }
-                          >
-                            {step.step}
-                          </span>
-                        )}
-                      </div>
-                      <span
-                        className={`text-sm text-center ${
-                          currentStep === index
-                            ? "text-foreground font-semibold"
-                            : "text-muted-foreground"
-                        }`}
-                      >
-                        {step.team}
-                      </span>
-                    </div>
-                    {index < banSteps.length - 1 && (
-                      <div
-                        className={`flex-1 h-0.5 mx-4 ${step.completed ? "bg-primary" : "bg-border"}`}
-                      />
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
+            <ABBAProgressTracker
+              banSteps={banSteps}
+              currentStepIndex={currentStepIndex}
+              roundHistory={roundHistory}
+              maps={maps}
+            />
           )}
 
           {/* Multiplayer Vote Status */}

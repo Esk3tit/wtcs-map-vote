@@ -190,6 +190,22 @@ function computeIsYourTurn(
   return false;
 }
 
+// ============================================================================
+// Types
+// ============================================================================
+
+interface RoundHistoryBanEntry {
+  mapId: Id<"sessionMaps">;
+  mapName: string;
+  bannedByTeam: string;
+  voteCount?: number;
+}
+
+interface RoundHistoryResult {
+  round: number;
+  bans: RoundHistoryBanEntry[];
+}
+
 /**
  * Build structured round history from session maps.
  * Groups banned maps by round (MULTIPLAYER) or turn (ABBA).
@@ -203,14 +219,7 @@ function buildRoundHistory(
   sessionMaps: Doc<"sessionMaps">[],
   players: Doc<"sessionPlayers">[],
   format: "ABBA" | "MULTIPLAYER"
-): Array<{
-  round: number;
-  bans: Array<{
-    mapId: Id<"sessionMaps">;
-    mapName: string;
-    bannedByTeam: string;
-  }>;
-}> {
+): RoundHistoryResult[] {
   const playerMap = new Map(players.map((p) => [p._id.toString(), p]));
 
   const bannedMaps = sessionMaps
@@ -224,14 +233,7 @@ function buildRoundHistory(
       return a._creationTime - b._creationTime;
     });
 
-  const result: Array<{
-    round: number;
-    bans: Array<{
-      mapId: Id<"sessionMaps">;
-      mapName: string;
-      bannedByTeam: string;
-    }>;
-  }> = [];
+  const result: RoundHistoryResult[] = [];
 
   for (const m of bannedMaps) {
     const round =
@@ -243,6 +245,7 @@ function buildRoundHistory(
       mapId: m._id,
       mapName: m.name,
       bannedByTeam: bannedBy?.teamName ?? "Unknown",
+      voteCount: m.voteCount,
     };
 
     const last = result[result.length - 1];
@@ -1548,6 +1551,7 @@ const roundHistoryEntryValidator = v.object({
       mapId: v.id("sessionMaps"),
       mapName: v.string(),
       bannedByTeam: v.string(),
+      voteCount: v.optional(v.number()),
     })
   ),
 });
