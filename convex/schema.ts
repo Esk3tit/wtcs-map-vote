@@ -113,6 +113,7 @@ export default defineSchema({
       v.literal("WINNER")
     ),
     bannedByPlayerId: v.optional(v.id("sessionPlayers")),
+    bannedByTeamNames: v.optional(v.array(v.string())),
     bannedAtTurn: v.optional(v.number()),
     bannedAtRound: v.optional(v.number()),
     voteCount: v.optional(v.number()),

@@ -84,48 +84,91 @@ export async function validateTargetMap(
   return map;
 }
 
+/** Vote tally result with per-map vote counts and voter team names. */
+interface TallyResult {
+  tallies: Map<Id<"sessionMaps">, number>;
+  voterTeamsByMap: Map<Id<"sessionMaps">, string[]>;
+}
+
 /**
- * Tally votes for the current round. Returns a map of sessionMapId -> vote count.
+ * Tally votes for the current round. Returns vote counts and voter team names
+ * per map (used to populate bannedByTeamNames on eliminated maps).
  */
 async function tallyVotes(
   ctx: MutationCtx,
   sessionId: Id<"sessions">,
   round: number
-): Promise<Map<Id<"sessionMaps">, number>> {
-  const votes = await ctx.db
-    .query("votes")
-    .withIndex("by_sessionId_and_round", (q) =>
-      q.eq("sessionId", sessionId).eq("round", round)
-    )
-    .collect();
+): Promise<TallyResult> {
+  const [votes, players] = await Promise.all([
+    ctx.db
+      .query("votes")
+      .withIndex("by_sessionId_and_round", (q) =>
+        q.eq("sessionId", sessionId).eq("round", round)
+      )
+      .collect(),
+    ctx.db
+      .query("sessionPlayers")
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+      .collect(),
+  ]);
+
+  const playerTeamMap = new Map(players.map((p) => [p._id.toString(), p.teamName]));
 
   const tallies = new Map<Id<"sessionMaps">, number>();
+  const voterTeamsByMap = new Map<Id<"sessionMaps">, string[]>();
   for (const vote of votes) {
     tallies.set(vote.mapId, (tallies.get(vote.mapId) ?? 0) + 1);
+    const teamName = playerTeamMap.get(vote.playerId.toString()) ?? "Unknown";
+    const teams = voterTeamsByMap.get(vote.mapId) ?? [];
+    if (!teams.includes(teamName)) teams.push(teamName);
+    voterTeamsByMap.set(vote.mapId, teams);
   }
-  return tallies;
+  return { tallies, voterTeamsByMap };
 }
 
 /**
- * Ban all maps that received >=1 vote. Sets state, voteCount, and bannedAtRound.
- * Returns the IDs of banned maps.
+ * Ban maps based on vote tallies and available map context.
+ *
+ * When unvoted maps exist (any available map not in tallies), ban ALL voted
+ * maps to narrow the pool to only unvoted maps. When all maps have votes,
+ * ban only the highest-voted map(s). Records which teams voted for each
+ * banned map in bannedByTeamNames.
+ *
+ * @param availableMapIds - Set of all currently AVAILABLE session map IDs
+ * @returns IDs of banned maps
  */
-async function banVotedMaps(
+async function banHighestVotedMaps(
   ctx: MutationCtx,
   tallies: Map<Id<"sessionMaps">, number>,
-  round: number
+  voterTeamsByMap: Map<Id<"sessionMaps">, string[]>,
+  round: number,
+  availableMapIds: Set<Id<"sessionMaps">>
 ): Promise<Id<"sessionMaps">[]> {
-  const bannedIds = Array.from(tallies.keys());
+  if (tallies.size === 0) return [];
+
+  // Check if any available map has zero votes (not in tallies)
+  const hasUnvotedMaps = Array.from(availableMapIds).some(
+    (id) => !tallies.has(id)
+  );
+
+  // If unvoted maps exist, ban ALL voted maps; otherwise ban only highest
+  const maxVotes = Math.max(...tallies.values());
+  const entries = Array.from(tallies.entries());
+  const mapsToBan = entries.filter(
+    ([, count]) => hasUnvotedMaps || count === maxVotes
+  );
+
   await Promise.all(
-    Array.from(tallies.entries()).map(([mapId, count]) =>
+    mapsToBan.map(([mapId, count]) =>
       ctx.db.patch(mapId, {
         state: "BANNED",
         voteCount: count,
         bannedAtRound: round,
+        bannedByTeamNames: voterTeamsByMap.get(mapId),
       })
     )
   );
-  return bannedIds;
+  return mapsToBan.map(([mapId]) => mapId);
 }
 
 /**
@@ -147,14 +190,63 @@ async function resetVoteFlags(
   );
 }
 
+/**
+ * Advance the session to the next round after map elimination.
+ *
+ * Patches the session (increment round, schedule timer with reveal offset),
+ * resets vote flags, logs ROUND_RESOLVED, and schedules timer expiry.
+ * Used by both resolveRound and the zero-vote timer path in sessionCleanup.
+ *
+ * @param reason - Human-readable reason string for the audit log
+ */
+export async function advanceRound(
+  ctx: MutationCtx,
+  session: Doc<"sessions">,
+  reason: string
+): Promise<void> {
+  const now = Date.now();
+  const timerStart = now + REVEAL_DURATION_MS;
+  await ctx.db.patch(session._id, {
+    currentRound: session.currentRound + 1,
+    isRevoteRound: false,
+    updatedAt: now,
+    timerStartedAt: timerStart,
+    timerPausedAt: undefined,
+  });
+  await resetVoteFlags(ctx, session._id);
+
+  await logAction(ctx, {
+    sessionId: session._id,
+    action: "ROUND_RESOLVED",
+    actorType: "SYSTEM",
+    details: {
+      round: session.currentRound,
+      reason,
+    },
+  });
+
+  await scheduleTimerExpiry(
+    ctx,
+    session._id,
+    timerStart,
+    session.turnTimerSeconds,
+    session.format as "ABBA" | "MULTIPLAYER"
+  );
+}
+
 // ============================================================================
 // Round Resolution
 // ============================================================================
 
 /**
- * Resolve the current round after all players have voted.
+ * Resolve the current round. Can be called after all players voted
+ * or directly by the timer expiry handler with partial votes.
  *
- * Tallies votes, bans maps with >=1 vote, then determines outcome:
+ * Tallies votes and applies the multiplayer ban rules:
+ * - If unvoted maps exist, ban all voted maps.
+ * - If all maps have votes, ban only the highest-voted map(s).
+ * - If all maps tie (global tie), trigger deadlock/revote.
+ * Then determines outcome:
  * - 1 map left -> WINNER
  * - >1 maps left -> ROUND_ADVANCED (next round)
  * - 0 maps left, first deadlock -> REVOTE (reset maps, try again)
@@ -173,12 +265,21 @@ export async function resolveRound(
   const isRevote = session.isRevoteRound ?? false;
 
   // 1. Tally votes for the current round
-  const tallies = await tallyVotes(ctx, session._id, currentRound);
+  const { tallies, voterTeamsByMap } = await tallyVotes(ctx, session._id, currentRound);
 
-  // 2. Ban all maps that received >=1 vote
-  const bannedIds = await banVotedMaps(ctx, tallies, currentRound);
+  // 2. Query available maps BEFORE banning (needed to determine ban strategy)
+  const availableMapsBefore = await ctx.db
+    .query("sessionMaps")
+    .withIndex("by_sessionId_and_state", (q) =>
+      q.eq("sessionId", session._id).eq("state", "AVAILABLE")
+    )
+    .collect();
+  const availableMapIds = new Set(availableMapsBefore.map((m) => m._id));
 
-  // 3. Count remaining AVAILABLE maps
+  // 3. Ban maps (all voted if unvoted maps exist, else highest-only)
+  const bannedIds = await banHighestVotedMaps(ctx, tallies, voterTeamsByMap, currentRound, availableMapIds);
+
+  // 4. Count remaining AVAILABLE maps
   const remainingMaps = await ctx.db
     .query("sessionMaps")
     .withIndex("by_sessionId_and_state", (q) =>
@@ -188,7 +289,7 @@ export async function resolveRound(
 
   const remainingCount = remainingMaps.length;
 
-  // 4. Determine outcome
+  // 5. Determine outcome
   if (remainingCount === 1) {
     // === WINNER: exactly one map left ===
     const winnerMap = remainingMaps[0];
@@ -218,36 +319,10 @@ export async function resolveRound(
 
   if (remainingCount > 1) {
     // === ROUND_ADVANCED: multiple maps still available ===
-    const now = Date.now();
-    // Offset timer start by reveal duration so players get the full
-    // configured timer for voting after the client-side reveal phase.
-    const timerStart = now + REVEAL_DURATION_MS;
-    await ctx.db.patch(session._id, {
-      currentRound: currentRound + 1,
-      isRevoteRound: false,
-      updatedAt: now,
-      timerStartedAt: timerStart,
-      timerPausedAt: undefined,
-    });
-    await resetVoteFlags(ctx, session._id);
-
-    await logAction(ctx, {
-      sessionId: session._id,
-      action: "ROUND_RESOLVED",
-      actorType: "SYSTEM",
-      details: {
-        round: currentRound,
-        reason: `${bannedIds.length} maps banned, ${remainingCount} remain`,
-      },
-    });
-
-    // Schedule timer expiry for next round (WAR-47)
-    await scheduleTimerExpiry(
+    await advanceRound(
       ctx,
-      session._id,
-      timerStart,
-      session.turnTimerSeconds,
-      session.format as "ABBA" | "MULTIPLAYER"
+      session,
+      `${bannedIds.length} maps banned, ${remainingCount} remain`
     );
 
     return {
@@ -270,6 +345,7 @@ export async function resolveRound(
           voteCount: undefined,
           bannedAtRound: undefined,
           bannedByPlayerId: undefined,
+          bannedByTeamNames: undefined,
         })
       )
     );

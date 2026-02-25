@@ -3,6 +3,7 @@ import { cn } from "@/lib/utils";
 
 // Helper function to calculate remaining time from server timestamp.
 // When paused, freezes elapsed time at the pause moment instead of using Date.now().
+// Handles timerStartedAt being in the future (MULTIPLAYER reveal offset).
 function calculateRemainingTime(
   turnTimerSeconds: number,
   timerStartedAt: number | undefined,
@@ -10,6 +11,9 @@ function calculateRemainingTime(
 ): number {
   if (!timerStartedAt) return turnTimerSeconds;
   const now = timerPausedAt ?? Date.now();
+  // Clamp: if timer hasn't started yet (future timerStartedAt from reveal offset),
+  // show full duration instead of inflated time from negative elapsed
+  if (timerStartedAt > now) return turnTimerSeconds;
   const elapsed = Math.floor((now - timerStartedAt) / 1000);
   return Math.max(0, turnTimerSeconds - elapsed);
 }
@@ -78,7 +82,7 @@ export function CountdownTimer({
     return <span>--:--</span>;
   }
 
-  // Format as M:SS (max timer is 300s = 5:00)
+  // Format as M:SS (max timer is MAX_TURN_TIMER_SECONDS)
   const mins = Math.floor(remaining / 60);
   const secs = String(remaining % 60).padStart(2, "0");
 

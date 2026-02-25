@@ -12,7 +12,7 @@ export const DEFAULT_MAP_POOL_SIZE = 5;
 export const MIN_PLAYER_COUNT = 2;
 export const MAX_PLAYER_COUNT = 8;
 export const MIN_TURN_TIMER_SECONDS = 10;
-export const MAX_TURN_TIMER_SECONDS = 300;
+export const MAX_TURN_TIMER_SECONDS = 3200;
 export const MIN_MAP_POOL_SIZE = 3;
 export const MAX_MAP_POOL_SIZE = 15;
 export const MAX_REASON_LENGTH = 500;
@@ -95,6 +95,13 @@ export const MAP_POOL_STATUSES: ReadonlySet<SessionStatus> = new Set([
 /** Statuses from which a session can be reset (COMPLETE only). */
 export const RESETTABLE_STATUSES: ReadonlySet<SessionStatus> = new Set([
   "COMPLETE",
+]);
+
+/** Statuses in which player tokens can be regenerated. */
+export const TOKEN_REGEN_STATUSES: ReadonlySet<SessionStatus> = new Set([
+  "DRAFT",
+  "WAITING",
+  "PAUSED",
 ]);
 
 /**

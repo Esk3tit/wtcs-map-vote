@@ -33,6 +33,7 @@ import {
   MAP_POOL_STATUSES,
   EDITABLE_STATUSES,
   RESETTABLE_STATUSES,
+  TOKEN_REGEN_STATUSES,
 } from "./lib/constants";
 import { validateName, validateRange } from "./lib/validation";
 import {
@@ -98,6 +99,7 @@ const sessionMapObjectValidator = v.object({
   imageUrl: v.string(),
   state: mapStateValidator,
   bannedByPlayerId: v.optional(v.id("sessionPlayers")),
+  bannedByTeamNames: v.optional(v.array(v.string())),
   bannedAtTurn: v.optional(v.number()),
   bannedAtRound: v.optional(v.number()),
   voteCount: v.optional(v.number()),
@@ -238,13 +240,23 @@ function buildRoundHistory(
   for (const m of bannedMaps) {
     const round =
       format === "ABBA" ? (m.bannedAtTurn ?? 0) + 1 : (m.bannedAtRound ?? 1);
-    const bannedBy = m.bannedByPlayerId
-      ? playerMap.get(m.bannedByPlayerId.toString())
-      : undefined;
+
+    let bannedByTeam: string;
+    if (format === "MULTIPLAYER" && m.bannedByTeamNames?.length) {
+      // MULTIPLAYER: show all teams that voted for this map
+      bannedByTeam = m.bannedByTeamNames.join(", ");
+    } else {
+      // ABBA: look up the single player who banned
+      const bannedBy = m.bannedByPlayerId
+        ? playerMap.get(m.bannedByPlayerId.toString())
+        : undefined;
+      bannedByTeam = bannedBy?.teamName ?? "Unknown";
+    }
+
     const entry = {
       mapId: m._id,
       mapName: m.name,
-      bannedByTeam: bannedBy?.teamName ?? "Unknown",
+      bannedByTeam,
       voteCount: m.voteCount,
     };
 
@@ -738,6 +750,59 @@ export const assignPlayer = mutation({
     });
 
     return { playerId, token };
+  },
+});
+
+
+/**
+ * Regenerate a player's access token, invalidating the old one.
+ * Clears the player's IP address so the new token can be used from any device.
+ * Only allowed in DRAFT, WAITING, or PAUSED states.
+ *
+ * @param playerId - The player whose token to regenerate
+ */
+export const regeneratePlayerToken = mutation({
+  args: {
+    playerId: v.id("sessionPlayers"),
+  },
+  returns: v.object({ token: v.string() }),
+  handler: async (ctx, args) => {
+    const admin = await requireAdmin(ctx);
+
+    const player = await ctx.db.get(args.playerId);
+    if (!player) {
+      throw new ConvexError("Player not found");
+    }
+
+    const session = await ctx.db.get(player.sessionId);
+    if (!session) {
+      throw new ConvexError("Session not found");
+    }
+
+    requireSessionStatus(session, TOKEN_REGEN_STATUSES, "regenerate player token");
+
+    // Generate new unique token
+    const singleTokenSet = new Set<string>();
+    const token = await generateUniqueToken(ctx, singleTokenSet);
+
+    const now = Date.now();
+    await ctx.db.patch(args.playerId, {
+      token,
+      tokenExpiresAt: now + TOKEN_EXPIRY_MS,
+      ipAddress: undefined,
+      isConnected: false,
+      readyAt: undefined,
+    });
+
+    await logAction(ctx, {
+      sessionId: player.sessionId,
+      action: "TOKEN_REGENERATED",
+      actorType: "ADMIN",
+      actorId: admin._id,
+      details: { teamName: player.teamName },
+    });
+
+    return { token };
   },
 });
 
@@ -1321,6 +1386,7 @@ export const resetSession = mutation({
         ctx.db.patch(m._id, {
           state: "AVAILABLE",
           bannedByPlayerId: undefined,
+          bannedByTeamNames: undefined,
           bannedAtTurn: undefined,
           bannedAtRound: undefined,
           voteCount: undefined,
