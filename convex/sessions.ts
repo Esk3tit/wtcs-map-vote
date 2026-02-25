@@ -190,6 +190,10 @@ function computeIsYourTurn(
   return false;
 }
 
+// ============================================================================
+// Types
+// ============================================================================
+
 interface RoundHistoryBanEntry {
   mapId: Id<"sessionMaps">;
   mapName: string;
