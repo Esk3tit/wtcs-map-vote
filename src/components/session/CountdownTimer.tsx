@@ -82,7 +82,7 @@ export function CountdownTimer({
     return <span>--:--</span>;
   }
 
-  // Format as M:SS (max timer is 1200s = 20:00)
+  // Format as M:SS (max timer is MAX_TURN_TIMER_SECONDS)
   const mins = Math.floor(remaining / 60);
   const secs = String(remaining % 60).padStart(2, "0");
 

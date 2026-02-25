@@ -97,6 +97,13 @@ export const RESETTABLE_STATUSES: ReadonlySet<SessionStatus> = new Set([
   "COMPLETE",
 ]);
 
+/** Statuses in which player tokens can be regenerated. */
+export const TOKEN_REGEN_STATUSES: ReadonlySet<SessionStatus> = new Set([
+  "DRAFT",
+  "WAITING",
+  "PAUSED",
+]);
+
 /**
  * Valid session state transitions.
  * Maps each status to the set of statuses it can transition to.

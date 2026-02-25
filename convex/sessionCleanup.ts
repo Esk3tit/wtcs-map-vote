@@ -280,6 +280,8 @@ export const handleTimerExpiry = internalMutation({
 
     if (args.format === "ABBA") {
       // --- ABBA: auto-ban a random map for the active player ---
+      // TIMER_EXPIRED audit: uses turn + teamName (turn-based format)
+      // See MULTIPLAYER path below for its variant (uses round + unvoted count)
 
       // Get players sorted by join order to determine active player
       const allPlayers = await ctx.db
@@ -359,6 +361,8 @@ export const handleTimerExpiry = internalMutation({
     }
 
     // --- MULTIPLAYER: resolve with submitted votes only (ignore non-voters) ---
+    // TIMER_EXPIRED audit: uses round + unvoted count (round-based format)
+    // See ABBA path above for its variant (uses turn + teamName)
 
     const allPlayers = await ctx.db
       .query("sessionPlayers")
@@ -443,6 +447,8 @@ export const handleTimerExpiry = internalMutation({
         });
       } else {
         // Advance to next round (remainingMaps.length > 1 guaranteed by early return above)
+        // NOTE: Round advancement logic duplicated from resolveRound in votingHelpers.ts
+        // If you change this, update the other location too.
         const now = Date.now();
         const timerStart = now + REVEAL_DURATION_MS;
         await ctx.db.patch(session._id, {

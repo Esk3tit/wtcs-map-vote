@@ -142,33 +142,33 @@ async function banHighestVotedMaps(
   tallies: Map<Id<"sessionMaps">, number>,
   voterTeamsByMap: Map<Id<"sessionMaps">, string[]>,
   round: number,
-  availableMapIds: Set<string>
+  availableMapIds: Set<Id<"sessionMaps">>
 ): Promise<Id<"sessionMaps">[]> {
   if (tallies.size === 0) return [];
 
   // Check if any available map has zero votes (not in tallies)
   const hasUnvotedMaps = Array.from(availableMapIds).some(
-    (id) => !tallies.has(id as Id<"sessionMaps">)
+    (id) => !tallies.has(id)
   );
 
   // If unvoted maps exist, ban ALL voted maps; otherwise ban only highest
   const maxVotes = Math.max(...tallies.values());
-  const bannedIds: Id<"sessionMaps">[] = [];
+  const entries = Array.from(tallies.entries());
+  const mapsToBan = entries.filter(
+    ([, count]) => hasUnvotedMaps || count === maxVotes
+  );
 
   await Promise.all(
-    Array.from(tallies.entries()).map(async ([mapId, count]) => {
-      if (hasUnvotedMaps || count === maxVotes) {
-        bannedIds.push(mapId);
-        await ctx.db.patch(mapId, {
-          state: "BANNED",
-          voteCount: count,
-          bannedAtRound: round,
-          bannedByTeamNames: voterTeamsByMap.get(mapId) ?? [],
-        });
-      }
-    })
+    mapsToBan.map(([mapId, count]) =>
+      ctx.db.patch(mapId, {
+        state: "BANNED",
+        voteCount: count,
+        bannedAtRound: round,
+        bannedByTeamNames: voterTeamsByMap.get(mapId) ?? [],
+      })
+    )
   );
-  return bannedIds;
+  return mapsToBan.map(([mapId]) => mapId);
 }
 
 /**
@@ -226,7 +226,7 @@ export async function resolveRound(
       q.eq("sessionId", session._id).eq("state", "AVAILABLE")
     )
     .collect();
-  const availableMapIds = new Set(availableMapsBefore.map((m) => m._id.toString()));
+  const availableMapIds = new Set(availableMapsBefore.map((m) => m._id));
 
   // 3. Ban maps (all voted if unvoted maps exist, else highest-only)
   const bannedIds = await banHighestVotedMaps(ctx, tallies, voterTeamsByMap, currentRound, availableMapIds);
@@ -271,6 +271,8 @@ export async function resolveRound(
 
   if (remainingCount > 1) {
     // === ROUND_ADVANCED: multiple maps still available ===
+    // NOTE: Round advancement logic also exists in sessionCleanup.ts (zero-vote timer path)
+    // If you change this, update the other location too.
     const now = Date.now();
     // Offset timer start by reveal duration so players get the full
     // configured timer for voting after the client-side reveal phase.
@@ -313,6 +315,8 @@ export async function resolveRound(
   // === 0 maps left: deadlock ===
   if (!isRevote) {
     // === REVOTE: first deadlock -- reset maps and try again ===
+    // NOTE: Round advancement logic also exists in sessionCleanup.ts (zero-vote timer path)
+    // If you change this, update the other location too.
 
     // Reset maps that were banned THIS round back to AVAILABLE
     // bannedIds already contains exactly the maps banned this round

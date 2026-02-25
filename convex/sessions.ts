@@ -33,6 +33,7 @@ import {
   MAP_POOL_STATUSES,
   EDITABLE_STATUSES,
   RESETTABLE_STATUSES,
+  TOKEN_REGEN_STATUSES,
 } from "./lib/constants";
 import { validateName, validateRange } from "./lib/validation";
 import {
@@ -752,8 +753,6 @@ export const assignPlayer = mutation({
   },
 });
 
-/** Statuses in which player tokens can be regenerated. */
-const TOKEN_REGEN_STATUSES = new Set(["DRAFT", "WAITING", "PAUSED"] as const);
 
 /**
  * Regenerate a player's access token, invalidating the old one.
