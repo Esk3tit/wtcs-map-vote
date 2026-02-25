@@ -313,27 +313,7 @@ export const handleTimerExpiry = internalMutation({
         return { processed: false };
       }
 
-      // If only one map remains, declare it the winner immediately
-      // (don't ban the last map — that would leave zero available maps)
-      if (availableMaps.length === 1) {
-        await logAction(ctx, {
-          sessionId: session._id,
-          action: "TIMER_EXPIRED",
-          actorType: "SYSTEM",
-          details: {
-            turn: session.currentTurn,
-            teamName: activePlayer.teamName,
-            reason: "AUTO_EXPIRED",
-          },
-        });
-        await completeSession(ctx, session, availableMaps[0], {
-          turn: session.currentTurn,
-          reason: "Last map standing (timer expired, auto-completed)",
-        });
-        return { processed: true };
-      }
-
-      // Log timer expiry audit event
+      // Log timer expiry audit event (common to both paths below)
       await logAction(ctx, {
         sessionId: session._id,
         action: "TIMER_EXPIRED",
@@ -344,6 +324,16 @@ export const handleTimerExpiry = internalMutation({
           reason: "AUTO_EXPIRED",
         },
       });
+
+      // If only one map remains, declare it the winner immediately
+      // (don't ban the last map — that would leave zero available maps)
+      if (availableMaps.length === 1) {
+        await completeSession(ctx, session, availableMaps[0], {
+          turn: session.currentTurn,
+          reason: "Last map standing (timer expired, auto-completed)",
+        });
+        return { processed: true };
+      }
 
       // Pick random map and execute ban
       // executeBan handles scheduling the next timer internally
