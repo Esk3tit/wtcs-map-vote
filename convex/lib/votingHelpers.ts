@@ -164,7 +164,7 @@ async function banHighestVotedMaps(
         state: "BANNED",
         voteCount: count,
         bannedAtRound: round,
-        bannedByTeamNames: voterTeamsByMap.get(mapId) ?? [],
+        bannedByTeamNames: voterTeamsByMap.get(mapId),
       })
     )
   );
@@ -187,6 +187,50 @@ async function resetVoteFlags(
     players
       .filter((p) => p.hasVotedThisRound)
       .map((p) => ctx.db.patch(p._id, { hasVotedThisRound: false }))
+  );
+}
+
+/**
+ * Advance the session to the next round after map elimination.
+ *
+ * Patches the session (increment round, schedule timer with reveal offset),
+ * resets vote flags, logs ROUND_RESOLVED, and schedules timer expiry.
+ * Used by both resolveRound and the zero-vote timer path in sessionCleanup.
+ *
+ * @param reason - Human-readable reason string for the audit log
+ */
+export async function advanceRound(
+  ctx: MutationCtx,
+  session: Doc<"sessions">,
+  reason: string
+): Promise<void> {
+  const now = Date.now();
+  const timerStart = now + REVEAL_DURATION_MS;
+  await ctx.db.patch(session._id, {
+    currentRound: session.currentRound + 1,
+    isRevoteRound: false,
+    updatedAt: now,
+    timerStartedAt: timerStart,
+    timerPausedAt: undefined,
+  });
+  await resetVoteFlags(ctx, session._id);
+
+  await logAction(ctx, {
+    sessionId: session._id,
+    action: "ROUND_RESOLVED",
+    actorType: "SYSTEM",
+    details: {
+      round: session.currentRound,
+      reason,
+    },
+  });
+
+  await scheduleTimerExpiry(
+    ctx,
+    session._id,
+    timerStart,
+    session.turnTimerSeconds,
+    session.format as "ABBA" | "MULTIPLAYER"
   );
 }
 
@@ -271,38 +315,10 @@ export async function resolveRound(
 
   if (remainingCount > 1) {
     // === ROUND_ADVANCED: multiple maps still available ===
-    // NOTE: Round advancement logic also exists in sessionCleanup.ts (zero-vote timer path)
-    // If you change this, update the other location too.
-    const now = Date.now();
-    // Offset timer start by reveal duration so players get the full
-    // configured timer for voting after the client-side reveal phase.
-    const timerStart = now + REVEAL_DURATION_MS;
-    await ctx.db.patch(session._id, {
-      currentRound: currentRound + 1,
-      isRevoteRound: false,
-      updatedAt: now,
-      timerStartedAt: timerStart,
-      timerPausedAt: undefined,
-    });
-    await resetVoteFlags(ctx, session._id);
-
-    await logAction(ctx, {
-      sessionId: session._id,
-      action: "ROUND_RESOLVED",
-      actorType: "SYSTEM",
-      details: {
-        round: currentRound,
-        reason: `${bannedIds.length} maps banned, ${remainingCount} remain`,
-      },
-    });
-
-    // Schedule timer expiry for next round (WAR-47)
-    await scheduleTimerExpiry(
+    await advanceRound(
       ctx,
-      session._id,
-      timerStart,
-      session.turnTimerSeconds,
-      session.format as "ABBA" | "MULTIPLAYER"
+      session,
+      `${bannedIds.length} maps banned, ${remainingCount} remain`
     );
 
     return {
@@ -315,8 +331,6 @@ export async function resolveRound(
   // === 0 maps left: deadlock ===
   if (!isRevote) {
     // === REVOTE: first deadlock -- reset maps and try again ===
-    // NOTE: Round advancement logic also exists in sessionCleanup.ts (zero-vote timer path)
-    // If you change this, update the other location too.
 
     // Reset maps that were banned THIS round back to AVAILABLE
     // bannedIds already contains exactly the maps banned this round

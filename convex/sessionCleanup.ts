@@ -13,11 +13,9 @@ import { internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
 import { getActivePlayerIndex, sortPlayersByJoinOrder, HEARTBEAT_TIMEOUT_MS } from "./lib/constants";
-import { executeBan, resolveRound } from "./lib/votingHelpers";
+import { advanceRound, executeBan, resolveRound } from "./lib/votingHelpers";
 import { completeSession, transitionSession } from "./lib/sessionLifecycle";
-import { REVEAL_DURATION_MS } from "./lib/constants";
 import { pickRandom } from "./lib/random";
-import { scheduleTimerExpiry } from "./lib/timerScheduling";
 
 import { logAction } from "./audit";
 
@@ -448,40 +446,10 @@ export const handleTimerExpiry = internalMutation({
         });
       } else {
         // Advance to next round (remainingMaps.length > 1 guaranteed by early return above)
-        // NOTE: Round advancement logic duplicated from resolveRound in votingHelpers.ts
-        // If you change this, update the other location too.
-        const now = Date.now();
-        const timerStart = now + REVEAL_DURATION_MS;
-        await ctx.db.patch(session._id, {
-          currentRound: session.currentRound + 1,
-          isRevoteRound: false,
-          updatedAt: now,
-          timerStartedAt: timerStart,
-          timerPausedAt: undefined,
-        });
-        // Reset vote flags for all players
-        await Promise.all(
-          allPlayers
-            .filter((p) => p.hasVotedThisRound)
-            .map((p) => ctx.db.patch(p._id, { hasVotedThisRound: false }))
-        );
-
-        await logAction(ctx, {
-          sessionId: session._id,
-          action: "ROUND_RESOLVED",
-          actorType: "SYSTEM",
-          details: {
-            round: session.currentRound,
-            reason: `1 map randomly eliminated (no votes), ${remainingMaps.length} remain`,
-          },
-        });
-
-        await scheduleTimerExpiry(
+        await advanceRound(
           ctx,
-          session._id,
-          timerStart,
-          session.turnTimerSeconds,
-          "MULTIPLAYER"
+          session,
+          `1 map randomly eliminated (no votes), ${remainingMaps.length} remain`
         );
       }
     } else {
