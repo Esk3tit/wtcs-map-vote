@@ -66,8 +66,7 @@ export default defineSchema({
     timerStartedAt: v.optional(v.number()),
     timerPausedAt: v.optional(v.number()),
     winnerMapId: v.optional(v.id("sessionMaps")),
-    // NOTE: isRevoteRound persists through pause/resume so deadlock state is preserved.
-    // Reset logic (SESSION_RESET_PATCHES, endSession, completeSession) clears it.
+    // NOTE: Persists through pause/resume so deadlock state survives the cycle.
     isRevoteRound: v.optional(v.boolean()),
 
     // Metadata

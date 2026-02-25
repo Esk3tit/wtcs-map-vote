@@ -5949,6 +5949,23 @@ describe("sessions.endSession", () => {
     expect(session?.isRevoteRound).toBe(false);
   });
 
+  it("clears isRevoteRound when force-ending a paused revote session", async () => {
+    const { t, authT, adminId } = await createAuthenticatedAdmin();
+
+    const sessionId = await t.run(async (ctx) => {
+      return ctx.db.insert(
+        "sessions",
+        sessionFactory(adminId, { status: "PAUSED", isRevoteRound: true })
+      );
+    });
+
+    await authT.mutation(api.sessions.endSession, { sessionId });
+
+    const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+    expect(session?.status).toBe("COMPLETE");
+    expect(session?.isRevoteRound).toBe(false);
+  });
+
   it("does NOT set winnerMapId", async () => {
     const { t, authT, sessionId } = await createAuthenticatedSessionInStatus(
       "IN_PROGRESS"
