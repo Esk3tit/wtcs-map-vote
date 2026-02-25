@@ -60,6 +60,7 @@ export function RoundHistory({ roundHistory, maps }: RoundHistoryProps) {
                           <X
                             className="w-5 h-5 text-red-500"
                             strokeWidth={3}
+                            aria-hidden="true"
                           />
                         </div>
                       </div>

@@ -36,7 +36,13 @@ function StepCircle({
       )}
     >
       {completed ? (
-        <Check className={cn(iconSize, "text-primary-foreground")} />
+        <>
+          <Check
+            className={cn(iconSize, "text-primary-foreground")}
+            aria-hidden="true"
+          />
+          <span className="sr-only">Step {stepNumber} completed</span>
+        </>
       ) : (
         <span
           className={cn(
@@ -86,7 +92,11 @@ export function ABBAProgressTracker({
         {banSteps.map((step, index) => {
           const banInfo = banByRound.get(step.step);
           return (
-            <div key={step.step} className="flex items-start flex-1">
+            <div
+              key={step.step}
+              className="flex items-start flex-1"
+              aria-current={currentStepIndex === index ? "step" : undefined}
+            >
               <div className="flex flex-col items-center min-w-0">
                 {/* Step circle */}
                 <StepCircle
@@ -144,7 +154,11 @@ export function ABBAProgressTracker({
         {banSteps.map((step, index) => {
           const banInfo = banByRound.get(step.step);
           return (
-            <div key={step.step} className="flex items-center gap-3">
+            <div
+              key={step.step}
+              className="flex items-center gap-3"
+              aria-current={currentStepIndex === index ? "step" : undefined}
+            >
               {/* Step circle + connecting line */}
               <div className="flex flex-col items-center">
                 <StepCircle
