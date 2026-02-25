@@ -120,7 +120,7 @@ async function tallyVotes(
     tallies.set(vote.mapId, (tallies.get(vote.mapId) ?? 0) + 1);
     const teamName = playerTeamMap.get(vote.playerId.toString()) ?? "Unknown";
     const teams = voterTeamsByMap.get(vote.mapId) ?? [];
-    teams.push(teamName);
+    if (!teams.includes(teamName)) teams.push(teamName);
     voterTeamsByMap.set(vote.mapId, teams);
   }
   return { tallies, voterTeamsByMap };

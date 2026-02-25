@@ -241,7 +241,7 @@ const isValidSessionId = (id: string): boolean => {
 // Confirmation Dialog Config
 // ============================================================================
 
-type ActionName = "finalize" | "start" | "pause" | "resume" | "end" | "forceRandom" | "reset" | "clone" | "voteOnBehalf" | "delete" | "regenerateToken";
+type ActionName = "finalize" | "start" | "pause" | "resume" | "end" | "forceRandom" | "reset" | "clone" | "voteOnBehalf" | "delete";
 
 type ConfirmAction = "end" | "forceRandom" | "reset" | "delete";
 
@@ -306,6 +306,9 @@ function SessionDetailPage() {
 
   // Confirmation dialog state
   const [confirmAction, setConfirmAction] = useState<ConfirmAction | null>(null);
+
+  // Per-player regenerate spinner (tracks which player's token is being regenerated)
+  const [regeneratingPlayerId, setRegeneratingPlayerId] = useState<Id<"sessionPlayers"> | null>(null);
 
   // Vote on behalf dialog state
   const [voteOnBehalfPlayer, setVoteOnBehalfPlayer] = useState<{
@@ -885,19 +888,25 @@ function SessionDetailPage() {
                           <Button
                             variant="outline"
                             size="icon"
-                            disabled={isAnyLoading}
+                            disabled={isAnyLoading || regeneratingPlayerId !== null}
                             className="shrink-0"
                             aria-label="Regenerate link"
                             title="Regenerate link"
-                            onClick={() =>
-                              handleAction(
-                                "regenerateToken",
-                                () => regenerateTokenMutation({ playerId: player._id }),
-                                () => { toast.success(`Link regenerated for ${player.teamName}`); },
-                              )
-                            }
+                            onClick={async () => {
+                              setRegeneratingPlayerId(player._id);
+                              try {
+                                await regenerateTokenMutation({ playerId: player._id });
+                                toast.success(`Link regenerated for ${player.teamName}`);
+                              } catch (error) {
+                                toast.error(
+                                  error instanceof Error ? error.message : "Failed to regenerate link"
+                                );
+                              } finally {
+                                setRegeneratingPlayerId(null);
+                              }
+                            }}
                           >
-                            {actionLoading === "regenerateToken" ? (
+                            {regeneratingPlayerId === player._id ? (
                               <Loader2 className="w-4 h-4 animate-spin" />
                             ) : (
                               <RefreshCw className="w-4 h-4" />
