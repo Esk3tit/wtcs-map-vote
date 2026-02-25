@@ -2221,18 +2221,7 @@ describe("voting.resolveRound", () => {
       expect(dbSession?.isRevoteRound).toBe(true); // Preserved through resume
 
       // Round 2 (revote): same votes → double deadlock → random winner
-      for (let i = 0; i < 3; i++) {
-        await t.mutation(internal.voting.submitVote, {
-          token: session.players[i].token,
-          mapId: session.mapIds[i],
-          ipAddress: session.players[i].ip,
-        });
-      }
-      const r2Result = await t.mutation(internal.voting.submitVote, {
-        token: session.players[3].token,
-        mapId: session.mapIds[3],
-        ipAddress: session.players[3].ip,
-      });
+      const r2Result = await allPlayersVoteDifferent(t, session);
 
       expect(r2Result.status).toBe("ok");
       if (r2Result.status !== "ok") throw new Error("Expected ok");
