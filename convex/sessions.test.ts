@@ -5832,7 +5832,7 @@ describe("sessions.resumeSession", () => {
     expect(session?.timerPausedAt).toBeUndefined();
   });
 
-  it("resets isRevoteRound to false (schema.ts TODO)", async () => {
+  it("preserves isRevoteRound through pause/resume", async () => {
     const { t, authT, adminId } = await createAuthenticatedAdmin();
 
     const sessionId = await t.run(async (ctx) => {
@@ -5850,7 +5850,7 @@ describe("sessions.resumeSession", () => {
     await authT.mutation(api.sessions.resumeSession, { sessionId });
 
     const session = await t.run(async (ctx) => ctx.db.get(sessionId));
-    expect(session?.isRevoteRound).toBe(false);
+    expect(session?.isRevoteRound).toBe(true);
   });
 
   it("handles null timer fields safely (defaults to 0 elapsed)", async () => {

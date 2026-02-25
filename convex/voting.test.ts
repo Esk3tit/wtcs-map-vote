@@ -2184,6 +2184,65 @@ describe("voting.resolveRound", () => {
       dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
       expect(dbSession?.status).toBe("COMPLETE");
     });
+
+    it("deadlock → pause → resume → second deadlock → random winner", async () => {
+      const { t, authT, adminId } = await createAuthenticatedAdmin();
+      // 4 players, 4 maps: each votes different → deadlock
+      const session = await createMultiplayerSession(t, {
+        adminId,
+        playerCount: 4,
+        mapPoolSize: 4,
+      });
+
+      // Round 1: each player votes a different map → deadlock → REVOTE
+      const r1Result = await allPlayersVoteDifferent(t, session);
+      expect(r1Result.status).toBe("ok");
+      if (r1Result.status !== "ok") throw new Error("Expected ok");
+      expect(r1Result.resolution!.outcome).toBe("REVOTE");
+
+      let dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+      expect(dbSession?.isRevoteRound).toBe(true);
+      expect(dbSession?.currentRound).toBe(2);
+
+      // Pause session
+      await authT.mutation(api.sessions.pauseSession, {
+        sessionId: session.sessionId,
+      });
+      dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+      expect(dbSession?.status).toBe("PAUSED");
+      expect(dbSession?.isRevoteRound).toBe(true); // Preserved through pause
+
+      // Resume session
+      await authT.mutation(api.sessions.resumeSession, {
+        sessionId: session.sessionId,
+      });
+      dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+      expect(dbSession?.status).toBe("IN_PROGRESS");
+      expect(dbSession?.isRevoteRound).toBe(true); // Preserved through resume
+
+      // Round 2 (revote): same votes → double deadlock → random winner
+      for (let i = 0; i < 3; i++) {
+        await t.mutation(internal.voting.submitVote, {
+          token: session.players[i].token,
+          mapId: session.mapIds[i],
+          ipAddress: session.players[i].ip,
+        });
+      }
+      const r2Result = await t.mutation(internal.voting.submitVote, {
+        token: session.players[3].token,
+        mapId: session.mapIds[3],
+        ipAddress: session.players[3].ip,
+      });
+
+      expect(r2Result.status).toBe("ok");
+      if (r2Result.status !== "ok") throw new Error("Expected ok");
+      expect(r2Result.resolution!.outcome).toBe("RANDOM_WINNER");
+      expect(session.mapIds).toContain(r2Result.resolution!.winnerMapId);
+
+      dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+      expect(dbSession?.status).toBe("COMPLETE");
+      expect(dbSession?.winnerMapId).toBeDefined();
+    });
   });
 
   // ============================================================================
