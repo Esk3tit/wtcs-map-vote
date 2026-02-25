@@ -13,9 +13,11 @@ import { internalMutation } from "./_generated/server";
 import { v } from "convex/values";
 
 import { getActivePlayerIndex, sortPlayersByJoinOrder, HEARTBEAT_TIMEOUT_MS } from "./lib/constants";
-import { executeBan, executeVote } from "./lib/votingHelpers";
-import { transitionSession } from "./lib/sessionLifecycle";
+import { executeBan, resolveRound } from "./lib/votingHelpers";
+import { completeSession, transitionSession } from "./lib/sessionLifecycle";
+import { REVEAL_DURATION_MS } from "./lib/constants";
 import { pickRandom } from "./lib/random";
+import { scheduleTimerExpiry } from "./lib/timerScheduling";
 
 import { logAction } from "./audit";
 
@@ -336,7 +338,7 @@ export const handleTimerExpiry = internalMutation({
       return { processed: true };
     }
 
-    // --- MULTIPLAYER: auto-vote for all unvoted players ---
+    // --- MULTIPLAYER: resolve with submitted votes only (ignore non-voters) ---
 
     const allPlayers = await ctx.db
       .query("sessionPlayers")
@@ -350,6 +352,8 @@ export const handleTimerExpiry = internalMutation({
       return { processed: false };
     }
 
+    const votedCount = allPlayers.length - unvotedPlayers.length;
+
     // Log timer expiry audit event
     await logAction(ctx, {
       sessionId: session._id,
@@ -361,37 +365,96 @@ export const handleTimerExpiry = internalMutation({
       },
     });
 
-    // Query available maps once — executeVote only inserts votes and marks players,
-    // it does not ban maps. Maps only change when resolveRound fires on the last vote.
-    const availableMaps = await ctx.db
-      .query("sessionMaps")
-      .withIndex("by_sessionId_and_state", (q) =>
-        q.eq("sessionId", session._id).eq("state", "AVAILABLE")
-      )
-      .collect();
+    if (votedCount === 0) {
+      // Zero votes submitted — pick a random map to eliminate
+      const availableMaps = await ctx.db
+        .query("sessionMaps")
+        .withIndex("by_sessionId_and_state", (q) =>
+          q.eq("sessionId", session._id).eq("state", "AVAILABLE")
+        )
+        .collect();
 
-    if (availableMaps.length === 0) {
-      console.error(
-        `Timer expiry: no available maps for auto-vote in session ${session._id}`
-      );
-      return { processed: false };
-    }
+      if (availableMaps.length === 0) {
+        console.error(
+          `Timer expiry: no available maps for session ${session._id}`
+        );
+        return { processed: false };
+      }
 
-    // Auto-vote for each unvoted player sequentially
-    // The last executeVote triggers resolveRound automatically
-    for (const player of unvotedPlayers) {
       const targetMap = pickRandom(availableMaps);
-      await executeVote(ctx, {
-        session,
-        player,
-        targetMap,
-        submittedByAdmin: false,
-        actorType: "SYSTEM",
+      await ctx.db.patch(targetMap._id, {
+        state: "BANNED",
+        voteCount: 0,
+        bannedAtRound: session.currentRound,
+        bannedByTeamNames: ["No votes (random)"],
       });
-    }
 
-    // resolveRound (called by the last executeVote) handles scheduling
-    // the next timer if the round advances or a revote is triggered
+      await logAction(ctx, {
+        sessionId: session._id,
+        action: "MAP_BANNED",
+        actorType: "SYSTEM",
+        details: {
+          mapId: targetMap._id,
+          mapName: targetMap.name,
+          round: session.currentRound,
+          reason: "NO_VOTES_RANDOM",
+        },
+      });
+
+      // Check remaining maps after random elimination
+      const remainingMaps = availableMaps.filter(
+        (m) => m._id !== targetMap._id
+      );
+
+      if (remainingMaps.length === 1) {
+        // Winner found
+        await completeSession(ctx, session, remainingMaps[0], {
+          round: session.currentRound,
+          reason: "Last map standing after no-vote random elimination",
+        });
+      } else if (remainingMaps.length > 1) {
+        // Advance to next round
+        const now = Date.now();
+        const timerStart = now + REVEAL_DURATION_MS;
+        await ctx.db.patch(session._id, {
+          currentRound: session.currentRound + 1,
+          isRevoteRound: false,
+          updatedAt: now,
+          timerStartedAt: timerStart,
+          timerPausedAt: undefined,
+        });
+        // Reset vote flags for all players
+        await Promise.all(
+          allPlayers
+            .filter((p) => p.hasVotedThisRound)
+            .map((p) => ctx.db.patch(p._id, { hasVotedThisRound: false }))
+        );
+
+        await logAction(ctx, {
+          sessionId: session._id,
+          action: "ROUND_RESOLVED",
+          actorType: "SYSTEM",
+          details: {
+            round: session.currentRound,
+            reason: `1 map randomly eliminated (no votes), ${remainingMaps.length} remain`,
+          },
+        });
+
+        await scheduleTimerExpiry(
+          ctx,
+          session._id,
+          timerStart,
+          session.turnTimerSeconds,
+          "MULTIPLAYER"
+        );
+      }
+      // remainingMaps.length === 0 shouldn't happen with random single elimination
+    } else {
+      // Partial votes submitted — resolve round with only submitted votes.
+      // resolveRound reads from the votes table (only submitted votes) and
+      // handles resetVoteFlags, scheduling, and round advancement internally.
+      await resolveRound(ctx, session);
+    }
 
     return { processed: true };
   },

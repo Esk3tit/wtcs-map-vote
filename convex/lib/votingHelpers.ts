@@ -84,46 +84,78 @@ export async function validateTargetMap(
   return map;
 }
 
+/** Vote tally result with per-map vote counts and voter team names. */
+interface TallyResult {
+  tallies: Map<Id<"sessionMaps">, number>;
+  voterTeamsByMap: Map<Id<"sessionMaps">, string[]>;
+}
+
 /**
- * Tally votes for the current round. Returns a map of sessionMapId -> vote count.
+ * Tally votes for the current round. Returns vote counts and voter team names
+ * per map (used to populate bannedByTeamNames on eliminated maps).
  */
 async function tallyVotes(
   ctx: MutationCtx,
   sessionId: Id<"sessions">,
   round: number
-): Promise<Map<Id<"sessionMaps">, number>> {
-  const votes = await ctx.db
-    .query("votes")
-    .withIndex("by_sessionId_and_round", (q) =>
-      q.eq("sessionId", sessionId).eq("round", round)
-    )
-    .collect();
+): Promise<TallyResult> {
+  const [votes, players] = await Promise.all([
+    ctx.db
+      .query("votes")
+      .withIndex("by_sessionId_and_round", (q) =>
+        q.eq("sessionId", sessionId).eq("round", round)
+      )
+      .collect(),
+    ctx.db
+      .query("sessionPlayers")
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+      .collect(),
+  ]);
+
+  const playerTeamMap = new Map(players.map((p) => [p._id.toString(), p.teamName]));
 
   const tallies = new Map<Id<"sessionMaps">, number>();
+  const voterTeamsByMap = new Map<Id<"sessionMaps">, string[]>();
   for (const vote of votes) {
     tallies.set(vote.mapId, (tallies.get(vote.mapId) ?? 0) + 1);
+    const teamName = playerTeamMap.get(vote.playerId.toString()) ?? "Unknown";
+    const teams = voterTeamsByMap.get(vote.mapId) ?? [];
+    teams.push(teamName);
+    voterTeamsByMap.set(vote.mapId, teams);
   }
-  return tallies;
+  return { tallies, voterTeamsByMap };
 }
 
 /**
- * Ban all maps that received >=1 vote. Sets state, voteCount, and bannedAtRound.
- * Returns the IDs of banned maps.
+ * Ban only the map(s) with the highest vote count. Maps with fewer votes
+ * remain AVAILABLE. If multiple maps tie at the max, all tied maps are banned.
+ * Records which teams voted for each banned map in bannedByTeamNames.
+ *
+ * @returns IDs of banned maps
  */
-async function banVotedMaps(
+async function banHighestVotedMaps(
   ctx: MutationCtx,
   tallies: Map<Id<"sessionMaps">, number>,
+  voterTeamsByMap: Map<Id<"sessionMaps">, string[]>,
   round: number
 ): Promise<Id<"sessionMaps">[]> {
-  const bannedIds = Array.from(tallies.keys());
+  if (tallies.size === 0) return [];
+
+  const maxVotes = Math.max(...tallies.values());
+  const bannedIds: Id<"sessionMaps">[] = [];
+
   await Promise.all(
-    Array.from(tallies.entries()).map(([mapId, count]) =>
-      ctx.db.patch(mapId, {
-        state: "BANNED",
-        voteCount: count,
-        bannedAtRound: round,
-      })
-    )
+    Array.from(tallies.entries()).map(async ([mapId, count]) => {
+      if (count === maxVotes) {
+        bannedIds.push(mapId);
+        await ctx.db.patch(mapId, {
+          state: "BANNED",
+          voteCount: count,
+          bannedAtRound: round,
+          bannedByTeamNames: voterTeamsByMap.get(mapId) ?? [],
+        });
+      }
+    })
   );
   return bannedIds;
 }
@@ -152,9 +184,10 @@ async function resetVoteFlags(
 // ============================================================================
 
 /**
- * Resolve the current round after all players have voted.
+ * Resolve the current round. Can be called after all players voted
+ * or directly by the timer expiry handler with partial votes.
  *
- * Tallies votes, bans maps with >=1 vote, then determines outcome:
+ * Tallies votes, bans only the highest-voted map(s), then determines outcome:
  * - 1 map left -> WINNER
  * - >1 maps left -> ROUND_ADVANCED (next round)
  * - 0 maps left, first deadlock -> REVOTE (reset maps, try again)
@@ -173,10 +206,10 @@ export async function resolveRound(
   const isRevote = session.isRevoteRound ?? false;
 
   // 1. Tally votes for the current round
-  const tallies = await tallyVotes(ctx, session._id, currentRound);
+  const { tallies, voterTeamsByMap } = await tallyVotes(ctx, session._id, currentRound);
 
-  // 2. Ban all maps that received >=1 vote
-  const bannedIds = await banVotedMaps(ctx, tallies, currentRound);
+  // 2. Ban only the highest-voted map(s)
+  const bannedIds = await banHighestVotedMaps(ctx, tallies, voterTeamsByMap, currentRound);
 
   // 3. Count remaining AVAILABLE maps
   const remainingMaps = await ctx.db

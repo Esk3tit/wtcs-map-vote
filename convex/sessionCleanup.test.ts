@@ -848,14 +848,14 @@ describe("sessionCleanup.handleTimerExpiry", () => {
   });
 
   // --------------------------------------------------------------------------
-  // MULTIPLAYER auto-vote tests
+  // MULTIPLAYER timer expiry (no auto-voting — resolves with submitted votes)
   // --------------------------------------------------------------------------
 
   describe("MULTIPLAYER format", () => {
-    it("auto-votes for all unvoted players", async () => {
+    it("eliminates random map when no players voted", async () => {
       const t = createTestContext();
       const timerStartedAt = Date.now();
-      const { sessionId, playerIds } = await createMultiplayerTimerSession(t, {
+      const { sessionId } = await createMultiplayerTimerSession(t, {
         timerStartedAt,
         playerCount: 3,
       });
@@ -868,8 +868,7 @@ describe("sessionCleanup.handleTimerExpiry", () => {
 
       expect(result).toEqual({ processed: true });
 
-      // Verify vote records were created for all 3 players
-      // (hasVotedThisRound may be reset by resolveRound advancing to next round)
+      // No vote records should be created (zero votes → random elimination)
       const votes = await t.run(async (ctx) =>
         ctx.db
           .query("votes")
@@ -878,16 +877,23 @@ describe("sessionCleanup.handleTimerExpiry", () => {
           )
           .collect()
       );
-      expect(votes).toHaveLength(3);
+      expect(votes).toHaveLength(0);
 
-      // Each player should have exactly one vote
-      const votedPlayerIds = votes.map((v) => v.playerId);
-      for (const playerId of playerIds) {
-        expect(votedPlayerIds).toContain(playerId);
-      }
+      // Exactly one map should be banned
+      const bannedMaps = await t.run(async (ctx) =>
+        ctx.db
+          .query("sessionMaps")
+          .withIndex("by_sessionId_and_state", (q) =>
+            q.eq("sessionId", sessionId).eq("state", "BANNED")
+          )
+          .collect()
+      );
+      expect(bannedMaps).toHaveLength(1);
+      expect(bannedMaps[0].voteCount).toBe(0);
+      expect(bannedMaps[0].bannedAtRound).toBe(1);
     });
 
-    it("only auto-votes for unvoted players, preserves existing votes", async () => {
+    it("resolves with submitted votes only when some players voted", async () => {
       const t = createTestContext();
       const timerStartedAt = Date.now();
       const { sessionId, playerIds, mapIds } = await createMultiplayerTimerSession(t, {
@@ -916,7 +922,7 @@ describe("sessionCleanup.handleTimerExpiry", () => {
 
       expect(result).toEqual({ processed: true });
 
-      // Verify votes: player 0's existing + 2 auto-votes = 3 total
+      // Only player 0's vote should exist (no auto-votes created)
       const votes = await t.run(async (ctx) =>
         ctx.db
           .query("votes")
@@ -925,21 +931,9 @@ describe("sessionCleanup.handleTimerExpiry", () => {
           )
           .collect()
       );
-      expect(votes).toHaveLength(3);
-
-      // Player 0's vote should NOT have submittedByAdmin
-      const player0Vote = votes.find(
-        (v) => v.playerId === playerIds[0]
-      );
-      expect(player0Vote?.submittedByAdmin).toBe(false);
-
-      // Other votes should NOT have submittedByAdmin (system timer, not admin)
-      const autoVotes = votes.filter(
-        (v) => v.playerId !== playerIds[0]
-      );
-      for (const vote of autoVotes) {
-        expect(vote.submittedByAdmin).toBe(false);
-      }
+      expect(votes).toHaveLength(1);
+      expect(votes[0].playerId).toBe(playerIds[0]);
+      expect(votes[0].mapId).toBe(mapIds[0]);
     });
 
     it("returns processed:false when all players already voted", async () => {
@@ -960,10 +954,10 @@ describe("sessionCleanup.handleTimerExpiry", () => {
       expect(result).toEqual({ processed: false });
     });
 
-    it("triggers round resolution when last auto-vote completes", async () => {
+    it("advances round after random elimination with zero votes", async () => {
       const t = createTestContext();
       const timerStartedAt = Date.now();
-      // 3 players, 5 maps — each votes for different map → 3 maps eliminated, 2 remain → next round
+      // 3 players, 5 maps, no votes → 1 random map eliminated, 4 remain → next round
       const { sessionId } = await createMultiplayerTimerSession(t, {
         timerStartedAt,
         playerCount: 3,
@@ -976,16 +970,24 @@ describe("sessionCleanup.handleTimerExpiry", () => {
         format: "MULTIPLAYER",
       });
 
-      // Verify round resolved — session should have advanced or completed
+      // Verify round advanced (1 map eliminated, 4 remain → round 2)
       const session = await t.run(async (ctx) => ctx.db.get(sessionId));
-      // With 3 players voting for random maps out of 5, at least some maps are banned.
-      // The round should have resolved (currentRound advances or session completes).
-      expect(
-        session?.currentRound !== 1 || session?.status === "COMPLETE"
-      ).toBe(true);
+      expect(session?.currentRound).toBe(2);
+      expect(session?.status).toBe("IN_PROGRESS");
+
+      // Verify exactly 1 map banned, 4 remain
+      const bannedMaps = await t.run(async (ctx) =>
+        ctx.db
+          .query("sessionMaps")
+          .withIndex("by_sessionId_and_state", (q) =>
+            q.eq("sessionId", sessionId).eq("state", "BANNED")
+          )
+          .collect()
+      );
+      expect(bannedMaps).toHaveLength(1);
     });
 
-    it("logs TIMER_EXPIRED and VOTE_SUBMITTED audit events", async () => {
+    it("logs TIMER_EXPIRED and MAP_BANNED audit events for zero-vote case", async () => {
       const t = createTestContext();
       const timerStartedAt = Date.now();
       const { sessionId } = await createMultiplayerTimerSession(t, {
@@ -1008,7 +1010,7 @@ describe("sessionCleanup.handleTimerExpiry", () => {
 
       const actions = logs.map((l) => l.action);
       expect(actions).toContain("TIMER_EXPIRED");
-      expect(actions).toContain("VOTE_SUBMITTED");
+      expect(actions).toContain("MAP_BANNED");
 
       // Verify TIMER_EXPIRED log
       const timerLog = logs.find((l) => l.action === "TIMER_EXPIRED");
@@ -1017,21 +1019,20 @@ describe("sessionCleanup.handleTimerExpiry", () => {
         reason: expect.stringContaining("AUTO_EXPIRED"),
       });
 
-      // Verify VOTE_SUBMITTED logs have SYSTEM actor
-      const voteLogs = logs.filter((l) => l.action === "VOTE_SUBMITTED");
-      expect(voteLogs).toHaveLength(2);
-      for (const log of voteLogs) {
-        expect(log.actorType).toBe("SYSTEM");
-        expect(log.details).toMatchObject({ reason: "TIMER_EXPIRED" });
-      }
+      // Verify MAP_BANNED log has SYSTEM actor and NO_VOTES_RANDOM reason
+      const banLog = logs.find((l) => l.action === "MAP_BANNED");
+      expect(banLog?.actorType).toBe("SYSTEM");
+      expect(banLog?.details).toMatchObject({ reason: "NO_VOTES_RANDOM" });
     });
 
-    it("auto-votes mark submittedByAdmin:false for system timer actions", async () => {
+    it("completes session when random elimination leaves one map", async () => {
       const t = createTestContext();
       const timerStartedAt = Date.now();
+      // 2 players, 2 maps, no votes → 1 random map eliminated → 1 remains → COMPLETE
       const { sessionId } = await createMultiplayerTimerSession(t, {
         timerStartedAt,
         playerCount: 2,
+        mapPoolSize: 2,
       });
 
       await t.mutation(internal.sessionCleanup.handleTimerExpiry, {
@@ -1040,18 +1041,9 @@ describe("sessionCleanup.handleTimerExpiry", () => {
         format: "MULTIPLAYER",
       });
 
-      const votes = await t.run(async (ctx) =>
-        ctx.db
-          .query("votes")
-          .withIndex("by_sessionId_and_round", (q) =>
-            q.eq("sessionId", sessionId).eq("round", 1)
-          )
-          .collect()
-      );
-
-      for (const vote of votes) {
-        expect(vote.submittedByAdmin).toBe(false);
-      }
+      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(session?.status).toBe("COMPLETE");
+      expect(session?.winnerMapId).toBeDefined();
     });
   });
 });

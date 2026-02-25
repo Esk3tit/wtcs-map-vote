@@ -1608,9 +1608,10 @@ describe("voting.resolveRound", () => {
       expect(result.resolution!.winnerMapId).toBe(session.mapIds[2]);
     });
 
-    it("sets correct voteCount on banned maps", async () => {
+    it("only bans highest-voted maps, preserves lower-voted maps", async () => {
       const t = createTestContext();
       // 3 players, 5 maps: 2 players vote Map 1, 1 votes Map 2
+      // Only Map 1 (highest=2) should be banned, Map 2 stays AVAILABLE
       const session = await createMultiplayerSession(t, {
         playerCount: 3,
         mapPoolSize: 5,
@@ -1638,9 +1639,9 @@ describe("voting.resolveRound", () => {
       expect(map1?.state).toBe("BANNED");
       expect(map1?.voteCount).toBe(2);
       expect(map1?.bannedAtRound).toBe(1);
-      expect(map2?.state).toBe("BANNED");
-      expect(map2?.voteCount).toBe(1);
-      expect(map2?.bannedAtRound).toBe(1);
+      // Map 2 got 1 vote but is NOT the highest — stays AVAILABLE
+      expect(map2?.state).toBe("AVAILABLE");
+      expect(map2?.voteCount).toBeUndefined();
     });
 
     it("maps with 0 votes remain AVAILABLE", async () => {
@@ -1886,18 +1887,19 @@ describe("voting.resolveRound", () => {
       }
     });
 
-    it("revote → normal resolution (winner found)", async () => {
+    it("revote → normal resolution (round advances, then winner)", async () => {
       const t = createTestContext();
-      // 3 players, 3 maps → deadlock → revote → winner
+      // 3 players, 3 maps → deadlock → revote → highest banned → round advance → winner
       const session = await createMultiplayerSession(t, {
         playerCount: 3,
         mapPoolSize: 3,
       });
 
-      // Round 1: deadlock (each votes different)
+      // Round 1: deadlock (each votes different, all tied at 1 → all banned → 0 remain)
       await allPlayersVoteDifferent(t, session);
 
-      // Round 2 (revote): 2 players vote Map 1, 1 votes Map 2 → Map 3 survives
+      // Round 2 (revote): 2 players vote Map 1, 1 votes Map 2
+      // Only Map 1 (highest=2) is banned → 2 remain → ROUND_ADVANCED
       await t.mutation(internal.voting.submitVote, {
         token: session.players[0].token,
         mapId: session.mapIds[0],
@@ -1908,20 +1910,45 @@ describe("voting.resolveRound", () => {
         mapId: session.mapIds[1],
         ipAddress: session.players[1].ip,
       });
-      const result = await t.mutation(internal.voting.submitVote, {
+      const r2Result = await t.mutation(internal.voting.submitVote, {
         token: session.players[2].token,
         mapId: session.mapIds[0],
         ipAddress: session.players[2].ip,
       });
 
-      expect(result.status).toBe("ok");
-      if (result.status !== "ok") throw new Error("Expected ok");
-      expect(result.resolution!.outcome).toBe("WINNER");
-      expect(result.resolution!.winnerMapId).toBe(session.mapIds[2]);
+      expect(r2Result.status).toBe("ok");
+      if (r2Result.status !== "ok") throw new Error("Expected ok");
+      expect(r2Result.resolution!.outcome).toBe("ROUND_ADVANCED");
 
-      const dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
-      expect(dbSession?.status).toBe("COMPLETE");
+      let dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+      expect(dbSession?.status).toBe("IN_PROGRESS");
       expect(dbSession?.isRevoteRound).toBe(false);
+
+      // Round 3: 2 players vote Map 2, 1 votes Map 3
+      // Only Map 2 (highest=2) banned → 1 remains (Map 3) → WINNER
+      await t.mutation(internal.voting.submitVote, {
+        token: session.players[0].token,
+        mapId: session.mapIds[1],
+        ipAddress: session.players[0].ip,
+      });
+      await t.mutation(internal.voting.submitVote, {
+        token: session.players[1].token,
+        mapId: session.mapIds[2],
+        ipAddress: session.players[1].ip,
+      });
+      const r3Result = await t.mutation(internal.voting.submitVote, {
+        token: session.players[2].token,
+        mapId: session.mapIds[1],
+        ipAddress: session.players[2].ip,
+      });
+
+      expect(r3Result.status).toBe("ok");
+      if (r3Result.status !== "ok") throw new Error("Expected ok");
+      expect(r3Result.resolution!.outcome).toBe("WINNER");
+      expect(r3Result.resolution!.winnerMapId).toBe(session.mapIds[2]);
+
+      dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+      expect(dbSession?.status).toBe("COMPLETE");
     });
 
     it("revote → round advance clears isRevoteRound", async () => {
@@ -2220,16 +2247,13 @@ describe("voting.resolveRound", () => {
 
     it("full flow produces correct audit log sequence", async () => {
       const t = createTestContext();
-      // 3 players, 3 maps → deadlock → revote → winner
+      // 2 players, 3 maps → each votes different (tied at 1, both banned → 1 remains → WINNER)
       const session = await createMultiplayerSession(t, {
-        playerCount: 3,
+        playerCount: 2,
         mapPoolSize: 3,
       });
 
-      // Round 1: deadlock
-      await allPlayersVoteDifferent(t, session);
-
-      // Round 2: 2 vote Map 1, 1 votes Map 2 → Map 3 wins
+      // Round 1: 2 players vote different maps → tied at max=1 → both banned → 1 remains
       await t.mutation(internal.voting.submitVote, {
         token: session.players[0].token,
         mapId: session.mapIds[0],
@@ -2237,13 +2261,8 @@ describe("voting.resolveRound", () => {
       });
       await t.mutation(internal.voting.submitVote, {
         token: session.players[1].token,
-        mapId: session.mapIds[0],
-        ipAddress: session.players[1].ip,
-      });
-      await t.mutation(internal.voting.submitVote, {
-        token: session.players[2].token,
         mapId: session.mapIds[1],
-        ipAddress: session.players[2].ip,
+        ipAddress: session.players[1].ip,
       });
 
       const logs = await t.run(async (ctx) =>
@@ -2255,11 +2274,8 @@ describe("voting.resolveRound", () => {
 
       const actions = logs.map((l) => l.action);
 
-      // 6 total VOTE_SUBMITTED (3 from round 1 + 3 from revote round 2)
-      expect(actions.filter((a) => a === "VOTE_SUBMITTED")).toHaveLength(6);
-      expect(actions.filter((a) => a === "ROUND_REVOTE_TRIGGERED")).toHaveLength(1);
-
-      // Resolution after revote round: ROUND_RESOLVED + WINNER_DECLARED
+      expect(actions.filter((a) => a === "VOTE_SUBMITTED")).toHaveLength(2);
+      // Resolution: ROUND_RESOLVED + WINNER_DECLARED
       expect(actions.filter((a) => a === "ROUND_RESOLVED")).toHaveLength(1);
       expect(actions.filter((a) => a === "WINNER_DECLARED")).toHaveLength(1);
     });
@@ -2577,8 +2593,9 @@ describe("WAR-20: multi-round voting flow", () => {
     expect(r2_p3.status).toBe("ok");
     if (r2_p3.status !== "ok") throw new Error("Expected ok");
     expect(r2_p3.allVotesSubmitted).toBe(true);
-    // Both remaining maps received votes → both banned → 0 remain → deadlock → REVOTE
-    expect(r2_p3.resolution!.outcome).toBe("REVOTE");
+    // Map at index 3 has 2 votes (highest), map at index 4 has 1 → only index 3 banned → 1 remains → WINNER
+    expect(r2_p3.resolution!.outcome).toBe("WINNER");
+    expect(r2_p3.resolution!.winnerMapId).toBe(session.mapIds[4]);
   });
 
   it("vote records use correct round number across rounds", async () => {

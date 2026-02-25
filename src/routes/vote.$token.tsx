@@ -546,9 +546,12 @@ function PlayerVotingPage() {
                 ? activeMaps
                 : maps
               ).map((map) => {
-                const bannedByPlayer = map.bannedByPlayerId
-                  ? allPlayers.find((p) => p._id === map.bannedByPlayerId)
-                  : null;
+                // MULTIPLAYER: use bannedByTeamNames; ABBA: look up player
+                const bannedByTeamName =
+                  session.format === "MULTIPLAYER"
+                    ? map.bannedByTeamNames?.join(", ")
+                    : allPlayers.find((p) => p._id === map.bannedByPlayerId)
+                        ?.teamName;
                 const isMyVote =
                   (map._id === data.playerVotedMapId ||
                     map._id === optimisticVotedMapId) &&
@@ -566,7 +569,7 @@ function PlayerVotingPage() {
                     justEliminated={isJustEliminated(map._id)}
                     survivor={isSurvivor(map._id, map.state)}
                     winner={isWinnerMap(map._id)}
-                    bannedByTeamName={bannedByPlayer?.teamName}
+                    bannedByTeamName={bannedByTeamName}
                     onMapClick={handleMapClick}
                   />
                 );

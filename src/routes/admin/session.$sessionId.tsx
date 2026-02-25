@@ -56,6 +56,8 @@ import {
   RotateCcw,
   ExternalLink,
   Hand,
+  Trash2,
+  RefreshCw,
 } from "lucide-react";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { toast } from "sonner";
@@ -239,9 +241,9 @@ const isValidSessionId = (id: string): boolean => {
 // Confirmation Dialog Config
 // ============================================================================
 
-type ActionName = "finalize" | "start" | "pause" | "resume" | "end" | "forceRandom" | "reset" | "clone" | "voteOnBehalf";
+type ActionName = "finalize" | "start" | "pause" | "resume" | "end" | "forceRandom" | "reset" | "clone" | "voteOnBehalf" | "delete";
 
-type ConfirmAction = "end" | "forceRandom" | "reset";
+type ConfirmAction = "end" | "forceRandom" | "reset" | "delete";
 
 const CONFIRM_DIALOG_CONFIG: Record<
   ConfirmAction,
@@ -268,6 +270,13 @@ const CONFIRM_DIALOG_CONFIG: Record<
     confirmLabel: "Reset Session",
     destructive: false,
   },
+  delete: {
+    title: "Delete Session?",
+    description:
+      "This will permanently delete the session and all associated data (players, maps, votes). This action cannot be undone.",
+    confirmLabel: "Delete Session",
+    destructive: true,
+  },
 };
 
 function SessionDetailPage() {
@@ -287,6 +296,8 @@ function SessionDetailPage() {
   const forceRandomMutation = useMutation(api.sessions.forceRandomSelection);
   const resetMutation = useMutation(api.sessions.resetSession);
   const cloneMutation = useMutation(api.sessions.cloneSession);
+  const deleteMutation = useMutation(api.sessions.deleteSession);
+  const regenerateTokenMutation = useMutation(api.sessions.regeneratePlayerToken);
   const voteOnBehalfMutation = useMutation(api.voting.adminVoteOnBehalf);
 
   // Loading state: tracks which action is in progress
@@ -457,6 +468,8 @@ function SessionDetailPage() {
   const isLive = session.status === "IN_PROGRESS";
   const isPaused = session.status === "PAUSED";
   const isLiveOrPaused = isLive || isPaused;
+  const isDeletable = session.status !== "IN_PROGRESS";
+  const canRegenToken = session.status === "DRAFT" || session.status === "WAITING" || isPaused;
   const allConnected = session.players.every((p) => p.isConnected);
 
   // Confirmation dialog handler
@@ -491,6 +504,17 @@ function SessionDetailPage() {
           () => {
             toast.success("Session reset");
             setConfirmAction(null);
+          },
+        );
+        break;
+      case "delete":
+        await handleAction(
+          actionName,
+          () => deleteMutation({ sessionId: typedSessionId }),
+          async () => {
+            toast.success("Session deleted");
+            setConfirmAction(null);
+            await navigate({ to: "/admin/dashboard" });
           },
         );
         break;
@@ -719,6 +743,19 @@ function SessionDetailPage() {
                 {actionLoading === "clone" ? "Cloning..." : "Clone"}
               </Button>
 
+              {/* Delete: all states except IN_PROGRESS */}
+              {isDeletable && (
+                <Button
+                  variant="destructive"
+                  disabled={isAnyLoading}
+                  className="gap-2"
+                  onClick={() => setConfirmAction("delete")}
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Delete
+                </Button>
+              )}
+
               {/* View Results: COMPLETE only */}
               {session.status === "COMPLETE" && (
                 <Button
@@ -844,6 +881,28 @@ function SessionDetailPage() {
                             <Copy className="w-4 h-4" />
                           )}
                         </Button>
+                        {canRegenToken && (
+                          <Button
+                            variant="outline"
+                            size="icon"
+                            disabled={isAnyLoading}
+                            className="shrink-0"
+                            aria-label="Regenerate link"
+                            title="Regenerate link"
+                            onClick={async () => {
+                              try {
+                                await regenerateTokenMutation({ playerId: player._id });
+                                toast.success(`Link regenerated for ${player.teamName}`);
+                              } catch (error) {
+                                toast.error(
+                                  error instanceof Error ? error.message : "Failed to regenerate link"
+                                );
+                              }
+                            }}
+                          >
+                            <RefreshCw className="w-4 h-4" />
+                          </Button>
+                        )}
                       </div>
                       {player.isIpLocked ? (
                         <Badge
@@ -974,9 +1033,11 @@ function SessionDetailPage() {
                       </div>
                       {getMapStateOverlay(
                         map.state,
-                        map.bannedByPlayerId
-                          ? (playerTeamMap.get(map.bannedByPlayerId) ?? "Unknown")
-                          : undefined
+                        session.format === "MULTIPLAYER"
+                          ? map.bannedByTeamNames?.join(", ")
+                          : map.bannedByPlayerId
+                            ? (playerTeamMap.get(map.bannedByPlayerId) ?? "Unknown")
+                            : undefined
                       )}
                     </div>
                   ))}
