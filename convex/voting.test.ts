@@ -1608,10 +1608,10 @@ describe("voting.resolveRound", () => {
       expect(result.resolution!.winnerMapId).toBe(session.mapIds[2]);
     });
 
-    it("only bans highest-voted maps, preserves lower-voted maps", async () => {
+    it("bans all voted maps when unvoted maps exist", async () => {
       const t = createTestContext();
       // 3 players, 5 maps: 2 players vote Map 1, 1 votes Map 2
-      // Only Map 1 (highest=2) should be banned, Map 2 stays AVAILABLE
+      // Maps 3-5 have 0 votes → ALL voted maps (Map 1 AND Map 2) are banned
       const session = await createMultiplayerSession(t, {
         playerCount: 3,
         mapPoolSize: 5,
@@ -1636,12 +1636,19 @@ describe("voting.resolveRound", () => {
       const map1 = await t.run(async (ctx) => ctx.db.get(session.mapIds[0]));
       const map2 = await t.run(async (ctx) => ctx.db.get(session.mapIds[1]));
 
+      // Both voted maps are banned (unvoted maps exist)
       expect(map1?.state).toBe("BANNED");
       expect(map1?.voteCount).toBe(2);
       expect(map1?.bannedAtRound).toBe(1);
-      // Map 2 got 1 vote but is NOT the highest — stays AVAILABLE
-      expect(map2?.state).toBe("AVAILABLE");
-      expect(map2?.voteCount).toBeUndefined();
+      expect(map2?.state).toBe("BANNED");
+      expect(map2?.voteCount).toBe(1);
+      expect(map2?.bannedAtRound).toBe(1);
+
+      // Unvoted maps remain AVAILABLE
+      for (let i = 2; i < 5; i++) {
+        const map = await t.run(async (ctx) => ctx.db.get(session.mapIds[i]));
+        expect(map?.state).toBe("AVAILABLE");
+      }
     });
 
     it("maps with 0 votes remain AVAILABLE", async () => {
@@ -1656,6 +1663,91 @@ describe("voting.resolveRound", () => {
 
       // Maps 2-5 should still be AVAILABLE
       for (let i = 1; i < 5; i++) {
+        const map = await t.run(async (ctx) => ctx.db.get(session.mapIds[i]));
+        expect(map?.state).toBe("AVAILABLE");
+      }
+    });
+
+    it("bans only highest-voted when all maps have votes", async () => {
+      const t = createTestContext();
+      // 4 players, 3 maps: 2 vote Map 1, 1 votes Map 2, 1 votes Map 3
+      // All maps have votes → only highest (Map 1, count=2) is banned
+      const session = await createMultiplayerSession(t, {
+        playerCount: 4,
+        mapPoolSize: 3,
+      });
+
+      await t.mutation(internal.voting.submitVote, {
+        token: session.players[0].token,
+        mapId: session.mapIds[0],
+        ipAddress: session.players[0].ip,
+      });
+      await t.mutation(internal.voting.submitVote, {
+        token: session.players[1].token,
+        mapId: session.mapIds[0],
+        ipAddress: session.players[1].ip,
+      });
+      await t.mutation(internal.voting.submitVote, {
+        token: session.players[2].token,
+        mapId: session.mapIds[1],
+        ipAddress: session.players[2].ip,
+      });
+      await t.mutation(internal.voting.submitVote, {
+        token: session.players[3].token,
+        mapId: session.mapIds[2],
+        ipAddress: session.players[3].ip,
+      });
+
+      const map1 = await t.run(async (ctx) => ctx.db.get(session.mapIds[0]));
+      const map2 = await t.run(async (ctx) => ctx.db.get(session.mapIds[1]));
+      const map3 = await t.run(async (ctx) => ctx.db.get(session.mapIds[2]));
+
+      // Only Map 1 (highest=2) is banned
+      expect(map1?.state).toBe("BANNED");
+      expect(map1?.voteCount).toBe(2);
+      // Map 2 and Map 3 stay AVAILABLE (lower-voted, but all maps had votes)
+      expect(map2?.state).toBe("AVAILABLE");
+      expect(map3?.state).toBe("AVAILABLE");
+    });
+
+    it("bans all voted maps including lower-voted when any map has 0 votes", async () => {
+      const t = createTestContext();
+      // 3 players, 5 maps: A=2, B=1, C=0, D=0, E=0
+      // Unvoted maps (C,D,E) exist → ban A and B; keep C,D,E
+      const session = await createMultiplayerSession(t, {
+        playerCount: 3,
+        mapPoolSize: 5,
+      });
+
+      // 2 vote Map 1 (A=2)
+      await t.mutation(internal.voting.submitVote, {
+        token: session.players[0].token,
+        mapId: session.mapIds[0],
+        ipAddress: session.players[0].ip,
+      });
+      await t.mutation(internal.voting.submitVote, {
+        token: session.players[1].token,
+        mapId: session.mapIds[0],
+        ipAddress: session.players[1].ip,
+      });
+      // 1 votes Map 2 (B=1), Maps 3-5 (C,D,E=0) have no votes
+      await t.mutation(internal.voting.submitVote, {
+        token: session.players[2].token,
+        mapId: session.mapIds[1],
+        ipAddress: session.players[2].ip,
+      });
+
+      const mapA = await t.run(async (ctx) => ctx.db.get(session.mapIds[0]));
+      const mapB = await t.run(async (ctx) => ctx.db.get(session.mapIds[1]));
+
+      // All voted maps banned (both A and B, even though B has fewer votes)
+      expect(mapA?.state).toBe("BANNED");
+      expect(mapA?.voteCount).toBe(2);
+      expect(mapB?.state).toBe("BANNED");
+      expect(mapB?.voteCount).toBe(1);
+
+      // Unvoted maps remain AVAILABLE
+      for (let i = 2; i < 5; i++) {
         const map = await t.run(async (ctx) => ctx.db.get(session.mapIds[i]));
         expect(map?.state).toBe("AVAILABLE");
       }
@@ -1889,7 +1981,7 @@ describe("voting.resolveRound", () => {
 
     it("revote → normal resolution (round advances, then winner)", async () => {
       const t = createTestContext();
-      // 3 players, 3 maps → deadlock → revote → highest banned → round advance → winner
+      // 3 players, 3 maps → deadlock → revote → round advance → winner
       const session = await createMultiplayerSession(t, {
         playerCount: 3,
         mapPoolSize: 3,
@@ -1898,56 +1990,24 @@ describe("voting.resolveRound", () => {
       // Round 1: deadlock (each votes different, all tied at 1 → all banned → 0 remain)
       await allPlayersVoteDifferent(t, session);
 
-      // Round 2 (revote): 2 players vote Map 1, 1 votes Map 2
-      // Only Map 1 (highest=2) is banned → 2 remain → ROUND_ADVANCED
-      await t.mutation(internal.voting.submitVote, {
-        token: session.players[0].token,
-        mapId: session.mapIds[0],
-        ipAddress: session.players[0].ip,
-      });
-      await t.mutation(internal.voting.submitVote, {
-        token: session.players[1].token,
-        mapId: session.mapIds[1],
-        ipAddress: session.players[1].ip,
-      });
-      const r2Result = await t.mutation(internal.voting.submitVote, {
-        token: session.players[2].token,
-        mapId: session.mapIds[0],
-        ipAddress: session.players[2].ip,
-      });
+      // Round 2 (revote): all 3 vote Map 1 → Map 1 banned (only voted map,
+      // Maps 2,3 unvoted) → 2 remain → ROUND_ADVANCED
+      await allPlayersVoteSame(t, session, 0);
 
-      expect(r2Result.status).toBe("ok");
-      if (r2Result.status !== "ok") throw new Error("Expected ok");
-      expect(r2Result.resolution!.outcome).toBe("ROUND_ADVANCED");
+      const dbSessionR2 = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+      expect(dbSessionR2?.status).toBe("IN_PROGRESS");
+      expect(dbSessionR2?.isRevoteRound).toBe(false);
+      expect(dbSessionR2?.currentRound).toBe(3);
 
-      let dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
-      expect(dbSession?.status).toBe("IN_PROGRESS");
-      expect(dbSession?.isRevoteRound).toBe(false);
-
-      // Round 3: 2 players vote Map 2, 1 votes Map 3
-      // Only Map 2 (highest=2) banned → 1 remains (Map 3) → WINNER
-      await t.mutation(internal.voting.submitVote, {
-        token: session.players[0].token,
-        mapId: session.mapIds[1],
-        ipAddress: session.players[0].ip,
-      });
-      await t.mutation(internal.voting.submitVote, {
-        token: session.players[1].token,
-        mapId: session.mapIds[2],
-        ipAddress: session.players[1].ip,
-      });
-      const r3Result = await t.mutation(internal.voting.submitVote, {
-        token: session.players[2].token,
-        mapId: session.mapIds[1],
-        ipAddress: session.players[2].ip,
-      });
+      // Round 3: all 3 vote Map 2 → Map 2 banned (Map 3 unvoted) → 1 remains (Map 3) → WINNER
+      const r3Result = await allPlayersVoteSame(t, session, 1);
 
       expect(r3Result.status).toBe("ok");
       if (r3Result.status !== "ok") throw new Error("Expected ok");
       expect(r3Result.resolution!.outcome).toBe("WINNER");
       expect(r3Result.resolution!.winnerMapId).toBe(session.mapIds[2]);
 
-      dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
+      const dbSession = await t.run(async (ctx) => ctx.db.get(session.sessionId));
       expect(dbSession?.status).toBe("COMPLETE");
     });
 

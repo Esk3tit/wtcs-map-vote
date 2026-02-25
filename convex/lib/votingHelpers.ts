@@ -127,26 +127,37 @@ async function tallyVotes(
 }
 
 /**
- * Ban only the map(s) with the highest vote count. Maps with fewer votes
- * remain AVAILABLE. If multiple maps tie at the max, all tied maps are banned.
- * Records which teams voted for each banned map in bannedByTeamNames.
+ * Ban maps based on vote tallies and available map context.
  *
+ * When unvoted maps exist (any available map not in tallies), ban ALL voted
+ * maps to narrow the pool to only unvoted maps. When all maps have votes,
+ * ban only the highest-voted map(s). Records which teams voted for each
+ * banned map in bannedByTeamNames.
+ *
+ * @param availableMapIds - Set of all currently AVAILABLE session map IDs
  * @returns IDs of banned maps
  */
 async function banHighestVotedMaps(
   ctx: MutationCtx,
   tallies: Map<Id<"sessionMaps">, number>,
   voterTeamsByMap: Map<Id<"sessionMaps">, string[]>,
-  round: number
+  round: number,
+  availableMapIds: Set<string>
 ): Promise<Id<"sessionMaps">[]> {
   if (tallies.size === 0) return [];
 
+  // Check if any available map has zero votes (not in tallies)
+  const hasUnvotedMaps = Array.from(availableMapIds).some(
+    (id) => !tallies.has(id as Id<"sessionMaps">)
+  );
+
+  // If unvoted maps exist, ban ALL voted maps; otherwise ban only highest
   const maxVotes = Math.max(...tallies.values());
   const bannedIds: Id<"sessionMaps">[] = [];
 
   await Promise.all(
     Array.from(tallies.entries()).map(async ([mapId, count]) => {
-      if (count === maxVotes) {
+      if (hasUnvotedMaps || count === maxVotes) {
         bannedIds.push(mapId);
         await ctx.db.patch(mapId, {
           state: "BANNED",
@@ -208,10 +219,19 @@ export async function resolveRound(
   // 1. Tally votes for the current round
   const { tallies, voterTeamsByMap } = await tallyVotes(ctx, session._id, currentRound);
 
-  // 2. Ban only the highest-voted map(s)
-  const bannedIds = await banHighestVotedMaps(ctx, tallies, voterTeamsByMap, currentRound);
+  // 2. Query available maps BEFORE banning (needed to determine ban strategy)
+  const availableMapsBefore = await ctx.db
+    .query("sessionMaps")
+    .withIndex("by_sessionId_and_state", (q) =>
+      q.eq("sessionId", session._id).eq("state", "AVAILABLE")
+    )
+    .collect();
+  const availableMapIds = new Set(availableMapsBefore.map((m) => m._id.toString()));
 
-  // 3. Count remaining AVAILABLE maps
+  // 3. Ban maps (all voted if unvoted maps exist, else highest-only)
+  const bannedIds = await banHighestVotedMaps(ctx, tallies, voterTeamsByMap, currentRound, availableMapIds);
+
+  // 4. Count remaining AVAILABLE maps
   const remainingMaps = await ctx.db
     .query("sessionMaps")
     .withIndex("by_sessionId_and_state", (q) =>
@@ -221,7 +241,7 @@ export async function resolveRound(
 
   const remainingCount = remainingMaps.length;
 
-  // 4. Determine outcome
+  // 5. Determine outcome
   if (remainingCount === 1) {
     // === WINNER: exactly one map left ===
     const winnerMap = remainingMaps[0];
