@@ -10,7 +10,7 @@ dependencies: []
 
 ## Problem Statement
 
-The new integration test "deadlock -> pause -> resume -> second deadlock -> random winner" is 48 lines but carries ~28 extra lines of intermediate assertions (pause status check, redundant round-1 DB reads, type-narrowing boilerplate) that duplicate the adjacent stakeholder test. Can be trimmed to ~20 lines while testing the exact same behavior.
+The new integration test "deadlock -> pause -> resume -> second deadlock -> random winner" is 48 lines but carries ~28 extra lines of intermediate assertions (pause status check, redundant round-1 DB reads, type-narrowing boilerplate) that duplicate the adjacent stakeholder test, and it can be trimmed to ~20 lines while testing the same behavior.
 
 ## Findings
 
