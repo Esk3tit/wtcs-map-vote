@@ -242,7 +242,11 @@ export async function advanceRound(
  * Resolve the current round. Can be called after all players voted
  * or directly by the timer expiry handler with partial votes.
  *
- * Tallies votes, bans only the highest-voted map(s), then determines outcome:
+ * Tallies votes and applies the multiplayer ban rules:
+ * - If unvoted maps exist, ban all voted maps.
+ * - If all maps have votes, ban only the highest-voted map(s).
+ * - If all maps tie (global tie), trigger deadlock/revote.
+ * Then determines outcome:
  * - 1 map left -> WINNER
  * - >1 maps left -> ROUND_ADVANCED (next round)
  * - 0 maps left, first deadlock -> REVOTE (reset maps, try again)
