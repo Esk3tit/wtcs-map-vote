@@ -98,6 +98,7 @@ const sessionMapObjectValidator = v.object({
   imageUrl: v.string(),
   state: mapStateValidator,
   bannedByPlayerId: v.optional(v.id("sessionPlayers")),
+  bannedByTeamNames: v.optional(v.array(v.string())),
   bannedAtTurn: v.optional(v.number()),
   bannedAtRound: v.optional(v.number()),
   voteCount: v.optional(v.number()),
@@ -1385,6 +1386,7 @@ export const resetSession = mutation({
         ctx.db.patch(m._id, {
           state: "AVAILABLE",
           bannedByPlayerId: undefined,
+          bannedByTeamNames: undefined,
           bannedAtTurn: undefined,
           bannedAtRound: undefined,
           voteCount: undefined,

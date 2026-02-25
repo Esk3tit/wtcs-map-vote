@@ -323,6 +323,7 @@ export async function resolveRound(
           voteCount: undefined,
           bannedAtRound: undefined,
           bannedByPlayerId: undefined,
+          bannedByTeamNames: undefined,
         })
       )
     );

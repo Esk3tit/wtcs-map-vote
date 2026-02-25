@@ -312,6 +312,26 @@ export const handleTimerExpiry = internalMutation({
         return { processed: false };
       }
 
+      // If only one map remains, declare it the winner immediately
+      // (don't ban the last map — that would leave zero available maps)
+      if (availableMaps.length === 1) {
+        await logAction(ctx, {
+          sessionId: session._id,
+          action: "TIMER_EXPIRED",
+          actorType: "SYSTEM",
+          details: {
+            turn: session.currentTurn,
+            teamName: activePlayer.teamName,
+            reason: "AUTO_EXPIRED",
+          },
+        });
+        await completeSession(ctx, session, availableMaps[0], {
+          turn: session.currentTurn,
+          reason: "Last map standing (timer expired, auto-completed)",
+        });
+        return { processed: true };
+      }
+
       // Log timer expiry audit event
       await logAction(ctx, {
         sessionId: session._id,
@@ -381,12 +401,21 @@ export const handleTimerExpiry = internalMutation({
         return { processed: false };
       }
 
+      // If only one map remains, declare it the winner immediately
+      if (availableMaps.length === 1) {
+        await completeSession(ctx, session, availableMaps[0], {
+          round: session.currentRound,
+          reason: "Last map standing (no votes, auto-completed)",
+        });
+        return { processed: true };
+      }
+
       const targetMap = pickRandom(availableMaps);
       await ctx.db.patch(targetMap._id, {
         state: "BANNED",
         voteCount: 0,
         bannedAtRound: session.currentRound,
-        bannedByTeamNames: ["No votes (random)"],
+        bannedByTeamNames: [],
       });
 
       await logAction(ctx, {
@@ -412,8 +441,8 @@ export const handleTimerExpiry = internalMutation({
           round: session.currentRound,
           reason: "Last map standing after no-vote random elimination",
         });
-      } else if (remainingMaps.length > 1) {
-        // Advance to next round
+      } else {
+        // Advance to next round (remainingMaps.length > 1 guaranteed by early return above)
         const now = Date.now();
         const timerStart = now + REVEAL_DURATION_MS;
         await ctx.db.patch(session._id, {
@@ -448,7 +477,6 @@ export const handleTimerExpiry = internalMutation({
           "MULTIPLAYER"
         );
       }
-      // remainingMaps.length === 0 shouldn't happen with random single elimination
     } else {
       // Partial votes submitted — resolve round with only submitted votes.
       // resolveRound reads from the votes table (only submitted votes) and

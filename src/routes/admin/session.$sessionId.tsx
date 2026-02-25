@@ -241,7 +241,7 @@ const isValidSessionId = (id: string): boolean => {
 // Confirmation Dialog Config
 // ============================================================================
 
-type ActionName = "finalize" | "start" | "pause" | "resume" | "end" | "forceRandom" | "reset" | "clone" | "voteOnBehalf" | "delete";
+type ActionName = "finalize" | "start" | "pause" | "resume" | "end" | "forceRandom" | "reset" | "clone" | "voteOnBehalf" | "delete" | "regenerateToken";
 
 type ConfirmAction = "end" | "forceRandom" | "reset" | "delete";
 
@@ -889,18 +889,19 @@ function SessionDetailPage() {
                             className="shrink-0"
                             aria-label="Regenerate link"
                             title="Regenerate link"
-                            onClick={async () => {
-                              try {
-                                await regenerateTokenMutation({ playerId: player._id });
-                                toast.success(`Link regenerated for ${player.teamName}`);
-                              } catch (error) {
-                                toast.error(
-                                  error instanceof Error ? error.message : "Failed to regenerate link"
-                                );
-                              }
-                            }}
+                            onClick={() =>
+                              handleAction(
+                                "regenerateToken",
+                                () => regenerateTokenMutation({ playerId: player._id }),
+                                () => { toast.success(`Link regenerated for ${player.teamName}`); },
+                              )
+                            }
                           >
-                            <RefreshCw className="w-4 h-4" />
+                            {actionLoading === "regenerateToken" ? (
+                              <Loader2 className="w-4 h-4 animate-spin" />
+                            ) : (
+                              <RefreshCw className="w-4 h-4" />
+                            )}
                           </Button>
                         )}
                       </div>
