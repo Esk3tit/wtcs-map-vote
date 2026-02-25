@@ -1035,7 +1035,11 @@ function SessionDetailPage() {
                       {getMapStateOverlay(
                         map.state,
                         session.format === "MULTIPLAYER"
-                          ? map.bannedByTeamNames?.join(", ")
+                          ? (map.bannedByTeamNames?.length
+                              ? map.bannedByTeamNames.join(", ")
+                              : map.bannedByPlayerId
+                                ? (playerTeamMap.get(map.bannedByPlayerId) ?? "Unknown")
+                                : undefined)
                           : map.bannedByPlayerId
                             ? (playerTeamMap.get(map.bannedByPlayerId) ?? "Unknown")
                             : undefined
