@@ -243,7 +243,7 @@ const isValidSessionId = (id: string): boolean => {
 
 type ActionName = "finalize" | "start" | "pause" | "resume" | "end" | "forceRandom" | "reset" | "clone" | "voteOnBehalf" | "delete";
 
-type ConfirmAction = "end" | "forceRandom" | "reset" | "delete";
+type ConfirmAction = "end" | "forceRandom" | "reset" | "delete" | "startNotReady";
 
 const CONFIRM_DIALOG_CONFIG: Record<
   ConfirmAction,
@@ -276,6 +276,13 @@ const CONFIRM_DIALOG_CONFIG: Record<
       "This will permanently delete the session and all associated data (players, maps, votes). This action cannot be undone.",
     confirmLabel: "Delete Session",
     destructive: true,
+  },
+  startNotReady: {
+    title: "Not All Players Ready",
+    description:
+      "Some players haven't clicked Ready Up yet. Their audio alerts may not work for the first turn. Start anyway?",
+    confirmLabel: "Start Session",
+    destructive: false,
   },
 };
 
@@ -521,6 +528,16 @@ function SessionDetailPage() {
           },
         );
         break;
+      case "startNotReady":
+        await handleAction(
+          "start",
+          () => startMutation({ sessionId: typedSessionId }),
+          () => {
+            toast.success("Session started");
+            setConfirmAction(null);
+          },
+        );
+        break;
       default: {
         const _exhaustive: never = actionName;
         throw new Error(`Unhandled confirm action: ${_exhaustive}`);
@@ -613,13 +630,20 @@ function SessionDetailPage() {
                       ? "Waiting for all players to connect"
                       : undefined
                   }
-                  onClick={() =>
-                    handleAction(
-                      "start",
-                      () => startMutation({ sessionId: typedSessionId }),
-                      () => { toast.success("Session started"); },
-                    )
-                  }
+                  onClick={() => {
+                    const allReady = session.players.every(
+                      (p) => isReadyActive(p.readyAt, Date.now())
+                    );
+                    if (allReady) {
+                      handleAction(
+                        "start",
+                        () => startMutation({ sessionId: typedSessionId }),
+                        () => { toast.success("Session started"); },
+                      );
+                    } else {
+                      setConfirmAction("startNotReady");
+                    }
+                  }}
                 >
                   {actionLoading === "start" ? (
                     <Loader2 className="w-4 h-4 animate-spin" />
