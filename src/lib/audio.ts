@@ -30,7 +30,7 @@ const SOUND_FILES: Record<SoundName, string> = {
   "timeout-buzzer": "/sounds/timeout-buzzer.wav",
   "vote-click": "/sounds/vote-click.wav",
   "map-banned": "/sounds/map-banned.wav",
-  "winner-fanfare": "/sounds/winner-fanfare.wav",
+  "winner-fanfare": "/sounds/winner-fanfare.ogg",
 };
 
 // ============================================================================
