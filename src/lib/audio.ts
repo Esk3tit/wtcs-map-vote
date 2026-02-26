@@ -14,7 +14,6 @@ export type SoundName =
   | "turn-start"
   | "timer-warning"
   | "timeout-buzzer"
-  | "vote-click"
   | "map-banned"
   | "winner-fanfare";
 
@@ -28,7 +27,6 @@ const SOUND_FILES: Record<SoundName, string> = {
   "turn-start": "/sounds/turn-start.mp3",
   "timer-warning": "/sounds/timer-warning.mp3",
   "timeout-buzzer": "/sounds/timeout-buzzer.mp3",
-  "vote-click": "/sounds/vote-click.mp3",
   "map-banned": "/sounds/map-banned.mp3",
   "winner-fanfare": "/sounds/winner-fanfare.mp3",
 };

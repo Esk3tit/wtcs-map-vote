@@ -163,9 +163,6 @@ function PlayerVotingPage() {
 
   // Audio: reactive muted state for the toggle UI
   const [muted, setMuted] = useState(() => audioManager.muted);
-  const play = useCallback((name: Parameters<typeof audioManager.play>[0]) => {
-    audioManager.play(name);
-  }, []);
   const toggleMute = useCallback(() => {
     const newMuted = audioManager.toggleMute();
     setMuted(newMuted);
@@ -387,7 +384,6 @@ function PlayerVotingPage() {
       const result: { status: string; error?: string } = await res.json();
 
       if (result.status === "ok") {
-        play("vote-click");
         if (pendingAction.type === "vote" && currentRound !== undefined) {
           setOptimisticVote({ mapId: pendingAction._id, forRound: currentRound });
         }
