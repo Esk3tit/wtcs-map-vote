@@ -50,6 +50,12 @@ export function useAudioAlerts({
   currentRound,
   phaseState,
 }: UseAudioAlertsOptions): void {
+  // Suppression strategy: isInitialMount prevents false-positive sounds on
+  // page load / reconnect. Phase-change and timer-warning sounds check
+  // isInitialMount; turn-start relies on prevTurnRef matching isYourTurn on
+  // first render, so it naturally suppresses without an explicit guard.
+  const isInitialMount = useRef(true);
+
   // --------------------------------------------------------------------------
   // Turn-start chime: fires on isYourTurn false → true transition
   // --------------------------------------------------------------------------
@@ -67,22 +73,25 @@ export function useAudioAlerts({
 
   // --------------------------------------------------------------------------
   // Timer warning beep (5s) and timeout buzzer (0s)
+  //
+  // NOTE: This interval intentionally duplicates the countdown calculation from
+  // CountdownTimer. Coupling them would add complexity for negligible perf gain.
   // --------------------------------------------------------------------------
   const turnKey = `${currentTurn}-${currentRound}`;
   const hasWarnedRef = useRef<string | null>(null);
   const hasBuzzedRef = useRef<string | null>(null);
 
-  // Reset flags when turn changes
   useEffect(() => {
+    // Reset once-per-turn flags at the start of each timer cycle
     hasWarnedRef.current = null;
     hasBuzzedRef.current = null;
-  }, [turnKey]);
 
-  useEffect(() => {
     // Don't poll when timer isn't active
     if (!timerStartedAt || isPaused || timerPausedAt !== undefined) return;
 
     const checkTimer = () => {
+      // Skip on initial mount to avoid beeping on reconnect when < 5s remain
+      if (isInitialMount.current) return;
       // Skip if tab is hidden — don't fire retroactively
       if (document.visibilityState === "hidden") return;
 
@@ -119,14 +128,14 @@ export function useAudioAlerts({
   // Skip the first render to prevent sounds firing when a user loads the page
   // during an in-progress REVEALING or WINNER_REVEAL phase. On initial mount,
   // usePrevious returns undefined, so the "prevPhase !== X" check would
-  // incorrectly evaluate to true.
+  // incorrectly evaluate to true. This effect also clears isInitialMount for
+  // all other effects.
   // --------------------------------------------------------------------------
   const prevPhase = usePrevious(phaseState.phase);
-  const isPhaseInitialMount = useRef(true);
 
   useEffect(() => {
-    if (isPhaseInitialMount.current) {
-      isPhaseInitialMount.current = false;
+    if (isInitialMount.current) {
+      isInitialMount.current = false;
       return;
     }
 

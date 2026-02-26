@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
@@ -29,7 +29,7 @@ import {
 } from "@/components/session/ConnectionStatusBadge";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
 import { useRevealPhase } from "@/hooks/useRevealPhase";
-import { useAudio } from "@/hooks/useAudio";
+import { audioManager } from "@/lib/audio";
 import { useAudioAlerts } from "@/hooks/useAudioAlerts";
 import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
 import { SITE_URL } from "@/lib/convexHttp";
@@ -161,8 +161,15 @@ function PlayerVotingPage() {
     isPaused,
   });
 
-  // Audio alerts
-  const { play, muted, toggleMute } = useAudio();
+  // Audio: reactive muted state for the toggle UI
+  const [muted, setMuted] = useState(() => audioManager.muted);
+  const play = useCallback((name: Parameters<typeof audioManager.play>[0]) => {
+    audioManager.play(name);
+  }, []);
+  const toggleMute = useCallback(() => {
+    const newMuted = audioManager.toggleMute();
+    setMuted(newMuted);
+  }, []);
 
   useAudioAlerts({
     isYourTurn: data?.status === "valid" ? data.isYourTurn : false,
@@ -346,7 +353,6 @@ function PlayerVotingPage() {
   const handleMapClick = (mapId: Id<"sessionMaps">, mapName: string) => {
     if (!isYourTurn || isSubmitting || !isInteractive) return;
 
-    play("vote-click");
     setPendingAction({
       _id: mapId,
       name: mapName,
@@ -380,6 +386,7 @@ function PlayerVotingPage() {
       const result: { status: string; error?: string } = await res.json();
 
       if (result.status === "ok") {
+        play("vote-click");
         if (pendingAction.type === "vote" && currentRound !== undefined) {
           setOptimisticVote({ mapId: pendingAction._id, forRound: currentRound });
         }
