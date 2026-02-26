@@ -44,7 +44,7 @@ Option 2: Leave as-is. Vite code-splits so module only loads on vote page. 288KB
 ## Technical Details
 
 - **Affected Files**: `src/lib/audio.ts`
-- **Related Components**: `useAudio.ts`
+- **Related Components**: `useAudioAlerts.ts`
 - **Database Changes**: No
 
 ## Acceptance Criteria
