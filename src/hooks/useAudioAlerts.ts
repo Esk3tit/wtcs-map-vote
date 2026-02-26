@@ -52,24 +52,28 @@ export function useAudioAlerts({
 }: UseAudioAlertsOptions): void {
   // Suppression strategy: isInitialMount prevents false-positive sounds on
   // page load / reconnect. Phase-change and timer-warning sounds check
-  // isInitialMount; turn-start relies on prevTurnRef matching isYourTurn on
-  // first render, so it naturally suppresses without an explicit guard.
+  // isInitialMount; turn-start relies on prevTurnState ref matching current
+  // values on first render, so it naturally suppresses without an explicit guard.
   const isInitialMount = useRef(true);
 
   // --------------------------------------------------------------------------
-  // Turn-start chime: fires on isYourTurn false → true transition
+  // Turn-start chime: fires when it becomes your turn.
+  // Watches both isYourTurn AND currentTurn to handle ABBA consecutive turns
+  // (e.g. A,B,B,A,A — where isYourTurn stays true across turns 4→5).
   // --------------------------------------------------------------------------
-  const prevTurnRef = useRef(isYourTurn);
+  const prevTurnState = useRef({ isYourTurn, currentTurn });
 
   useEffect(() => {
-    const wasMyTurn = prevTurnRef.current;
-    prevTurnRef.current = isYourTurn;
+    const prev = prevTurnState.current;
+    prevTurnState.current = { isYourTurn, currentTurn };
 
-    // Only fire on false → true transition (not on initial mount if already true)
-    if (isYourTurn && !wasMyTurn && !isPaused && !isOverlayVisible) {
+    // No change in turn state — skip (also prevents firing on isPaused/overlay changes)
+    if (prev.isYourTurn === isYourTurn && prev.currentTurn === currentTurn) return;
+
+    if (isYourTurn && !isPaused && !isOverlayVisible) {
       audioManager.play("turn-start");
     }
-  }, [isYourTurn, isPaused, isOverlayVisible]);
+  }, [isYourTurn, currentTurn, isPaused, isOverlayVisible]);
 
   // --------------------------------------------------------------------------
   // Timer warning beep (5s) and timeout buzzer (0s)
@@ -117,8 +121,14 @@ export function useAudioAlerts({
     // Check immediately in case we're already past a threshold
     checkTimer();
 
-    const interval = setInterval(checkTimer, 1000);
-    return () => clearInterval(interval);
+    const interval = setInterval(checkTimer, 500);
+    return () => {
+      clearInterval(interval);
+      // Final check: catch the buzzer before the turn changes. Without this,
+      // the server can process a timeout and update timerStartedAt (triggering
+      // effect re-run) before the interval catches remaining=0.
+      checkTimer();
+    };
   }, [timerStartedAt, timerPausedAt, isPaused, turnTimerSeconds, turnKey]);
 
   // --------------------------------------------------------------------------

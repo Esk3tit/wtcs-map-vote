@@ -191,8 +191,9 @@ function PlayerVotingPage() {
   const redirectData =
     phaseState.phase === "REVEALING" ||
     phaseState.phase === "WINNER_REVEAL" ||
-    // Suppress redirect while winner detection effect catches up (1-render gap)
-    (isMultiplayer && sessionStatus === "COMPLETE" && phaseState.phase === "VOTING")
+    // Suppress redirect while winner detection effect catches up (1-render gap).
+    // Applies to both ABBA and MULTIPLAYER so the winner fanfare can play.
+    (sessionStatus === "COMPLETE" && phaseState.phase === "VOTING")
       ? undefined
       : data;
   const isRedirecting = useSessionStatusRedirect(redirectData, token, "vote");
