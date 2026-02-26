@@ -29,10 +29,12 @@ import {
 } from "@/components/session/ConnectionStatusBadge";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
 import { useRevealPhase } from "@/hooks/useRevealPhase";
+import { useAudio } from "@/hooks/useAudio";
+import { useAudioAlerts } from "@/hooks/useAudioAlerts";
 import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
 import { SITE_URL } from "@/lib/convexHttp";
 import { cn } from "@/lib/utils";
-import { Check, Lock, Loader2, Trophy } from "lucide-react";
+import { Check, Lock, Loader2, Trophy, Volume2, VolumeX } from "lucide-react";
 import { toast } from "sonner";
 import type { Id } from "../../convex/_generated/dataModel";
 
@@ -157,6 +159,24 @@ function PlayerVotingPage() {
       data?.status === "valid" ? (data.session.isRevoteRound ?? false) : false,
     isMultiplayer,
     isPaused,
+  });
+
+  // Audio alerts
+  const { play, muted, toggleMute } = useAudio();
+
+  useAudioAlerts({
+    isYourTurn: data?.status === "valid" ? data.isYourTurn : false,
+    isPaused,
+    isOverlayVisible: auth.isOverlayVisible,
+    turnTimerSeconds:
+      data?.status === "valid" ? data.session.turnTimerSeconds : 0,
+    timerStartedAt:
+      data?.status === "valid" ? data.session.timerStartedAt : undefined,
+    timerPausedAt:
+      data?.status === "valid" ? data.session.timerPausedAt : undefined,
+    currentTurn: data?.status === "valid" ? data.session.currentTurn : 0,
+    currentRound: currentRound ?? 1,
+    phaseState,
   });
 
   // Auto-redirect based on session status (suppressed during reveal phases)
@@ -326,6 +346,7 @@ function PlayerVotingPage() {
   const handleMapClick = (mapId: Id<"sessionMaps">, mapName: string) => {
     if (!isYourTurn || isSubmitting || !isInteractive) return;
 
+    play("vote-click");
     setPendingAction({
       _id: mapId,
       name: mapName,
@@ -667,7 +688,20 @@ function PlayerVotingPage() {
               <Lock className="w-4 h-4 flex-shrink-0" />
               <span>Session locked to your device</span>
             </div>
-            <ConnectionStatusBadge status={auth.connectionStatus} />
+            <div className="flex items-center gap-2">
+              <button
+                onClick={toggleMute}
+                className="p-1 rounded hover:bg-muted transition-colors"
+                aria-label={muted ? "Unmute audio" : "Mute audio"}
+              >
+                {muted ? (
+                  <VolumeX className="w-4 h-4" />
+                ) : (
+                  <Volume2 className="w-4 h-4" />
+                )}
+              </button>
+              <ConnectionStatusBadge status={auth.connectionStatus} />
+            </div>
           </div>
         </footer>
 

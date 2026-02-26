@@ -1,22 +1,6 @@
 import { useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
-
-// Helper function to calculate remaining time from server timestamp.
-// When paused, freezes elapsed time at the pause moment instead of using Date.now().
-// Handles timerStartedAt being in the future (MULTIPLAYER reveal offset).
-function calculateRemainingTime(
-  turnTimerSeconds: number,
-  timerStartedAt: number | undefined,
-  timerPausedAt: number | undefined
-): number {
-  if (!timerStartedAt) return turnTimerSeconds;
-  const now = timerPausedAt ?? Date.now();
-  // Clamp: if timer hasn't started yet (future timerStartedAt from reveal offset),
-  // show full duration instead of inflated time from negative elapsed
-  if (timerStartedAt > now) return turnTimerSeconds;
-  const elapsed = Math.floor((now - timerStartedAt) / 1000);
-  return Math.max(0, turnTimerSeconds - elapsed);
-}
+import { calculateRemainingTime } from "@/lib/timer";
 
 // Separate Timer component that calculates remaining time from server timestamp.
 // Displays M:SS format with warning colors at 10s (amber) and 5s (red + pulse).
