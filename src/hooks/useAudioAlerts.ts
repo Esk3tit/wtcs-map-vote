@@ -27,6 +27,10 @@ export interface UseAudioAlertsOptions {
   currentRound: number;
   /** Reveal phase state from useRevealPhase (MULTIPLAYER) */
   phaseState: PhaseState;
+  /** Whether the session is MULTIPLAYER format */
+  isMultiplayer: boolean;
+  /** Whether the player has already voted/banned this round */
+  hasVotedThisRound: boolean;
 }
 
 // ============================================================================
@@ -49,6 +53,8 @@ export function useAudioAlerts({
   currentTurn,
   currentRound,
   phaseState,
+  isMultiplayer,
+  hasVotedThisRound,
 }: UseAudioAlertsOptions): void {
   // Suppression strategy: isInitialMount prevents false-positive sounds on
   // page load / reconnect. Phase-change and timer-warning sounds check
@@ -81,9 +87,18 @@ export function useAudioAlerts({
   // --------------------------------------------------------------------------
   // Timer warning beep (5s) and timeout buzzer (0s)
   //
+  // Only plays when the player still needs to act:
+  //   - MULTIPLAYER: hasn't voted this round
+  //   - ABBA: it's their turn
+  // Updated via ref to avoid restarting the timer effect on vote/turn changes.
+  //
   // NOTE: This interval intentionally duplicates the countdown calculation from
   // CountdownTimer. Coupling them would add complexity for negligible perf gain.
   // --------------------------------------------------------------------------
+  const playerNeedsToActRef = useRef(true);
+  useEffect(() => {
+    playerNeedsToActRef.current = isMultiplayer ? !hasVotedThisRound : isYourTurn;
+  }, [isMultiplayer, hasVotedThisRound, isYourTurn]);
   const turnKey = `${currentTurn}-${currentRound}`;
   const hasWarnedRef = useRef<string | null>(null);
   const hasBuzzedRef = useRef<string | null>(null);
@@ -101,6 +116,8 @@ export function useAudioAlerts({
       if (isInitialMount.current) return;
       // Skip if tab is hidden — don't fire retroactively
       if (document.visibilityState === "hidden") return;
+      // Skip if the player doesn't need to act (already voted / not their turn)
+      if (!playerNeedsToActRef.current) return;
 
       const remaining = calculateRemainingTime(
         turnTimerSeconds,
@@ -135,7 +152,7 @@ export function useAudioAlerts({
   }, [timerStartedAt, timerPausedAt, isPaused, turnTimerSeconds, turnKey]);
 
   // --------------------------------------------------------------------------
-  // Map-banned sound: fires once when phase transitions to REVEALING
+  // Map-banned sound (MULTIPLAYER): fires once when phase transitions to REVEALING
   // Winner fanfare: fires once when phase transitions to WINNER_REVEAL
   //
   // Skip the first render to prevent sounds firing when a user loads the page

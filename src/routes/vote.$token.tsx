@@ -181,6 +181,11 @@ function PlayerVotingPage() {
     currentTurn: data?.status === "valid" ? data.session.currentTurn : 0,
     currentRound: currentRound ?? 1,
     phaseState,
+    isMultiplayer,
+    hasVotedThisRound:
+      data?.status === "valid"
+        ? !!(data.playerVotedMapId || optimisticVotedMapId)
+        : false,
   });
 
   // Auto-redirect based on session status (suppressed during reveal phases)
