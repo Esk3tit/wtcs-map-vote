@@ -52,16 +52,19 @@ export function useAudioAlerts({
 }: UseAudioAlertsOptions): void {
   // Suppression strategy: isInitialMount prevents false-positive sounds on
   // page load / reconnect. Phase-change and timer-warning sounds check
-  // isInitialMount; turn-start relies on prevTurnState ref matching current
-  // values on first render, so it naturally suppresses without an explicit guard.
+  // isInitialMount; turn-start uses sentinel initial values so the chime
+  // plays on the first turn of a new session (and on page reload, which is
+  // acceptable — it reminds the player to act).
   const isInitialMount = useRef(true);
 
   // --------------------------------------------------------------------------
   // Turn-start chime: fires when it becomes your turn.
   // Watches both isYourTurn AND currentTurn to handle ABBA consecutive turns
   // (e.g. A,B,B,A,A — where isYourTurn stays true across turns 4→5).
+  // Sentinel initial values ensure the chime fires on the very first turn
+  // regardless of whether Convex data is cached (instant) or fetched (async).
   // --------------------------------------------------------------------------
-  const prevTurnState = useRef({ isYourTurn, currentTurn });
+  const prevTurnState = useRef({ isYourTurn: false, currentTurn: 0 });
 
   useEffect(() => {
     const prev = prevTurnState.current;
