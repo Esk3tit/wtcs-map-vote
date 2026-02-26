@@ -58,7 +58,7 @@ class AudioManager {
    * Silently swallows autoplay policy errors.
    */
   play(name: SoundName): void {
-    if (this._muted) return;
+    if (this._muted || !this.unlocked) return;
 
     const audio = this.sounds.get(name);
     if (!audio) return;
@@ -86,12 +86,12 @@ class AudioManager {
   // --------------------------------------------------------------------------
 
   private preloadAll(): void {
-    for (const [name, src] of Object.entries(SOUND_FILES)) {
+    for (const [name, src] of Object.entries(SOUND_FILES) as [SoundName, string][]) {
       const audio = new Audio(src);
       audio.preload = "auto";
       audio.volume = 0.5;
       audio.load();
-      this.sounds.set(name as SoundName, audio);
+      this.sounds.set(name, audio);
     }
   }
 
@@ -111,14 +111,10 @@ class AudioManager {
       silent.play().then(() => {
         silent.pause();
       }).catch(() => {});
-
-      for (const e of events) {
-        document.removeEventListener(e, unlock);
-      }
     };
 
     for (const e of events) {
-      document.addEventListener(e, unlock);
+      document.addEventListener(e, unlock, { capture: true, once: true });
     }
   }
 

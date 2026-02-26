@@ -114,19 +114,26 @@ export function useAudioAlerts({
 
   // --------------------------------------------------------------------------
   // Map-banned sound: fires once when phase transitions to REVEALING
+  // Winner fanfare: fires once when phase transitions to WINNER_REVEAL
+  //
+  // Skip the first render to prevent sounds firing when a user loads the page
+  // during an in-progress REVEALING or WINNER_REVEAL phase. On initial mount,
+  // usePrevious returns undefined, so the "prevPhase !== X" check would
+  // incorrectly evaluate to true.
   // --------------------------------------------------------------------------
   const prevPhase = usePrevious(phaseState.phase);
+  const isPhaseInitialMount = useRef(true);
 
   useEffect(() => {
+    if (isPhaseInitialMount.current) {
+      isPhaseInitialMount.current = false;
+      return;
+    }
+
     if (phaseState.phase === "REVEALING" && prevPhase !== "REVEALING") {
       audioManager.play("map-banned");
     }
-  }, [phaseState.phase, prevPhase]);
 
-  // --------------------------------------------------------------------------
-  // Winner fanfare: fires once when phase transitions to WINNER_REVEAL
-  // --------------------------------------------------------------------------
-  useEffect(() => {
     if (phaseState.phase === "WINNER_REVEAL" && prevPhase !== "WINNER_REVEAL") {
       audioManager.play("winner-fanfare");
     }

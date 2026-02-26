@@ -690,6 +690,7 @@ function PlayerVotingPage() {
             </div>
             <div className="flex items-center gap-2">
               <button
+                type="button"
                 onClick={toggleMute}
                 className="p-1 rounded hover:bg-muted transition-colors"
                 aria-label={muted ? "Unmute audio" : "Mute audio"}
