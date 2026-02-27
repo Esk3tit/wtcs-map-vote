@@ -160,9 +160,10 @@ export function useRevealPhase(params: {
     });
   }, [currentRound, previousRound, maps, isMultiplayer, isRevoteRound]);
 
-  // Detect winner (session transitions from IN_PROGRESS to COMPLETE)
+  // Detect winner (session transitions from IN_PROGRESS to COMPLETE).
+  // Works for both ABBA and MULTIPLAYER — triggers WINNER_REVEAL phase
+  // which plays the winner fanfare and suppresses redirect during reveal.
   useEffect(() => {
-    if (!isMultiplayer) return;
     if (previousStatus !== "IN_PROGRESS" || sessionStatus !== "COMPLETE")
       return;
 
@@ -187,7 +188,7 @@ export function useRevealPhase(params: {
       eliminatedMapIds: eliminated,
       outcome,
     });
-  }, [sessionStatus, previousStatus, maps, isMultiplayer, previousRound, sessionWinnerMapId, currentRound]);
+  }, [sessionStatus, previousStatus, maps, previousRound, sessionWinnerMapId, currentRound]);
 
   // Derived booleans
   const isRevealPhase = phaseState.phase === "REVEALING";

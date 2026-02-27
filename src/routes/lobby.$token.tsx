@@ -16,7 +16,8 @@ import { READY_EXPIRY_MS } from "../../convex/lib/constants";
 import { isReadyActive } from "@/lib/ready";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
-import { Lock, Loader2, CheckCircle2 } from "lucide-react";
+import { audioManager } from "@/lib/audio";
+import { Lock, Loader2, CheckCircle2, Volume2, VolumeX } from "lucide-react";
 import { useEffect, useState, useCallback } from "react";
 
 export const Route = createFileRoute("/lobby/$token")({
@@ -51,6 +52,14 @@ function PlayerLobbyPage() {
 
   // Ready button state
   const [readyLoading, setReadyLoading] = useState(false);
+
+  // Audio: importing audioManager attaches browser autoplay unlock listeners.
+  // The Ready Up click (or any interaction) triggers unlock before the vote page.
+  const [muted, setMuted] = useState(() => audioManager.muted);
+  const toggleMute = useCallback(() => {
+    const newMuted = audioManager.toggleMute();
+    setMuted(newMuted);
+  }, []);
 
   const handleReady = useCallback(async () => {
     setReadyLoading(true);
@@ -204,19 +213,23 @@ function PlayerLobbyPage() {
                   <p className="text-sm font-medium text-green-500">Ready!</p>
                 </>
               ) : (
-                <Button
-                  size="lg"
-                  className="gap-2 bg-green-600 hover:bg-green-700 text-white px-8"
-                  disabled={readyLoading}
-                  onClick={handleReady}
-                >
-                  {readyLoading ? (
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                  ) : (
-                    <CheckCircle2 className="w-5 h-5" />
-                  )}
-                  Ready Up
-                </Button>
+                <>
+                  <Button
+                    size="lg"
+                    className="gap-2 bg-green-600 hover:bg-green-700 text-white px-8 animate-pulse"
+                    disabled={readyLoading}
+                    onClick={handleReady}
+                    autoFocus
+                  >
+                    {readyLoading ? (
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="w-5 h-5" />
+                    )}
+                    Ready Up
+                  </Button>
+                  <p className="text-xs text-muted-foreground">Enables sound effects</p>
+                </>
               )}
             </div>
           )}
@@ -297,9 +310,17 @@ function PlayerLobbyPage() {
           )}
 
           {/* Footer */}
-          <p className="text-sm text-center text-muted-foreground">
-            The admin will start the session when all players are ready.
-          </p>
+          <div className="flex items-center justify-between text-sm text-muted-foreground">
+            <p>The admin will start the session when all players are ready.</p>
+            <button
+              type="button"
+              onClick={toggleMute}
+              className="p-1 rounded hover:bg-muted transition-colors flex-shrink-0"
+              aria-label={muted ? "Unmute audio" : "Mute audio"}
+            >
+              {muted ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+            </button>
+          </div>
         </div>
       </div>
 

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
@@ -29,10 +29,12 @@ import {
 } from "@/components/session/ConnectionStatusBadge";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
 import { useRevealPhase } from "@/hooks/useRevealPhase";
+import { audioManager } from "@/lib/audio";
+import { useAudioAlerts } from "@/hooks/useAudioAlerts";
 import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
 import { SITE_URL } from "@/lib/convexHttp";
 import { cn } from "@/lib/utils";
-import { Check, Lock, Loader2, Trophy } from "lucide-react";
+import { Check, Lock, Loader2, Trophy, Volume2, VolumeX } from "lucide-react";
 import { toast } from "sonner";
 import type { Id } from "../../convex/_generated/dataModel";
 
@@ -159,13 +161,41 @@ function PlayerVotingPage() {
     isPaused,
   });
 
+  // Audio: reactive muted state for the toggle UI
+  const [muted, setMuted] = useState(() => audioManager.muted);
+  const toggleMute = useCallback(() => {
+    const newMuted = audioManager.toggleMute();
+    setMuted(newMuted);
+  }, []);
+
+  useAudioAlerts({
+    isYourTurn: data?.status === "valid" ? data.isYourTurn : false,
+    isPaused,
+    isOverlayVisible: auth.isOverlayVisible,
+    turnTimerSeconds:
+      data?.status === "valid" ? data.session.turnTimerSeconds : 0,
+    timerStartedAt:
+      data?.status === "valid" ? data.session.timerStartedAt : undefined,
+    timerPausedAt:
+      data?.status === "valid" ? data.session.timerPausedAt : undefined,
+    currentTurn: data?.status === "valid" ? data.session.currentTurn : 0,
+    currentRound: currentRound ?? 1,
+    phaseState,
+    isMultiplayer,
+    hasVotedThisRound:
+      data?.status === "valid"
+        ? !!(data.playerVotedMapId || optimisticVotedMapId)
+        : false,
+  });
+
   // Auto-redirect based on session status (suppressed during reveal phases)
   // By passing undefined during reveal, the hook's guard prevents it from firing.
   const redirectData =
     phaseState.phase === "REVEALING" ||
     phaseState.phase === "WINNER_REVEAL" ||
-    // Suppress redirect while winner detection effect catches up (1-render gap)
-    (isMultiplayer && sessionStatus === "COMPLETE" && phaseState.phase === "VOTING")
+    // Suppress redirect while winner detection effect catches up (1-render gap).
+    // Applies to both ABBA and MULTIPLAYER so the winner fanfare can play.
+    (sessionStatus === "COMPLETE" && phaseState.phase === "VOTING")
       ? undefined
       : data;
   const isRedirecting = useSessionStatusRedirect(redirectData, token, "vote");
@@ -667,7 +697,21 @@ function PlayerVotingPage() {
               <Lock className="w-4 h-4 flex-shrink-0" />
               <span>Session locked to your device</span>
             </div>
-            <ConnectionStatusBadge status={auth.connectionStatus} />
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                onClick={toggleMute}
+                className="p-1 rounded hover:bg-muted transition-colors"
+                aria-label={muted ? "Unmute audio" : "Mute audio"}
+              >
+                {muted ? (
+                  <VolumeX className="w-4 h-4" />
+                ) : (
+                  <Volume2 className="w-4 h-4" />
+                )}
+              </button>
+              <ConnectionStatusBadge status={auth.connectionStatus} />
+            </div>
           </div>
         </footer>
 
