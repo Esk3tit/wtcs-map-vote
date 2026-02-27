@@ -69,20 +69,35 @@ export function useAudioAlerts({
   // (e.g. A,B,B,A,A — where isYourTurn stays true across turns 4→5).
   // Sentinel initial values ensure the chime fires on the very first turn
   // regardless of whether Convex data is cached (instant) or fetched (async).
+  //
+  // MULTIPLAYER: When currentRound advances, the chime is deferred until the
+  // reveal phase ends (REVEALING → VOTING) to avoid overlapping with the
+  // map-banned sound. The phase-transition effect handles the deferred play.
   // --------------------------------------------------------------------------
-  const prevTurnState = useRef({ isYourTurn: false, currentTurn: 0 });
+  const prevTurnState = useRef({ isYourTurn: false, currentTurn: 0, currentRound: 0 });
 
   useEffect(() => {
     const prev = prevTurnState.current;
-    prevTurnState.current = { isYourTurn, currentTurn };
+    prevTurnState.current = { isYourTurn, currentTurn, currentRound };
 
-    // No change in turn state — skip (also prevents firing on isPaused/overlay changes)
-    if (prev.isYourTurn === isYourTurn && prev.currentTurn === currentTurn) return;
+    // No change in turn/round state — skip (also prevents firing on isPaused/overlay changes)
+    if (
+      prev.isYourTurn === isYourTurn &&
+      prev.currentTurn === currentTurn &&
+      prev.currentRound === currentRound
+    ) return;
+
+    // In multiplayer, defer the chime when a round advances (reveal phase will
+    // play it on REVEALING → VOTING). Sentinel (prev.currentRound=0) is
+    // excluded so the chime still plays on the very first round.
+    if (isMultiplayer && prev.currentRound > 0 && prev.currentRound !== currentRound) {
+      return;
+    }
 
     if (isYourTurn && !isPaused && !isOverlayVisible) {
       audioManager.play("turn-start");
     }
-  }, [isYourTurn, currentTurn, isPaused, isOverlayVisible]);
+  }, [isYourTurn, currentTurn, currentRound, isPaused, isOverlayVisible, isMultiplayer]);
 
   // --------------------------------------------------------------------------
   // Timer warning beep (5s) and timeout buzzer (0s)
@@ -154,13 +169,22 @@ export function useAudioAlerts({
   // --------------------------------------------------------------------------
   // Map-banned sound (MULTIPLAYER): fires once when phase transitions to REVEALING
   // Winner fanfare: fires once when phase transitions to WINNER_REVEAL
+  // Deferred turn-start: plays when REVEALING → VOTING (after reveal ends)
   //
   // Skip the first render to prevent sounds firing when a user loads the page
   // during an in-progress REVEALING or WINNER_REVEAL phase. On initial mount,
   // usePrevious returns undefined, so the "prevPhase !== X" check would
   // incorrectly evaluate to true. This effect also clears isInitialMount for
   // all other effects.
+  //
+  // suppressionRef provides isPaused/isOverlayVisible without adding them as
+  // deps (which would cause false-positive re-fires on pause/overlay changes).
   // --------------------------------------------------------------------------
+  const suppressionRef = useRef({ isPaused: false, isOverlayVisible: false });
+  useEffect(() => {
+    suppressionRef.current = { isPaused, isOverlayVisible };
+  }, [isPaused, isOverlayVisible]);
+
   const prevPhase = usePrevious(phaseState.phase);
 
   useEffect(() => {
@@ -175,6 +199,14 @@ export function useAudioAlerts({
 
     if (phaseState.phase === "WINNER_REVEAL" && prevPhase !== "WINNER_REVEAL") {
       audioManager.play("winner-fanfare");
+    }
+
+    // Multiplayer: play the deferred turn-start chime after the reveal ends
+    if (phaseState.phase === "VOTING" && prevPhase === "REVEALING") {
+      const s = suppressionRef.current;
+      if (!s.isPaused && !s.isOverlayVisible) {
+        audioManager.play("turn-start");
+      }
     }
   }, [phaseState.phase, prevPhase]);
 }
