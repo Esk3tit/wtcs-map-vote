@@ -85,11 +85,7 @@ function PlayerLobbyPage() {
 
   // Auth loading
   if (auth.status === "loading") {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <LobbyPageSkeleton />;
   }
 
   // Auth error
@@ -99,11 +95,7 @@ function PlayerLobbyPage() {
 
   // Loading state (waiting for reactive query after auth)
   if (data === undefined) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <LobbyPageSkeleton />;
   }
 
   // Error states from reactive query
@@ -334,5 +326,49 @@ function PlayerLobbyPage() {
         />
       )}
     </>
+  );
+}
+
+function LobbyPageSkeleton() {
+  return (
+    <div className="min-h-screen bg-background p-6 flex items-center justify-center">
+      <div className="w-full max-w-2xl space-y-8 animate-pulse">
+        {/* Header: match name + format badge */}
+        <div className="text-center space-y-3">
+          <div className="h-10 w-64 bg-muted rounded mx-auto" />
+          <div className="h-7 w-32 bg-muted rounded-full mx-auto" />
+        </div>
+
+        {/* Identity card */}
+        <div className="rounded-lg border border-primary/20 p-6 space-y-4">
+          <div className="h-4 w-36 bg-muted rounded mx-auto" />
+          <div className="h-8 w-48 bg-muted rounded mx-auto" />
+          <div className="h-5 w-24 bg-muted rounded mx-auto" />
+          <div className="border-t border-border pt-4 space-y-3">
+            <div className="h-4 w-52 bg-muted rounded mx-auto" />
+            <div className="h-6 w-28 bg-muted rounded-full mx-auto" />
+          </div>
+        </div>
+
+        {/* Map preview grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="space-y-2">
+              <div className="aspect-video rounded-lg bg-muted" />
+              <div className="h-3 w-16 bg-muted rounded mx-auto" />
+            </div>
+          ))}
+        </div>
+
+        {/* Player status */}
+        <div className="rounded-lg border p-4 space-y-3">
+          <div className="h-5 w-32 bg-muted rounded" />
+          <div className="flex items-center justify-between">
+            <div className="h-5 w-40 bg-muted rounded" />
+            <div className="h-5 w-20 bg-muted rounded-full" />
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

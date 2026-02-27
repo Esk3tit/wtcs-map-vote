@@ -242,11 +242,7 @@ function PlayerVotingPage() {
 
   // Auth loading
   if (auth.status === "loading") {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <VotePageSkeleton />;
   }
 
   // Auth error
@@ -256,11 +252,7 @@ function PlayerVotingPage() {
 
   // Loading state (waiting for reactive query after auth)
   if (data === undefined) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <VotePageSkeleton />;
   }
 
   // Error states from reactive query
@@ -787,5 +779,61 @@ function PlayerVotingPage() {
       />
     )}
     </>
+  );
+}
+
+function VotePageSkeleton() {
+  return (
+    <div className="min-h-screen bg-background flex flex-col animate-pulse">
+      {/* Header */}
+      <div className="border-b border-border bg-card px-4 py-3 sm:px-6 sm:py-4">
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+          <div className="flex items-center gap-3">
+            <div className="h-6 w-40 bg-muted rounded" />
+            <div className="h-5 w-24 bg-muted rounded-full" />
+          </div>
+          <div className="h-5 w-48 bg-muted rounded" />
+        </div>
+      </div>
+
+      {/* Main content */}
+      <div className="flex-1 px-6 py-8">
+        <div className="max-w-5xl mx-auto mb-8">
+          {/* Turn banner */}
+          <div className="rounded-lg p-6 mb-4 bg-muted/30 border-2 border-border text-center space-y-3">
+            <div className="h-8 w-64 bg-muted rounded mx-auto" />
+            <div className="h-5 w-40 bg-muted rounded mx-auto" />
+          </div>
+
+          {/* Timer */}
+          <div className="flex justify-center mb-4">
+            <div className="h-16 w-32 sm:h-20 sm:w-40 md:h-28 md:w-56 bg-muted rounded" />
+          </div>
+
+          {/* Instruction */}
+          <div className="h-5 w-48 bg-muted rounded mx-auto mb-8" />
+        </div>
+
+        {/* Map grid */}
+        <div className="max-w-6xl mx-auto grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="rounded-lg border overflow-hidden">
+              <div className="aspect-video bg-muted" />
+              <div className="p-3">
+                <div className="h-5 w-24 bg-muted rounded mx-auto" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* Footer */}
+      <div className="border-t border-border bg-card px-4 py-3 sm:px-6 sm:py-4">
+        <div className="flex items-center justify-between">
+          <div className="h-4 w-48 bg-muted rounded" />
+          <div className="h-8 w-8 bg-muted rounded" />
+        </div>
+      </div>
+    </div>
   );
 }

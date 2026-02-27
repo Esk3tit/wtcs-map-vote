@@ -65,11 +65,7 @@ function DashboardPage() {
     expiredStatus === "LoadingFirstPage";
 
   if (isLoading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <DashboardSkeleton />;
   }
 
   return (
@@ -204,6 +200,56 @@ function DashboardPage() {
           </Accordion>
         )}
       </main>
+    </div>
+  );
+}
+
+function DashboardSkeleton() {
+  return (
+    <div className="flex-1 flex flex-col animate-pulse">
+      {/* Header */}
+      <div className="border-b border-border/50 bg-card/30 px-4 py-4 md:px-8 flex items-center justify-between">
+        <div className="h-8 w-32 bg-muted rounded" />
+        <div className="h-9 w-36 bg-muted rounded" />
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 px-4 py-6 md:px-8 md:py-8 space-y-8">
+        {/* Section title */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="h-6 w-40 bg-muted rounded" />
+          <div className="h-5 w-12 bg-muted rounded" />
+        </div>
+
+        {/* 3 session card skeletons */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="rounded-lg border border-border/50 bg-card/50">
+              <div className="p-6 pb-3 space-y-2">
+                <div className="flex items-start justify-between">
+                  <div className="h-5 w-36 bg-muted rounded" />
+                  <div className="h-5 w-16 bg-muted rounded-full" />
+                </div>
+                <div className="h-4 w-44 bg-muted rounded" />
+              </div>
+              <div className="px-6 pb-3 space-y-3">
+                <div className="h-5 w-20 bg-muted rounded-full" />
+                <div className="flex items-center justify-between">
+                  <div className="h-4 w-16 bg-muted rounded" />
+                  <div className="h-4 w-12 bg-muted rounded" />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="h-4 w-16 bg-muted rounded" />
+                  <div className="h-4 w-24 bg-muted rounded" />
+                </div>
+              </div>
+              <div className="px-6 pt-3 pb-6 border-t border-border/30">
+                <div className="h-8 w-full bg-muted rounded" />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
     </div>
   );
 }
