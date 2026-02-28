@@ -65,11 +65,7 @@ function DashboardPage() {
     expiredStatus === "LoadingFirstPage";
 
   if (isLoading) {
-    return (
-      <div className="flex-1 flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <DashboardPageSkeleton />;
   }
 
   return (
@@ -204,6 +200,46 @@ function DashboardPage() {
           </Accordion>
         )}
       </main>
+    </div>
+  );
+}
+
+function SessionCardSkeleton() {
+  return (
+    <div className="rounded-lg border border-border/50 bg-card/50 p-6 space-y-3">
+      <div className="h-5 w-36 bg-muted rounded" />
+      <div className="h-4 w-44 bg-muted rounded" />
+      <div className="h-4 w-24 bg-muted rounded" />
+      <div className="h-8 w-full bg-muted rounded mt-4" />
+    </div>
+  );
+}
+
+function DashboardPageSkeleton() {
+  return (
+    <div className="flex-1 flex flex-col animate-pulse" aria-busy="true">
+      <div role="status" aria-live="polite" className="sr-only">Loading dashboard</div>
+      {/* Header */}
+      <div className="border-b border-border/50 bg-card/30 backdrop-blur-sm px-4 py-4 md:px-8 flex items-center justify-between">
+        <div className="h-8 w-32 bg-muted rounded" />
+        <div className="h-9 w-36 bg-muted rounded" />
+      </div>
+
+      {/* Content */}
+      <div className="flex-1 px-4 py-6 md:px-8 md:py-8 space-y-8">
+        {/* Section title */}
+        <div className="flex items-center justify-between mb-4">
+          <div className="h-6 w-40 bg-muted rounded" />
+          <div className="h-5 w-12 bg-muted rounded" />
+        </div>
+
+        {/* 3 session card skeletons */}
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <SessionCardSkeleton key={i} />
+          ))}
+        </div>
+      </div>
     </div>
   );
 }

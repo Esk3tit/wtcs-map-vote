@@ -53,11 +53,7 @@ function VotingResultsPage() {
 
   // Loading state
   if (data === undefined) {
-    return (
-      <div className="min-h-screen flex items-center justify-center">
-        <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
-      </div>
-    );
+    return <ResultsPageSkeleton />;
   }
 
   // Error states
@@ -200,6 +196,46 @@ function VotingResultsPage() {
           <p className="text-lg text-muted-foreground font-semibold">
             Session Complete
           </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ResultsPageSkeleton() {
+  return (
+    <div className="min-h-screen bg-background py-12 px-6 animate-pulse" aria-busy="true">
+      <div role="status" aria-live="polite" className="sr-only">Loading results</div>
+      <div className="max-w-6xl mx-auto space-y-12">
+        {/* Header */}
+        <div className="text-center space-y-2">
+          <div className="h-9 w-72 bg-muted rounded mx-auto" />
+          <div className="h-6 w-48 bg-muted rounded mx-auto" />
+          <div className="h-6 w-24 bg-muted rounded-full mx-auto" />
+        </div>
+
+        {/* Trophy + winner card */}
+        <div className="flex flex-col items-center space-y-6">
+          <div className="w-16 h-16 bg-muted rounded-full" />
+          <div className="max-w-md w-full rounded-lg border-2 border-muted overflow-hidden">
+            <div className="aspect-video bg-muted" />
+            <div className="p-6 text-center space-y-3">
+              <div className="h-10 w-48 bg-muted rounded mx-auto" />
+              <div className="h-7 w-24 bg-muted rounded-full mx-auto" />
+            </div>
+          </div>
+        </div>
+
+        {/* Map summary grid */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
+          {Array.from({ length: 5 }).map((_, i) => (
+            <div key={i} className="rounded-lg border overflow-hidden">
+              <div className="aspect-video bg-muted" />
+              <div className="p-2">
+                <div className="h-4 w-20 bg-muted rounded mx-auto" />
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
