@@ -30,7 +30,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { TeamAvatar } from "@/components/session/team-avatar";
 import { Plus, Pencil, Trash2, Users, Loader2 } from "lucide-react";
 import { useState, useCallback } from "react";
 import { usePaginatedQuery, useMutation } from "convex/react";
@@ -291,17 +291,10 @@ function TeamsPage() {
                           <TableRow key={team._id} className="border-border/50">
                             <TableCell className="py-3 md:py-2">
                               <div className="flex items-center gap-3 md:gap-2">
-                                <Avatar className="h-8 w-8 md:h-7 md:w-7">
-                                  {team.logoUrl && (
-                                    <AvatarImage
-                                      src={team.logoUrl}
-                                      alt={team.name}
-                                    />
-                                  )}
-                                  <AvatarFallback className="bg-primary/20 text-primary text-[10px] md:text-xs font-semibold">
-                                    {team.name.substring(0, 2).toUpperCase()}
-                                  </AvatarFallback>
-                                </Avatar>
+                                <TeamAvatar
+                                  name={team.name}
+                                  logoUrl={team.logoUrl}
+                                />
                                 <span className="font-medium text-foreground">
                                   {team.name}
                                 </span>

@@ -70,6 +70,7 @@ import {
 import { ConnectionStatusBadge, STATUS_CONFIG } from "@/components/session/ConnectionStatusBadge";
 import type { ConnectionStatus } from "../../../convex/lib/connectionStatus";
 import { useConnectionToasts } from "@/hooks/useConnectionToasts";
+import { TeamAvatar } from "@/components/session/team-avatar";
 
 // ============================================================================
 // Constants
@@ -879,20 +880,27 @@ function SessionDetailPage() {
                     key={player._id}
                     className="flex flex-col gap-3 p-4 rounded-lg border border-border/50 bg-background/50 sm:flex-row sm:items-center sm:gap-4"
                   >
-                    <div className="flex-1 space-y-1 min-w-0">
-                      <p className="font-semibold text-foreground truncate">
-                        {player.teamName}
-                      </p>
-                      <p className="text-sm text-muted-foreground">
-                        {formatPlayerRole(player.role, session.format)}
-                      </p>
+                    <div className="flex-1 min-w-0 flex items-center gap-3">
+                      <TeamAvatar
+                        name={player.teamName}
+                        logoUrl={player.teamLogoUrl}
+                      />
+                      <div className="space-y-1 min-w-0">
+                        <p className="font-semibold text-foreground truncate">
+                          {player.teamName}
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          {formatPlayerRole(player.role, session.format)}
+                        </p>
+                      </div>
                     </div>
                     <div className="flex items-center gap-3 flex-wrap min-w-0">
-                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                      <div className="flex items-center gap-2 min-w-0 flex-1 sm:min-w-[320px] md:min-w-[400px]">
                         <Input
                           value={lobbyUrl}
                           readOnly
                           className="min-w-0 flex-1 font-mono text-sm bg-muted border-border/50"
+                          onClick={(e) => e.currentTarget.select()}
                         />
                         <Button
                           variant="outline"

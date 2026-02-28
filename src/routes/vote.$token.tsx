@@ -37,6 +37,7 @@ import { cn } from "@/lib/utils";
 import { Check, Lock, Loader2, Trophy, Volume2, VolumeX } from "lucide-react";
 import { toast } from "sonner";
 import type { Id } from "../../convex/_generated/dataModel";
+import { TeamAvatar } from "@/components/session/team-avatar";
 
 export const Route = createFileRoute("/vote/$token")({
   component: PlayerVotingPage,
@@ -289,9 +290,11 @@ function PlayerVotingPage() {
   // Combine players for display purposes
   const allPlayers = [player, ...otherPlayers];
 
-  // Get opponent team name
+  // Get opponent team name and logo
   const opponentTeam =
     otherPlayers.length > 0 ? otherPlayers[0].teamName : "Opponent";
+  const opponentLogoUrl =
+    otherPlayers.length > 0 ? otherPlayers[0].teamLogoUrl : undefined;
 
   // Build ban steps for progress tracker (ABBA format)
   // Note: This is for display only. Turn detection is server-authoritative via isYourTurn.
@@ -301,6 +304,8 @@ function PlayerVotingPage() {
       ? [0, 1, 1, 0].map((pIndex, stepIndex) => ({
           step: stepIndex + 1,
           team: pIndex === 0 ? player.teamName : opponentTeam,
+          teamLogoUrl:
+            pIndex === 0 ? player.teamLogoUrl : opponentLogoUrl,
           completed: stepIndex < session.currentTurn,
         }))
       : [];
@@ -454,6 +459,11 @@ function PlayerVotingPage() {
             </div>
             <div className="flex items-center gap-2 text-sm">
               <span className="text-muted-foreground">You are:</span>
+              <TeamAvatar
+                name={player.teamName}
+                logoUrl={player.teamLogoUrl}
+                size="sm"
+              />
               <span className="font-bold text-foreground">{player.role}</span>
               <span className="text-muted-foreground">
                 ({player.teamName})
@@ -524,13 +534,25 @@ function PlayerVotingPage() {
                   )}
                 >
                   <div className="text-2xl font-bold mb-2">
-                    {session.format === "ABBA"
-                      ? isYourTurn
-                        ? "YOUR TURN TO BAN"
-                        : `Waiting for ${opponentTeam} to ban...`
-                      : isYourTurn
-                        ? "CAST YOUR VOTE"
-                        : "Waiting for others to vote..."}
+                    {session.format === "ABBA" ? (
+                      isYourTurn ? (
+                        "YOUR TURN TO BAN"
+                      ) : (
+                        <span className="flex items-center justify-center gap-3">
+                          <span>Waiting for</span>
+                          <TeamAvatar
+                            name={opponentTeam}
+                            logoUrl={opponentLogoUrl}
+                            size="sm"
+                          />
+                          <span>{opponentTeam} to ban...</span>
+                        </span>
+                      )
+                    ) : isYourTurn ? (
+                      "CAST YOUR VOTE"
+                    ) : (
+                      "Waiting for others to vote..."
+                    )}
                   </div>
                 </div>
 
@@ -632,6 +654,11 @@ function PlayerVotingPage() {
                     </span>
                     <div className="flex items-center gap-4">
                       <div className="flex items-center gap-2">
+                        <TeamAvatar
+                          name={player.teamName}
+                          logoUrl={player.teamLogoUrl}
+                          size="sm"
+                        />
                         <div
                           className={cn(
                             "w-3 h-3 rounded-full",
@@ -660,6 +687,11 @@ function PlayerVotingPage() {
                               : "bg-muted-foreground animate-pulse";
                         return (
                           <div key={op._id} className="flex items-center gap-2">
+                            <TeamAvatar
+                              name={op.teamName}
+                              logoUrl={op.teamLogoUrl}
+                              size="sm"
+                            />
                             <div
                               className={cn("w-3 h-3 rounded-full", dotClass)}
                             />
@@ -793,7 +825,10 @@ function VotePageSkeleton() {
             <div className="h-6 w-40 bg-muted rounded" />
             <div className="h-5 w-24 bg-muted rounded-full" />
           </div>
-          <div className="h-5 w-48 bg-muted rounded" />
+          <div className="flex items-center gap-2">
+            <div className="size-6 bg-muted rounded-full shrink-0" />
+            <div className="h-5 w-48 bg-muted rounded" />
+          </div>
         </div>
       </div>
 
@@ -828,10 +863,17 @@ function VotePageSkeleton() {
         </div>
       </div>
 
-      {/* Footer */}
+      {/* Footer / status bar */}
       <div className="border-t border-border bg-card px-4 py-3 sm:px-6 sm:py-4">
         <div className="flex items-center justify-between">
-          <div className="h-4 w-48 bg-muted rounded" />
+          <div className="flex items-center gap-3">
+            {Array.from({ length: 3 }).map((_, i) => (
+              <div key={i} className="flex items-center gap-1.5">
+                <div className="size-5 bg-muted rounded-full shrink-0" />
+                <div className="h-4 w-16 bg-muted rounded" />
+              </div>
+            ))}
+          </div>
           <div className="h-8 w-8 bg-muted rounded" />
         </div>
       </div>

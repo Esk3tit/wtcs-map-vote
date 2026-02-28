@@ -20,5 +20,6 @@ export interface MapInfo {
 export interface BanStep {
   step: number;
   team: string;
+  teamLogoUrl?: string;
   completed: boolean;
 }

@@ -208,7 +208,13 @@ function SessionCardSkeleton() {
   return (
     <div className="rounded-lg border border-border/50 bg-card/50 p-6 space-y-3">
       <div className="h-5 w-36 bg-muted rounded" />
-      <div className="h-4 w-44 bg-muted rounded" />
+      <div className="flex items-center gap-1.5">
+        <div className="size-6 bg-muted rounded-full shrink-0" />
+        <div className="h-4 w-16 bg-muted rounded" />
+        <div className="h-4 w-6 bg-muted rounded" />
+        <div className="size-6 bg-muted rounded-full shrink-0" />
+        <div className="h-4 w-16 bg-muted rounded" />
+      </div>
       <div className="h-4 w-24 bg-muted rounded" />
       <div className="h-8 w-full bg-muted rounded mt-4" />
     </div>
