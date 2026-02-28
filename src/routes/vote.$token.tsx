@@ -472,6 +472,10 @@ function PlayerVotingPage() {
     (m) => m.state === "AVAILABLE"
   ).length;
 
+  const bannedMapNames = maps
+    .filter((m) => animatingBanIds.has(m._id))
+    .map((m) => m.name);
+
   return (
     <>
     <div
@@ -501,14 +505,8 @@ function PlayerVotingPage() {
           isYourTurn &&
           "Your turn to ban."}
         {animatingBanIds.size > 0 &&
-          (() => {
-            const bannedNames = maps
-              .filter((m) => animatingBanIds.has(m._id))
-              .map((m) => m.name);
-            return bannedNames.length > 0
-              ? `${bannedNames.join(", ")} ${bannedNames.length === 1 ? "has" : "have"} been banned.`
-              : null;
-          })()}
+          bannedMapNames.length > 0 &&
+          `${bannedMapNames.join(", ")} ${bannedMapNames.length === 1 ? "has" : "have"} been banned.`}
       </div>
 
       <div inert={!isInteractive}>
