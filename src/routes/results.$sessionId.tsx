@@ -71,7 +71,7 @@ function VotingResultsPage() {
         <div className="text-center space-y-2">
           <h1 className="text-3xl font-bold">{session.matchName}</h1>
           <div className="flex items-center justify-center gap-3 text-xl text-muted-foreground flex-wrap">
-            {teams.length >= 2 ? (
+            {session.format === "ABBA" && teams.length === 2 ? (
               <>
                 <TeamAvatar name={teams[0]} logoUrl={teamLogos[teams[0]]} />
                 <span className="font-semibold">{teams[0]}</span>

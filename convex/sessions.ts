@@ -43,7 +43,7 @@ import {
   connectionStatusValidator,
 } from "./lib/validators";
 import { requireAdmin } from "./lib/auth";
-import { resolveTeamLogos } from "./lib/teamLogos";
+import { resolveTeamLogos, logoMapToRecord } from "./lib/teamLogos";
 import {
   completeSession,
   guardFinalize,
@@ -311,11 +311,7 @@ async function buildSessionResults(ctx: QueryCtx, session: Doc<"sessions">) {
 
   // Resolve team logos (only include teams with logos)
   const logoMap = await resolveTeamLogos(ctx, teams);
-  const teamLogos: Record<string, string> = {};
-  for (const name of teams) {
-    const url = logoMap.get(name);
-    if (url) teamLogos[name] = url;
-  }
+  const teamLogos = logoMapToRecord(logoMap);
 
   // Derive flat banHistory from roundHistory for backwards compatibility
   const roundHistory = buildRoundHistory(maps, players, session.format);
@@ -467,11 +463,7 @@ export const listSessionsForDashboard = query({
 
         const teams = [...new Set(players.map((p) => p.teamName))];
         const logoMap = await resolveTeamLogos(ctx, teams);
-        const teamLogos: Record<string, string> = {};
-        for (const name of teams) {
-          const url = logoMap.get(name);
-          if (url) teamLogos[name] = url;
-        }
+        const teamLogos = logoMapToRecord(logoMap);
 
         return {
           _id: session._id,

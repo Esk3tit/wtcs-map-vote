@@ -13,18 +13,22 @@ const TEAM_COLORS = [
 ] as const;
 
 function getTeamColorClass(name: string): string {
-  const hash = name
-    .split("")
-    .reduce((acc, char) => char.charCodeAt(0) + acc, name.length);
+  const hash = Array.from(name).reduce(
+    (acc, char) => (char.codePointAt(0) ?? 0) + acc,
+    name.length,
+  );
   return TEAM_COLORS[hash % TEAM_COLORS.length];
 }
 
 function getTeamInitials(name: string): string {
   const words = name.trim().split(/\s+/);
   if (words.length >= 2) {
-    return (words[0][0] + words[1][0]).toUpperCase();
+    const first = Array.from(words[0])[0] ?? "";
+    const second = Array.from(words[1])[0] ?? "";
+    return (first + second).toUpperCase();
   }
-  return name.substring(0, 2).toUpperCase();
+  const chars = Array.from(name);
+  return chars.slice(0, 2).join("").toUpperCase();
 }
 
 interface TeamAvatarProps {

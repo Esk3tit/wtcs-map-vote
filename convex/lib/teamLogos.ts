@@ -39,3 +39,20 @@ export async function resolveTeamLogos(
   );
   return new Map(results);
 }
+
+/**
+ * Convert a logo Map (from resolveTeamLogos) to a plain Record,
+ * filtering out teams with no logo.
+ *
+ * @param logoMap - Map of teamName -> logoUrl (possibly undefined)
+ * @returns Record with only teams that have a logo URL
+ */
+export function logoMapToRecord(
+  logoMap: Map<string, string | undefined>
+): Record<string, string> {
+  return Object.fromEntries(
+    [...logoMap.entries()].filter(
+      (entry): entry is [string, string] => entry[1] != null
+    )
+  );
+}

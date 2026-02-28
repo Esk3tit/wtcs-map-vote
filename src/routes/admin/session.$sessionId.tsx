@@ -900,9 +900,7 @@ function SessionDetailPage() {
                           value={lobbyUrl}
                           readOnly
                           className="min-w-0 flex-1 font-mono text-sm bg-muted border-border/50"
-                          onClick={(e) =>
-                            (e.target as HTMLInputElement).select()
-                          }
+                          onClick={(e) => e.currentTarget.select()}
                         />
                         <Button
                           variant="outline"
