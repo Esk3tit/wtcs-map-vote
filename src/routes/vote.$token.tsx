@@ -255,13 +255,18 @@ function PlayerVotingPage() {
 
   // Track previous map states for ABBA ban animation detection
   const prevMapStatesRef = useRef<Map<string, string>>(new Map());
+  const banTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map()
+  );
 
   // Persist ban animation state (500ms CSS transition + 100ms buffer)
   const [animatingBanIds, setAnimatingBanIds] = useState<Set<string>>(
     new Set()
   );
 
-  // Detect AVAILABLE→BANNED transitions, animate, then clear after timeout
+  // Detect AVAILABLE→BANNED transitions, animate, then clear after timeout.
+  // Per-id timers survive effect re-runs so Convex subscription updates
+  // mid-animation don't cancel pending cleanup timeouts.
   useEffect(() => {
     const newlyBanned = new Set<string>();
     if (formatForAnimation === "ABBA") {
@@ -281,18 +286,32 @@ function PlayerVotingPage() {
     if (newlyBanned.size === 0) return;
 
     setAnimatingBanIds((prev) => new Set([...prev, ...newlyBanned]));
-    const timer = setTimeout(() => {
-      setAnimatingBanIds((prev) => {
-        const next = new Set(prev);
-        for (const id of newlyBanned) {
-          next.delete(id);
-        }
-        return next;
-      });
-    }, 600);
+    for (const id of newlyBanned) {
+      const existing = banTimersRef.current.get(id);
+      if (existing) clearTimeout(existing);
 
-    return () => clearTimeout(timer);
+      const timer = setTimeout(() => {
+        setAnimatingBanIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+        banTimersRef.current.delete(id);
+      }, 600);
+
+      banTimersRef.current.set(id, timer);
+    }
   }, [mapsForAnimation, formatForAnimation]);
+
+  // Clean up all pending ban timers on unmount
+  useEffect(() => {
+    return () => {
+      for (const timer of banTimersRef.current.values()) {
+        clearTimeout(timer);
+      }
+      banTimersRef.current.clear();
+    };
+  }, []);
 
   // Compute stagger index for multiplayer elimination reveal
   const getStaggerIndex = (mapId: Id<"sessionMaps">): number | undefined => {
