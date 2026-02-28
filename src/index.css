@@ -149,7 +149,10 @@
     }
   }
 
-  /* Winner amber/gold pulse — one-shot, settles to steady glow */
+  /* Winner amber/gold pulse — one-shot, settles to steady glow.
+     Note: box-shadow triggers paint (not GPU-composited). Acceptable
+     for a single card, one-shot animation. Consider pseudo-element
+     opacity approach if jank is observed on low-end devices. */
   --animate-winner-pulse: winner-pulse 1.5s ease-in-out forwards;
 
   @keyframes winner-pulse {

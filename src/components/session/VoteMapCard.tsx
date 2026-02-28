@@ -5,6 +5,13 @@ import { Check, X, Trophy, ShieldCheck } from "lucide-react";
 import type { Id } from "../../../convex/_generated/dataModel";
 
 // ============================================================================
+// Constants
+// ============================================================================
+
+/** Delay between each card's elimination animation in multiplayer reveal */
+const ELIMINATION_STAGGER_DELAY_MS = 150;
+
+// ============================================================================
 // Types
 // ============================================================================
 
@@ -96,7 +103,18 @@ export function VoteMapCard({
       role={isClickable ? "button" : undefined}
       tabIndex={isClickable ? 0 : undefined}
       aria-label={
-        isClickable ? `Vote for ${map.name}` : undefined
+        isClickable ? `Vote for ${map.name}` :
+        winner ? `Winner: ${map.name}` :
+        isBanned ? `${map.name} - Banned` :
+        justEliminated ? `${map.name} - Eliminated` :
+        map.name
+      }
+      data-animation-state={
+        justBanned ? "banning" :
+        justEliminated ? "eliminating" :
+        winner ? "winning" :
+        isBanned ? "banned" :
+        "idle"
       }
       onClick={() => {
         if (isClickable) {
@@ -124,12 +142,10 @@ export function VoteMapCard({
             // Grayscale states (CSS transition animates the change)
             isBanned && "grayscale",
             justEliminated && "grayscale brightness-50",
-            // GPU hint during active animation
-            isAnimating && "will-change-[filter,opacity]"
           )}
           style={
             justEliminated && eliminationStaggerIndex !== undefined
-              ? { transitionDelay: `${eliminationStaggerIndex * 150}ms` }
+              ? { transitionDelay: `${eliminationStaggerIndex * ELIMINATION_STAGGER_DELAY_MS}ms` }
               : undefined
           }
         />
@@ -141,7 +157,7 @@ export function VoteMapCard({
               className="w-10 h-10 sm:w-12 sm:h-12 md:w-16 md:h-16 text-red-500 motion-safe:animate-stamp-in"
               style={
                 eliminationStaggerIndex !== undefined
-                  ? { animationDelay: `${eliminationStaggerIndex * 150}ms` }
+                  ? { animationDelay: `${eliminationStaggerIndex * ELIMINATION_STAGGER_DELAY_MS}ms` }
                   : undefined
               }
               strokeWidth={3}
