@@ -331,7 +331,7 @@ function PlayerLobbyPage() {
 
 function LobbyPageSkeleton() {
   return (
-    <div className="min-h-screen bg-background p-6 flex items-center justify-center">
+    <div className="min-h-screen bg-background p-6 flex items-center justify-center" aria-busy="true">
       <div className="w-full max-w-2xl space-y-8 animate-pulse">
         {/* Header: match name + format badge */}
         <div className="text-center space-y-3">
@@ -340,14 +340,10 @@ function LobbyPageSkeleton() {
         </div>
 
         {/* Identity card */}
-        <div className="rounded-lg border border-primary/20 p-6 space-y-4">
+        <div className="rounded-lg border border-primary/20 p-6 space-y-3">
           <div className="h-4 w-36 bg-muted rounded mx-auto" />
           <div className="h-8 w-48 bg-muted rounded mx-auto" />
           <div className="h-5 w-24 bg-muted rounded mx-auto" />
-          <div className="border-t border-border pt-4 space-y-3">
-            <div className="h-4 w-52 bg-muted rounded mx-auto" />
-            <div className="h-6 w-28 bg-muted rounded-full mx-auto" />
-          </div>
         </div>
 
         {/* Map preview grid */}

@@ -204,7 +204,7 @@ function VotingResultsPage() {
 
 function ResultsPageSkeleton() {
   return (
-    <div className="min-h-screen bg-background py-12 px-6 animate-pulse">
+    <div className="min-h-screen bg-background py-12 px-6 animate-pulse" aria-busy="true">
       <div className="max-w-6xl mx-auto space-y-12">
         {/* Header */}
         <div className="text-center space-y-2">

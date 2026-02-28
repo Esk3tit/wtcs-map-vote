@@ -65,7 +65,7 @@ function DashboardPage() {
     expiredStatus === "LoadingFirstPage";
 
   if (isLoading) {
-    return <DashboardSkeleton />;
+    return <DashboardPageSkeleton />;
   }
 
   return (
@@ -206,37 +206,20 @@ function DashboardPage() {
 
 function SessionCardSkeleton() {
   return (
-    <div className="rounded-lg border border-border/50 bg-card/50">
-      <div className="p-6 pb-3 space-y-2">
-        <div className="flex items-start justify-between">
-          <div className="h-5 w-36 bg-muted rounded" />
-          <div className="h-5 w-16 bg-muted rounded-full" />
-        </div>
-        <div className="h-4 w-44 bg-muted rounded" />
-      </div>
-      <div className="px-6 pb-3 space-y-3">
-        <div className="h-5 w-20 bg-muted rounded-full" />
-        <div className="flex items-center justify-between">
-          <div className="h-4 w-16 bg-muted rounded" />
-          <div className="h-4 w-12 bg-muted rounded" />
-        </div>
-        <div className="flex items-center justify-between">
-          <div className="h-4 w-16 bg-muted rounded" />
-          <div className="h-4 w-24 bg-muted rounded" />
-        </div>
-      </div>
-      <div className="px-6 pt-3 pb-6 border-t border-border/30">
-        <div className="h-8 w-full bg-muted rounded" />
-      </div>
+    <div className="rounded-lg border border-border/50 bg-card/50 p-6 space-y-3">
+      <div className="h-5 w-36 bg-muted rounded" />
+      <div className="h-4 w-44 bg-muted rounded" />
+      <div className="h-4 w-24 bg-muted rounded" />
+      <div className="h-8 w-full bg-muted rounded mt-4" />
     </div>
   );
 }
 
-function DashboardSkeleton() {
+function DashboardPageSkeleton() {
   return (
-    <div className="flex-1 flex flex-col animate-pulse">
+    <div className="flex-1 flex flex-col animate-pulse" aria-busy="true">
       {/* Header */}
-      <div className="border-b border-border/50 bg-card/30 px-4 py-4 md:px-8 flex items-center justify-between">
+      <div className="border-b border-border/50 bg-card/30 backdrop-blur-sm px-4 py-4 md:px-8 flex items-center justify-between">
         <div className="h-8 w-32 bg-muted rounded" />
         <div className="h-9 w-36 bg-muted rounded" />
       </div>

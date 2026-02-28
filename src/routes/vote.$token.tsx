@@ -784,7 +784,7 @@ function PlayerVotingPage() {
 
 function VotePageSkeleton() {
   return (
-    <div className="min-h-screen bg-background flex flex-col animate-pulse">
+    <div className="min-h-screen bg-background flex flex-col animate-pulse" aria-busy="true">
       {/* Header */}
       <div className="border-b border-border bg-card px-4 py-3 sm:px-6 sm:py-4">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
