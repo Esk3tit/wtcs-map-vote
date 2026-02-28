@@ -15,6 +15,7 @@ import { isSecureUrl } from "./lib/urlValidation";
 import { validateName } from "./lib/validation";
 import { validateStorageFile } from "./lib/storageValidation";
 import { requireAdmin } from "./lib/auth";
+import { resolveTeamLogoUrl } from "./lib/teamLogos";
 
 // ============================================================================
 // Private Helpers
@@ -72,11 +73,7 @@ export const listTeams = query({
     const teamsWithResolvedLogosAndCounts = await Promise.all(
       result.page.map(async (team) => {
         // Resolve logo URL
-        let logoUrl = team.logoUrl;
-        if (team.logoStorageId) {
-          const resolvedUrl = await ctx.storage.getUrl(team.logoStorageId);
-          logoUrl = resolvedUrl ?? team.logoUrl;
-        }
+        const logoUrl = await resolveTeamLogoUrl(ctx, team);
 
         // Count distinct sessions this team is in
         const playersWithTeamName = await ctx.db

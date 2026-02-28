@@ -453,31 +453,44 @@ export const listSessionsForDashboard = query({
 
     const paginatedResult = await sessionsQuery.paginate(args.paginationOpts);
 
-    // Enrich each session with player summary and team logos
-    const enrichedPage = await Promise.all(
-      paginatedResult.page.map(async (session) => {
-        const players = await ctx.db
+    // Fetch all players per session in parallel
+    const playersBySession = await Promise.all(
+      paginatedResult.page.map((session) =>
+        ctx.db
           .query("sessionPlayers")
           .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
-          .collect();
-
-        const teams = [...new Set(players.map((p) => p.teamName))];
-        const logoMap = await resolveTeamLogos(ctx, teams);
-        const teamLogos = logoMapToRecord(logoMap);
-
-        return {
-          _id: session._id,
-          _creationTime: session._creationTime,
-          matchName: session.matchName,
-          format: session.format,
-          status: session.status,
-          playerCount: session.playerCount,
-          assignedPlayerCount: players.length,
-          teams,
-          teamLogos,
-        };
-      })
+          .collect()
+      )
     );
+
+    // Single batch logo resolve for all unique teams across all sessions
+    const allTeamNames = [
+      ...new Set(playersBySession.flat().map((p) => p.teamName)),
+    ];
+    const logoMap = await resolveTeamLogos(ctx, allTeamNames);
+    const allTeamLogos = logoMapToRecord(logoMap);
+
+    // Enrich each session with player summary and team logos
+    const enrichedPage = paginatedResult.page.map((session, i) => {
+      const players = playersBySession[i];
+      const teams = [...new Set(players.map((p) => p.teamName))];
+      const teamLogos: Record<string, string> = {};
+      for (const team of teams) {
+        if (allTeamLogos[team]) teamLogos[team] = allTeamLogos[team];
+      }
+
+      return {
+        _id: session._id,
+        _creationTime: session._creationTime,
+        matchName: session.matchName,
+        format: session.format,
+        status: session.status,
+        playerCount: session.playerCount,
+        assignedPlayerCount: players.length,
+        teams,
+        teamLogos,
+      };
+    });
 
     return {
       ...paginatedResult,

@@ -3,9 +3,36 @@
  *
  * Shared utility for resolving team logos by name.
  * Batch-resolves logos for multiple teams efficiently using Promise.all.
+ *
+ * Unlike sessionMaps (which snapshot map images at assignment time),
+ * team logos are resolved live from the teams table. This is intentional:
+ * logos are cosmetic identity markers and should reflect current branding,
+ * whereas map images are part of the voting domain and must be immutable
+ * during a session.
  */
 
+import type { Id } from "../_generated/dataModel";
 import type { QueryCtx } from "../_generated/server";
+
+/**
+ * Resolve the logo URL for a single team document.
+ * Prefers storage URL over external URL.
+ *
+ * @param ctx - Query context
+ * @param team - Team document with optional logoUrl and logoStorageId
+ * @returns Resolved logo URL, or undefined if no logo
+ */
+export async function resolveTeamLogoUrl(
+  ctx: QueryCtx,
+  team: { logoUrl?: string; logoStorageId?: Id<"_storage"> }
+): Promise<string | undefined> {
+  let logoUrl = team.logoUrl;
+  if (team.logoStorageId) {
+    const storageUrl = await ctx.storage.getUrl(team.logoStorageId);
+    logoUrl = storageUrl ?? team.logoUrl;
+  }
+  return logoUrl ?? undefined;
+}
 
 /**
  * Resolve logo URLs for a set of team names.
@@ -29,12 +56,8 @@ export async function resolveTeamLogos(
         .first();
       if (!team) return [name, undefined] as const;
 
-      let logoUrl = team.logoUrl;
-      if (team.logoStorageId) {
-        const storageUrl = await ctx.storage.getUrl(team.logoStorageId);
-        logoUrl = storageUrl ?? team.logoUrl;
-      }
-      return [name, logoUrl ?? undefined] as const;
+      const logoUrl = await resolveTeamLogoUrl(ctx, team);
+      return [name, logoUrl] as const;
     })
   );
   return new Map(results);
