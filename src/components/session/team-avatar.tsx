@@ -14,7 +14,7 @@ const TEAM_COLORS = [
 
 function getTeamColorClass(name: string): string {
   const hash = Array.from(name).reduce(
-    (acc, char) => (char.codePointAt(0) ?? 0) + acc,
+    (acc, char, i) => acc + (char.codePointAt(0) ?? 0) * (i + 1),
     name.length,
   );
   return TEAM_COLORS[hash % TEAM_COLORS.length];
