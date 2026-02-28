@@ -31,7 +31,7 @@ export async function resolveTeamLogoUrl(
     const storageUrl = await ctx.storage.getUrl(team.logoStorageId);
     logoUrl = storageUrl ?? team.logoUrl;
   }
-  return logoUrl ?? undefined;
+  return logoUrl;
 }
 
 /**
