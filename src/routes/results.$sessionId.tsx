@@ -6,6 +6,7 @@ import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Trophy, X, Loader2, AlertTriangle, Clock } from "lucide-react";
+import { TeamAvatar } from "@/components/session/team-avatar";
 
 export const Route = createFileRoute("/results/$sessionId")({
   component: VotingResultsPage,
@@ -61,7 +62,7 @@ function VotingResultsPage() {
     return <ResultsErrorPage error={data.error} />;
   }
 
-  const { session, teams, winnerMap, maps, banHistory } = data;
+  const { session, teams, teamLogos, winnerMap, maps, banHistory } = data;
 
   return (
     <div className="min-h-screen bg-background text-foreground py-12 px-6">
@@ -69,9 +70,24 @@ function VotingResultsPage() {
         {/* Header Section */}
         <div className="text-center space-y-2">
           <h1 className="text-3xl font-bold">{session.matchName}</h1>
-          <p className="text-xl text-muted-foreground">
-            {teams.length >= 2 ? `${teams[0]} vs ${teams[1]}` : teams.join(", ")}
-          </p>
+          <div className="flex items-center justify-center gap-3 text-xl text-muted-foreground flex-wrap">
+            {teams.length >= 2 ? (
+              <>
+                <TeamAvatar name={teams[0]} logoUrl={teamLogos[teams[0]]} />
+                <span className="font-semibold">{teams[0]}</span>
+                <span>vs</span>
+                <TeamAvatar name={teams[1]} logoUrl={teamLogos[teams[1]]} />
+                <span className="font-semibold">{teams[1]}</span>
+              </>
+            ) : (
+              teams.map((team) => (
+                <div key={team} className="flex items-center gap-2">
+                  <TeamAvatar name={team} logoUrl={teamLogos[team]} size="sm" />
+                  <span>{team}</span>
+                </div>
+              ))
+            )}
+          </div>
           <Badge
             variant="secondary"
             className="bg-green-950/50 text-green-400 border-green-600"
@@ -128,11 +144,16 @@ function VotingResultsPage() {
                     alt={ban.mapName}
                     className="w-16 h-10 object-cover rounded grayscale"
                   />
-                  <div className="flex-1">
+                  <div className="flex-1 flex items-center gap-2 flex-wrap">
+                    <TeamAvatar
+                      name={ban.teamName}
+                      logoUrl={teamLogos[ban.teamName]}
+                      size="sm"
+                    />
                     <span className="font-semibold text-foreground">
                       {ban.teamName}
                     </span>
-                    <span className="text-muted-foreground"> banned </span>
+                    <span className="text-muted-foreground">banned</span>
                     <span className="font-semibold text-foreground">
                       {ban.mapName}
                     </span>

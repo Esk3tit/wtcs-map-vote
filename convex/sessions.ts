@@ -43,6 +43,7 @@ import {
   connectionStatusValidator,
 } from "./lib/validators";
 import { requireAdmin } from "./lib/auth";
+import { resolveTeamLogos } from "./lib/teamLogos";
 import {
   completeSession,
   guardFinalize,
@@ -76,6 +77,7 @@ const adminPlayerObjectValidator = v.object({
   sessionId: v.id("sessions"),
   role: v.string(),
   teamName: v.string(),
+  teamLogoUrl: v.optional(v.string()),
   token: v.string(),
   tokenExpiresAt: v.number(),
   isIpLocked: v.boolean(),
@@ -141,11 +143,18 @@ const sessionWithRelationsValidator = v.object({
 /**
  * Transform a player document for admin-facing queries.
  * Strips ipAddress (GDPR) and replaces with isIpLocked boolean.
+ *
+ * @param player - Raw player document
+ * @param logoMap - Optional map of teamName -> resolved logo URL
  */
-function toAdminPlayer(player: Doc<"sessionPlayers">) {
+function toAdminPlayer(
+  player: Doc<"sessionPlayers">,
+  logoMap?: Map<string, string | undefined>
+) {
   const { ipAddress, ...rest } = player;
   return {
     ...rest,
+    teamLogoUrl: logoMap?.get(player.teamName),
     isIpLocked: !!ipAddress,
     connectionStatus: computeConnectionStatus(player.isConnected, player.lastHeartbeat),
   };
@@ -154,12 +163,19 @@ function toAdminPlayer(player: Doc<"sessionPlayers">) {
 /**
  * Transform a player document for player-facing queries.
  * Allowlist pattern — only includes safe, non-sensitive fields.
+ *
+ * @param player - Raw player document
+ * @param logoMap - Optional map of teamName -> resolved logo URL
  */
-function toSanitizedPlayer(player: Doc<"sessionPlayers">) {
+function toSanitizedPlayer(
+  player: Doc<"sessionPlayers">,
+  logoMap?: Map<string, string | undefined>
+) {
   return {
     _id: player._id,
     role: player.role,
     teamName: player.teamName,
+    teamLogoUrl: logoMap?.get(player.teamName),
     isConnected: player.isConnected,
     connectionStatus: computeConnectionStatus(player.isConnected, player.lastHeartbeat),
     hasVotedThisRound: player.hasVotedThisRound,
@@ -293,6 +309,14 @@ async function buildSessionResults(ctx: QueryCtx, session: Doc<"sessions">) {
   const teams = [...new Set(players.map((p) => p.teamName))];
   const winnerMap = maps.find((m) => m.state === "WINNER");
 
+  // Resolve team logos (only include teams with logos)
+  const logoMap = await resolveTeamLogos(ctx, teams);
+  const teamLogos: Record<string, string> = {};
+  for (const name of teams) {
+    const url = logoMap.get(name);
+    if (url) teamLogos[name] = url;
+  }
+
   // Derive flat banHistory from roundHistory for backwards compatibility
   const roundHistory = buildRoundHistory(maps, players, session.format);
   const mapImageLookup = new Map(maps.map((m) => [m._id.toString(), m.imageUrl]));
@@ -306,7 +330,7 @@ async function buildSessionResults(ctx: QueryCtx, session: Doc<"sessions">) {
     }))
   );
 
-  return { maps, teams, winnerMap, banHistory };
+  return { maps, teams, winnerMap, banHistory, teamLogos };
 }
 
 // ============================================================================
@@ -382,8 +406,12 @@ export const getSession = query({
         .collect(),
     ]);
 
+    // Resolve team logos for all players
+    const teamNames = [...new Set(rawPlayers.map((p) => p.teamName))];
+    const logoMap = await resolveTeamLogos(ctx, teamNames);
+
     // Redact ipAddress → isIpLocked for GDPR compliance
-    const players = rawPlayers.map(toAdminPlayer);
+    const players = rawPlayers.map((p) => toAdminPlayer(p, logoMap));
 
     return {
       ...session,
@@ -429,7 +457,7 @@ export const listSessionsForDashboard = query({
 
     const paginatedResult = await sessionsQuery.paginate(args.paginationOpts);
 
-    // Enrich each session with player summary
+    // Enrich each session with player summary and team logos
     const enrichedPage = await Promise.all(
       paginatedResult.page.map(async (session) => {
         const players = await ctx.db
@@ -438,6 +466,12 @@ export const listSessionsForDashboard = query({
           .collect();
 
         const teams = [...new Set(players.map((p) => p.teamName))];
+        const logoMap = await resolveTeamLogos(ctx, teams);
+        const teamLogos: Record<string, string> = {};
+        for (const name of teams) {
+          const url = logoMap.get(name);
+          if (url) teamLogos[name] = url;
+        }
 
         return {
           _id: session._id,
@@ -448,6 +482,7 @@ export const listSessionsForDashboard = query({
           playerCount: session.playerCount,
           assignedPlayerCount: players.length,
           teams,
+          teamLogos,
         };
       })
     );
@@ -1600,6 +1635,7 @@ const sanitizedPlayerValidator = v.object({
   _id: v.id("sessionPlayers"),
   role: v.string(),
   teamName: v.string(),
+  teamLogoUrl: v.optional(v.string()),
   isConnected: v.boolean(),
   connectionStatus: connectionStatusValidator,
   hasVotedThisRound: v.boolean(),
@@ -1731,10 +1767,14 @@ export const getSessionByToken = query({
         : Promise.resolve(null),
     ]);
 
+    // Resolve team logos for all players
+    const teamNames = [...new Set(allPlayers.map((p) => p.teamName))];
+    const logoMap = await resolveTeamLogos(ctx, teamNames);
+
     // Sanitize player data (exclude tokens, IPs)
     const otherPlayers = allPlayers
       .filter((p) => p._id !== player._id)
-      .map(toSanitizedPlayer);
+      .map((p) => toSanitizedPlayer(p, logoMap));
 
     // Sort players by creation time to get consistent ordering for turn calculation
     const sortedPlayers = sortPlayersByJoinOrder(allPlayers);
@@ -1775,7 +1815,7 @@ export const getSessionByToken = query({
 
     return {
       status: "valid" as const,
-      player: toSanitizedPlayer(player),
+      player: toSanitizedPlayer(player, logoMap),
       session: {
         _id: session._id,
         matchName: session.matchName,
@@ -1884,6 +1924,7 @@ export const getSessionResultsByToken = query({
         completedAt: v.optional(v.number()),
       }),
       teams: v.array(v.string()),
+      teamLogos: v.record(v.string(), v.string()),
       winnerMap: v.optional(
         v.object({
           _id: v.id("sessionMaps"),
@@ -1939,10 +1980,8 @@ export const getSessionResultsByToken = query({
       };
     }
 
-    const { maps, teams, winnerMap, banHistory } = await buildSessionResults(
-      ctx,
-      session
-    );
+    const { maps, teams, winnerMap, banHistory, teamLogos } =
+      await buildSessionResults(ctx, session);
 
     return {
       status: "valid" as const,
@@ -1954,6 +1993,7 @@ export const getSessionResultsByToken = query({
         completedAt: session.completedAt,
       },
       teams,
+      teamLogos,
       winnerMap: winnerMap
         ? {
             _id: winnerMap._id,
@@ -1997,6 +2037,7 @@ export const getSessionResults = query({
         completedAt: v.optional(v.number()),
       }),
       teams: v.array(v.string()),
+      teamLogos: v.record(v.string(), v.string()),
       winnerMap: v.optional(
         v.object({
           _id: v.id("sessionMaps"),
@@ -2036,10 +2077,8 @@ export const getSessionResults = query({
       };
     }
 
-    const { maps, teams, winnerMap, banHistory } = await buildSessionResults(
-      ctx,
-      session
-    );
+    const { maps, teams, winnerMap, banHistory, teamLogos } =
+      await buildSessionResults(ctx, session);
 
     return {
       status: "valid" as const,
@@ -2051,6 +2090,7 @@ export const getSessionResults = query({
         completedAt: session.completedAt,
       },
       teams,
+      teamLogos,
       winnerMap: winnerMap
         ? {
             _id: winnerMap._id,

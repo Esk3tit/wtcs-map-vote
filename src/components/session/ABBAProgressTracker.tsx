@@ -2,6 +2,7 @@ import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 import { Check } from "lucide-react";
 import type { RoundHistoryEntry, MapInfo, BanStep } from "@/components/session/types";
+import { TeamAvatar } from "@/components/session/team-avatar";
 
 interface ABBAProgressTrackerProps {
   banSteps: BanStep[];
@@ -105,7 +106,13 @@ export function ABBAProgressTracker({
                   stepNumber={step.step}
                   size="md"
                 />
-                {/* Team name */}
+                {/* Team avatar + name */}
+                <TeamAvatar
+                  name={step.team}
+                  logoUrl={step.teamLogoUrl}
+                  size="sm"
+                  className="mb-1"
+                />
                 <span
                   className={cn(
                     "text-sm text-center",
@@ -178,6 +185,12 @@ export function ABBAProgressTracker({
               </div>
               {/* Step content */}
               <div className="flex items-center gap-2 min-w-0 flex-1">
+                <TeamAvatar
+                  name={step.team}
+                  logoUrl={step.teamLogoUrl}
+                  size="sm"
+                  className="shrink-0"
+                />
                 <span
                   className={cn(
                     "text-sm flex-shrink-0",

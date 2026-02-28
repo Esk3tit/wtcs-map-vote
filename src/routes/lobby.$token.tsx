@@ -18,6 +18,7 @@ import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { audioManager } from "@/lib/audio";
 import { Lock, Loader2, CheckCircle2, Volume2, VolumeX } from "lucide-react";
+import { TeamAvatar } from "@/components/session/team-avatar";
 import { useEffect, useState, useCallback } from "react";
 
 export const Route = createFileRoute("/lobby/$token")({
@@ -175,11 +176,18 @@ function PlayerLobbyPage() {
           <Card className="p-6 border-primary/20">
             <div className="space-y-4">
               <p className="text-sm text-muted-foreground">You are joining as:</p>
-              <div className="space-y-2">
-                <h2 className="text-3xl font-bold text-foreground">
-                  {player.teamName}
-                </h2>
-                <p className="text-lg text-muted-foreground">({player.role})</p>
+              <div className="flex items-center gap-4">
+                <TeamAvatar
+                  name={player.teamName}
+                  logoUrl={player.teamLogoUrl}
+                  size="lg"
+                />
+                <div className="space-y-2 min-w-0">
+                  <h2 className="text-3xl font-bold text-foreground truncate">
+                    {player.teamName}
+                  </h2>
+                  <p className="text-lg text-muted-foreground">({player.role})</p>
+                </div>
               </div>
 
               <div className="pt-4 border-t border-border space-y-3">
@@ -266,9 +274,16 @@ function PlayerLobbyPage() {
                       key={otherPlayer._id}
                       className="flex items-center justify-between"
                     >
-                      <span className="text-lg font-semibold text-foreground">
-                        {otherPlayer.teamName}
-                      </span>
+                      <div className="flex items-center gap-3 min-w-0">
+                        <TeamAvatar
+                          name={otherPlayer.teamName}
+                          logoUrl={otherPlayer.teamLogoUrl}
+                          size="sm"
+                        />
+                        <span className="text-lg font-semibold text-foreground truncate">
+                          {otherPlayer.teamName}
+                        </span>
+                      </div>
                       <div className="flex items-center gap-3">
                         {showReadyButton && (
                           <div className="flex items-center gap-1.5">
@@ -343,7 +358,10 @@ function LobbyPageSkeleton() {
         {/* Identity card */}
         <div className="rounded-lg border border-primary/20 p-6 space-y-3">
           <div className="h-4 w-36 bg-muted rounded mx-auto" />
-          <div className="h-8 w-48 bg-muted rounded mx-auto" />
+          <div className="flex items-center justify-center gap-3">
+            <div className="size-10 bg-muted rounded-full shrink-0" />
+            <div className="h-8 w-48 bg-muted rounded" />
+          </div>
           <div className="h-5 w-24 bg-muted rounded mx-auto" />
         </div>
 
@@ -360,10 +378,15 @@ function LobbyPageSkeleton() {
         {/* Player status */}
         <div className="rounded-lg border p-4 space-y-3">
           <div className="h-5 w-32 bg-muted rounded" />
-          <div className="flex items-center justify-between">
-            <div className="h-5 w-40 bg-muted rounded" />
-            <div className="h-5 w-20 bg-muted rounded-full" />
-          </div>
+          {Array.from({ length: 2 }).map((_, i) => (
+            <div key={i} className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <div className="size-6 bg-muted rounded-full shrink-0" />
+                <div className="h-5 w-40 bg-muted rounded" />
+              </div>
+              <div className="h-5 w-20 bg-muted rounded-full" />
+            </div>
+          ))}
         </div>
       </div>
     </div>

@@ -16,6 +16,7 @@ import {
   formatStatus,
   formatRelativeTime,
 } from "./utils";
+import { TeamAvatar } from "@/components/session/team-avatar";
 
 export interface SessionCardData
   extends Pick<
@@ -24,6 +25,7 @@ export interface SessionCardData
   > {
   assignedPlayerCount: number;
   teams: string[];
+  teamLogos?: Record<string, string>;
 }
 
 interface SessionCardProps {
@@ -44,7 +46,25 @@ export function SessionCard({ session }: SessionCardProps) {
             {session.format}
           </Badge>
         </div>
-        <p className="text-sm text-muted-foreground">{teamDisplay}</p>
+        {session.teams.length >= 2 ? (
+          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
+            <TeamAvatar
+              name={session.teams[0]}
+              logoUrl={session.teamLogos?.[session.teams[0]]}
+              size="sm"
+            />
+            <span className="truncate">{session.teams[0]}</span>
+            <span className="shrink-0">vs</span>
+            <TeamAvatar
+              name={session.teams[1]}
+              logoUrl={session.teamLogos?.[session.teams[1]]}
+              size="sm"
+            />
+            <span className="truncate">{session.teams[1]}</span>
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground">{teamDisplay}</p>
+        )}
       </CardHeader>
 
       <CardContent className="space-y-3 pb-3">
