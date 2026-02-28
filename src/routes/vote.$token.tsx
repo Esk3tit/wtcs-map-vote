@@ -279,7 +279,7 @@ function PlayerVotingPage() {
       setAnimatingBanIds(
         (prev) => new Set([...prev, ...justBannedMapIds])
       );
-      const timer = setTimeout(() => {
+      setTimeout(() => {
         setAnimatingBanIds((prev) => {
           const next = new Set(prev);
           for (const id of justBannedMapIds) {
@@ -288,17 +288,14 @@ function PlayerVotingPage() {
           return next;
         });
       }, 600);
-      return () => clearTimeout(timer);
     }
   }, [justBannedMapIds]);
 
   // Update ref AFTER computing justBanned (effect runs after render)
   useEffect(() => {
-    const newStates = new Map<string, string>();
-    for (const map of mapsForAnimation) {
-      newStates.set(map._id, map.state);
-    }
-    prevMapStatesRef.current = newStates;
+    prevMapStatesRef.current = new Map(
+      mapsForAnimation.map((map) => [map._id, map.state])
+    );
   }, [mapsForAnimation]);
 
   // Compute stagger index for multiplayer elimination reveal

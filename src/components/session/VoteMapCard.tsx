@@ -88,10 +88,10 @@ export function VoteMapCard({
         survivor &&
           "ring-2 ring-green-500/50 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500",
         // Winner: amber ring + pulse animation
-        winner &&
+        winner && [
           "ring-2 ring-amber-400 motion-safe:animate-winner-pulse motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500",
-        winner &&
-          "motion-reduce:shadow-lg motion-reduce:shadow-amber-400/30"
+          "motion-reduce:shadow-lg motion-reduce:shadow-amber-400/30",
+        ]
       )}
       role={isClickable ? "button" : undefined}
       tabIndex={isClickable ? 0 : undefined}
