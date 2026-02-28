@@ -22,6 +22,7 @@ import type * as lib_imageConstants from "../lib/imageConstants.js";
 import type * as lib_random from "../lib/random.js";
 import type * as lib_sessionLifecycle from "../lib/sessionLifecycle.js";
 import type * as lib_storageValidation from "../lib/storageValidation.js";
+import type * as lib_teamLogos from "../lib/teamLogos.js";
 import type * as lib_timerScheduling from "../lib/timerScheduling.js";
 import type * as lib_tokenGeneration from "../lib/tokenGeneration.js";
 import type * as lib_types from "../lib/types.js";
@@ -58,6 +59,7 @@ declare const fullApi: ApiFromModules<{
   "lib/random": typeof lib_random;
   "lib/sessionLifecycle": typeof lib_sessionLifecycle;
   "lib/storageValidation": typeof lib_storageValidation;
+  "lib/teamLogos": typeof lib_teamLogos;
   "lib/timerScheduling": typeof lib_timerScheduling;
   "lib/tokenGeneration": typeof lib_tokenGeneration;
   "lib/types": typeof lib_types;

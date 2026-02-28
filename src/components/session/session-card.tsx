@@ -47,20 +47,22 @@ export function SessionCard({ session }: SessionCardProps) {
           </Badge>
         </div>
         {session.teams.length >= 2 ? (
-          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <TeamAvatar
-              name={session.teams[0]}
-              logoUrl={session.teamLogos?.[session.teams[0]]}
-              size="sm"
-            />
-            <span className="truncate">{session.teams[0]}</span>
-            <span className="shrink-0">vs</span>
-            <TeamAvatar
-              name={session.teams[1]}
-              logoUrl={session.teamLogos?.[session.teams[1]]}
-              size="sm"
-            />
-            <span className="truncate">{session.teams[1]}</span>
+          <div className="flex flex-wrap items-center gap-x-1.5 gap-y-1 text-sm text-muted-foreground overflow-hidden max-h-[3.25rem]">
+            {session.teams.map((team, index) => (
+              <div key={team} className="flex items-center gap-1.5 min-w-0 max-w-full">
+                {index > 0 && (
+                  <span className="shrink-0">
+                    {session.teams.length === 2 ? "vs" : "·"}
+                  </span>
+                )}
+                <TeamAvatar
+                  name={team}
+                  logoUrl={session.teamLogos?.[team]}
+                  size="sm"
+                />
+                <span className="truncate">{team}</span>
+              </div>
+            ))}
           </div>
         ) : (
           <p className="text-sm text-muted-foreground">{teamDisplay}</p>

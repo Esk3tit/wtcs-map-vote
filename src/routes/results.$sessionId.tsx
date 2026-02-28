@@ -231,6 +231,7 @@ function ResultsPageSkeleton() {
         {/* Header */}
         <div className="text-center space-y-2">
           <div className="h-9 w-72 bg-muted rounded mx-auto" />
+          {/* Simplified 2-team placeholder — teams data isn't available during loading */}
           <div className="flex items-center justify-center gap-3">
             <div className="size-8 bg-muted rounded-full shrink-0" />
             <div className="h-6 w-24 bg-muted rounded" />
