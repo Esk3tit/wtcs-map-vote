@@ -332,6 +332,7 @@ function PlayerLobbyPage() {
 function LobbyPageSkeleton() {
   return (
     <div className="min-h-screen bg-background p-6 flex items-center justify-center" aria-busy="true">
+      <div role="status" aria-live="polite" className="sr-only">Loading lobby</div>
       <div className="w-full max-w-2xl space-y-8 animate-pulse">
         {/* Header: match name + format badge */}
         <div className="text-center space-y-3">

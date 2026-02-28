@@ -206,7 +206,7 @@ function DashboardPage() {
 
 function SessionCardSkeleton() {
   return (
-    <div className="rounded-lg border border-border/50 bg-card/50 p-6 space-y-3 animate-pulse">
+    <div className="rounded-lg border border-border/50 bg-card/50 p-6 space-y-3">
       <div className="h-5 w-36 bg-muted rounded" />
       <div className="h-4 w-44 bg-muted rounded" />
       <div className="h-4 w-24 bg-muted rounded" />
@@ -218,6 +218,7 @@ function SessionCardSkeleton() {
 function DashboardPageSkeleton() {
   return (
     <div className="flex-1 flex flex-col animate-pulse" aria-busy="true">
+      <div role="status" aria-live="polite" className="sr-only">Loading dashboard</div>
       {/* Header */}
       <div className="border-b border-border/50 bg-card/30 backdrop-blur-sm px-4 py-4 md:px-8 flex items-center justify-between">
         <div className="h-8 w-32 bg-muted rounded" />
