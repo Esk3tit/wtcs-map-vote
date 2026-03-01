@@ -25,7 +25,7 @@ The stagger timer computation in `vote.$token.tsx:274` uses `+ 100` as an unname
 - Add `const STAGGER_SAFETY_BUFFER_MS = 100;`
 - **Pros**: Self-documenting
 - **Cons**: Minor, adds one more constant
-- **Effort**: Small (2 line change)
+- **Effort**: Small (2-line change)
 - **Risk**: Low
 
 ## Acceptance Criteria
