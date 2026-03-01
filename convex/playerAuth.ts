@@ -285,7 +285,7 @@ export const playerReady = internalMutation({
     const ipAddress = args.ipAddress.trim();
 
     // Rate limit by player token
-    const { ok, retryAfter } = await rateLimiter.limit(ctx, "submitVote", {
+    const { ok, retryAfter } = await rateLimiter.limit(ctx, "playerReady", {
       key: token,
     });
     if (!ok) {

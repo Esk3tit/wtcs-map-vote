@@ -20,6 +20,9 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
     capacity: 3,
   },
 
+  // Player ready: lobby ready-up action
+  playerReady: { kind: "token bucket", rate: 10, period: MINUTE, capacity: 3 },
+
   // Token validation: brute force protection
   validateToken: {
     kind: "token bucket",

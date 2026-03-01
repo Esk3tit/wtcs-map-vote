@@ -398,12 +398,22 @@ function PlayerVotingPage() {
         signal: AbortSignal.timeout(10_000),
       });
 
+      const result: { status: string; error?: string } = await res
+        .json()
+        .catch(() => ({ status: "error" }));
+
       if (!res.ok) {
-        toast.error("Server error. Please try again.");
+        if (res.status === 429) {
+          toast.error(
+            getVotingErrorMessage(
+              (result.error ?? "RATE_LIMITED") as VotingErrorCode
+            )
+          );
+        } else {
+          toast.error("Server error. Please try again.");
+        }
         return;
       }
-
-      const result: { status: string; error?: string } = await res.json();
 
       if (result.status === "ok") {
         if (pendingAction.type === "vote" && currentRound !== undefined) {
