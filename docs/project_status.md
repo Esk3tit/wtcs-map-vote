@@ -2,7 +2,7 @@
 
 Current progress and next steps for the WTCS Map Vote project.
 
-**Last Updated:** February 23, 2026
+**Last Updated:** March 1, 2026
 
 ---
 
@@ -153,13 +153,30 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] Disconnect detection and auto-pause (WAR-49, PR #68) — heartbeat timeout cron with auto-pause
 - [x] Return validator audit — fixed `sessionMapObjectValidator` missing `submittedByAdmin` field
 
-### Phase 6: Player Experience Polish (IN PROGRESS)
+### Phase 6: Player Experience Polish (COMPLETE)
 - [x] Player session state auto-redirects (WAR-54, PR #73) — `useSessionStatusRedirect` hook for lobby→vote→results transitions
 - [x] Session paused overlay on vote page (WAR-55, PR #74) — semi-transparent overlay replaces full-page replacement
 - [x] Multiplayer round results reveal (WAR-58, PR #75) — 3-second reveal phase with vote counts, winner banner, deadlock display
 - [x] 3-state connection status indicators (WAR-56, PR #76) — Connected/Reconnecting/Disconnected badges with server-computed status
 - [x] Player reconnection flow with retry logic (WAR-57, PR #77) — exponential backoff, DisconnectedOverlay, tab visibility handler
 - [x] Session error states for active players (WAR-60, PR #78) — SessionEndedPage for EXPIRED sessions, heartbeat stop on terminal state
+
+### Phase 7: Animation & Visual Polish (COMPLETE)
+- [x] ABBA turn flash overlay (WAR-69, PR #80) — green viewport-edge glow on your-turn transition
+- [x] ABBA progress tracker with ban history (WAR-61, PR #81) — map thumbnails, multiplayer round history table
+- [x] Stakeholder feedback fixes (WAR-70, PR #82) — 3-rule multiplayer ban strategy, timer CSPRNG, UX fixes
+- [x] Revote deadlock loop fix (PR #83) — preserve `isRevoteRound` through pause/resume
+- [x] Audio alerts for voting events (WAR-62, PR #84) — 6 sound effects, mute toggle, autoplay unlock
+- [x] Skeleton loading screens (WAR-65, PR #85) — layout-matching skeletons on all player pages + admin dashboard
+- [x] Team logos integration (WAR-71, PR #86) — `TeamAvatar` component, batch logo resolution, all views
+- [x] Animated map ban/elimination transitions (WAR-63, PR #87) — grayscale + stamp-in, staggered elimination, winner pulse
+- [x] Winner celebration animation (WAR-64, PR #88) — choreographed CSS-only sequence on results page
+- [x] Standardized empty states (WAR-68, PR #89) — shared `EmptyState` component with page/card variants
+- [x] Lobby & vote page entrance animations (WAR-66, PR #90) — staggered map card entrances, pulsing wait text
+- [x] Animation system documentation — `docs/solutions/animation-system.md`
+
+### Phase 7b: Turn Transition Animations (IN PROGRESS)
+- [ ] Turn transition animations (WAR-67, PR #92) — banner crossfade, timer pulse, ABBA tracker transitions, round fade-in
 
 ---
 

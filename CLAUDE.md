@@ -322,6 +322,7 @@ Reusable modules in `convex/lib/`:
 | `imageConstants.ts` | Image upload constraints (max size, allowed types) |
 | `sessionLifecycle.ts` | Session state transition helpers (`validateTransition`, `guardFinalize`, `guardStart`, `transitionSession`) |
 | `auth.ts` | Admin auth helpers (`getCurrentAdmin`, `requireAdmin`, `requireRootAdmin`) |
+| `teamLogos.ts` | Batch team logo URL resolution (`resolveTeamLogos`) |
 
 **Always check for existing utilities** before creating new validation or helper functions.
 
