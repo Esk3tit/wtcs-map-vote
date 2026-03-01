@@ -47,10 +47,15 @@ export function initSentry(router: unknown) {
     beforeSend(event, hint) {
       const error = hint.originalException;
 
-      // Drop ConvexError — expected business logic errors
-      if (error && typeof error === "object" && "data" in error) {
-        if ((error as unknown as Error).constructor?.name === "ConvexError")
-          return null;
+      // Drop ConvexError — expected business logic errors.
+      // Use error.name (preserved after minification) instead of constructor.name.
+      if (
+        error &&
+        typeof error === "object" &&
+        "data" in error &&
+        (error as { name?: string }).name === "ConvexError"
+      ) {
+        return null;
       }
 
       // Drop browser extension errors

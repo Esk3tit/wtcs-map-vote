@@ -26,9 +26,9 @@ const ANIMATION_DELAY = {
 
 export const Route = createFileRoute("/results/$sessionId")({
   component: VotingResultsPage,
-  errorComponent: ({ error }) => {
+  errorComponent: ({ error, reset }) => {
     Sentry.captureException(error);
-    return <PlayerErrorFallback error={error} />;
+    return <PlayerErrorFallback error={error} resetError={reset} />;
   },
   validateSearch: (
     search: Record<string, unknown>

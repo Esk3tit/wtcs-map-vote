@@ -68,9 +68,11 @@ export function RootErrorFallback({ error }: ErrorFallbackProps) {
       <p className="text-muted-foreground">
         An unexpected error occurred. The error has been reported.
       </p>
-      <pre className="max-w-md overflow-auto rounded bg-muted p-3 text-xs text-muted-foreground">
-        {error.message}
-      </pre>
+      {import.meta.env.DEV && (
+        <pre className="max-w-md overflow-auto rounded bg-muted p-3 text-xs text-muted-foreground">
+          {error.message}
+        </pre>
+      )}
       <button
         onClick={() => window.location.reload()}
         className="rounded bg-primary px-4 py-2 text-primary-foreground hover:bg-primary/90"

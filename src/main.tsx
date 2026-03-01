@@ -27,8 +27,9 @@ initSentry(router);
 window.addEventListener("unhandledrejection", (event) => {
   const error = event.reason;
 
-  // ConvexError is already handled in UI via toast
-  if (error?.constructor?.name === "ConvexError") return;
+  // ConvexError is already handled in UI via toast.
+  // Use error.name (preserved after minification) instead of constructor.name.
+  if (error?.name === "ConvexError") return;
 
   // Chunk load failures — prompt reload
   if (error?.message?.match(/Loading chunk|dynamically imported module/)) {

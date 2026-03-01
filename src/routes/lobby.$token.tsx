@@ -26,9 +26,9 @@ import { Sentry } from "@/lib/sentry";
 
 export const Route = createFileRoute("/lobby/$token")({
   component: PlayerLobbyPage,
-  errorComponent: ({ error }) => {
+  errorComponent: ({ error, reset }) => {
     Sentry.captureException(error);
-    return <PlayerErrorFallback error={error} />;
+    return <PlayerErrorFallback error={error} resetError={reset} />;
   },
 });
 

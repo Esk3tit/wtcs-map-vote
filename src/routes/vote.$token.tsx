@@ -45,9 +45,9 @@ import { TeamAvatar } from "@/components/session/team-avatar";
 
 export const Route = createFileRoute("/vote/$token")({
   component: PlayerVotingPage,
-  errorComponent: ({ error }) => {
+  errorComponent: ({ error, reset }) => {
     Sentry.captureException(error);
-    return <PlayerErrorFallback error={error} />;
+    return <PlayerErrorFallback error={error} resetError={reset} />;
   },
 });
 
