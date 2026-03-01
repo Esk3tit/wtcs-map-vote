@@ -581,6 +581,7 @@ function PlayerVotingPage() {
                 </div>
 
                 <div
+                  // key re-mounts on turn/round change → resets timer + re-triggers pulse
                   key={`timer-${session.currentTurn}-${session.currentRound}`}
                   className={cn(
                     "text-center mb-4 font-mono text-4xl sm:text-5xl md:text-7xl font-bold motion-safe:animate-timer-pulse",
