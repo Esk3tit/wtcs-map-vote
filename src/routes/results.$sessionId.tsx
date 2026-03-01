@@ -7,6 +7,20 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Trophy, X, Loader2, AlertTriangle, Clock } from "lucide-react";
 import { TeamAvatar } from "@/components/session/team-avatar";
+import { cn } from "@/lib/utils";
+
+// ============================================================================
+// Animation Timing (ms)
+// ============================================================================
+
+/** Choreographed celebration entrance sequence — all delays relative to mount */
+const ANIMATION_DELAY = {
+  WINNER_CARD: 400,
+  WINNER_PULSE: 800,
+  BAN_HISTORY: 1000,
+  MAP_GRID_BASE: 1200,
+  MAP_GRID_STAGGER: 50,
+} as const;
 
 export const Route = createFileRoute("/results/$sessionId")({
   component: VotingResultsPage,
@@ -99,23 +113,31 @@ function VotingResultsPage() {
         {/* Winner Showcase */}
         {winnerMap ? (
           <div className="flex flex-col items-center space-y-6">
-            <Trophy className="w-16 h-16 text-primary" />
+            <Trophy className="w-16 h-16 text-primary motion-safe:animate-stamp-in" />
 
-            <Card className="overflow-hidden border-2 border-primary shadow-2xl shadow-primary/30 max-w-md w-full">
-              <div className="aspect-video relative">
-                <img
-                  src={winnerMap.imageUrl || "/placeholder.svg"}
-                  alt={winnerMap.name}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <div className="p-6 text-center space-y-3">
-                <h2 className="text-4xl font-bold">{winnerMap.name}</h2>
-                <Badge className="bg-primary text-primary-foreground text-base px-4 py-1">
-                  WINNER
-                </Badge>
-              </div>
-            </Card>
+            <div
+              className="max-w-md w-full shadow-2xl shadow-primary/30 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-4 motion-safe:duration-500 motion-safe:fill-mode-backwards"
+              style={{ animationDelay: `${ANIMATION_DELAY.WINNER_CARD}ms` }}
+            >
+              <Card
+                className="overflow-hidden border-2 border-primary motion-safe:animate-winner-pulse motion-reduce:shadow-lg motion-reduce:shadow-amber-400/30"
+                style={{ animationDelay: `${ANIMATION_DELAY.WINNER_PULSE}ms` }}
+              >
+                <div className="aspect-video relative">
+                  <img
+                    src={winnerMap.imageUrl || "/placeholder.svg"}
+                    alt={winnerMap.name}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div className="p-6 text-center space-y-3">
+                  <h2 className="text-4xl font-bold">{winnerMap.name}</h2>
+                  <Badge className="bg-primary text-primary-foreground text-base px-4 py-1">
+                    WINNER
+                  </Badge>
+                </div>
+              </Card>
+            </div>
           </div>
         ) : (
           <div className="flex flex-col items-center space-y-4">
@@ -128,7 +150,10 @@ function VotingResultsPage() {
 
         {/* Ban History Section */}
         {banHistory.length > 0 && (
-          <Card className="p-6">
+          <Card
+            className="p-6 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500 motion-safe:fill-mode-backwards"
+            style={{ animationDelay: `${ANIMATION_DELAY.BAN_HISTORY}ms` }}
+          >
             <h3 className="text-2xl font-bold mb-6">Ban Order</h3>
             <div className="space-y-4">
               {banHistory.map((ban) => (
@@ -168,45 +193,50 @@ function VotingResultsPage() {
         <div>
           <h3 className="text-xl font-bold mb-4 text-center">Map Summary</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-            {maps.map((map) => {
+            {maps.map((map, index) => {
               const isBanned = map.state === "BANNED";
               const isWinner = map.state === "WINNER";
 
               return (
-                <Card
+                <div
                   key={map._id}
-                  className={`overflow-hidden transition-all ${
-                    isWinner
-                      ? "border-2 border-primary ring-2 ring-primary/50"
-                      : ""
-                  } ${isBanned ? "opacity-60" : ""}`}
+                  className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300 motion-safe:fill-mode-backwards"
+                  style={{ animationDelay: `${ANIMATION_DELAY.MAP_GRID_BASE + index * ANIMATION_DELAY.MAP_GRID_STAGGER}ms` }}
                 >
-                  <div className="aspect-video relative">
-                    <img
-                      src={map.imageUrl || "/placeholder.svg"}
-                      alt={map.name}
-                      className={`w-full h-full object-cover ${isBanned ? "grayscale" : ""}`}
-                    />
-
-                    {isBanned && (
-                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                        <X className="w-12 h-12 text-red-600" strokeWidth={4} />
-                      </div>
+                  <Card
+                    className={cn(
+                      "overflow-hidden",
+                      isWinner && "border-2 border-primary ring-2 ring-primary/50",
+                      isBanned && "opacity-60",
                     )}
+                  >
+                    <div className="aspect-video relative">
+                      <img
+                        src={map.imageUrl || "/placeholder.svg"}
+                        alt={map.name}
+                        className={cn("w-full h-full object-cover", isBanned && "grayscale")}
+                      />
 
-                    {isWinner && (
-                      <div className="absolute top-2 right-2">
-                        <Trophy className="w-6 h-6 text-primary" />
-                      </div>
-                    )}
-                  </div>
+                      {isBanned && (
+                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                          <X className="w-12 h-12 text-red-600" strokeWidth={4} />
+                        </div>
+                      )}
 
-                  <div className="p-2">
-                    <div className="text-sm font-semibold text-center">
-                      {map.name}
+                      {isWinner && (
+                        <div className="absolute top-2 right-2">
+                          <Trophy className="w-6 h-6 text-primary" />
+                        </div>
+                      )}
                     </div>
-                  </div>
-                </Card>
+
+                    <div className="p-2">
+                      <div className="text-sm font-semibold text-center">
+                        {map.name}
+                      </div>
+                    </div>
+                  </Card>
+                </div>
               );
             })}
           </div>
