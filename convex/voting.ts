@@ -351,6 +351,12 @@ export const adminVoteOnBehalf = mutation({
   handler: async (ctx, args) => {
     const admin = await requireAdmin(ctx);
 
+    // Rate limit admin mutations (100/min per admin)
+    await rateLimiter.limit(ctx, "adminMutation", {
+      key: admin._id,
+      throws: true,
+    });
+
     // --- Shared validation ---
 
     const session = await ctx.db.get(args.sessionId);
