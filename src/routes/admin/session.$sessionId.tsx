@@ -71,6 +71,7 @@ import { ConnectionStatusBadge, STATUS_CONFIG } from "@/components/session/Conne
 import type { ConnectionStatus } from "../../../convex/lib/connectionStatus";
 import { useConnectionToasts } from "@/hooks/useConnectionToasts";
 import { TeamAvatar } from "@/components/session/team-avatar";
+import { EmptyState } from "@/components/ui/empty-state";
 
 // ============================================================================
 // Constants
@@ -1014,15 +1015,12 @@ function SessionDetailPage() {
           </CardHeader>
           <CardContent>
             {session.maps.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <Clock className="w-12 h-12 text-muted-foreground/50 mb-4" />
-                <p className="text-lg font-medium text-muted-foreground">
-                  No maps assigned
-                </p>
-                <p className="text-sm text-muted-foreground/70 mt-1">
-                  Maps will appear here once the session is finalized
-                </p>
-              </div>
+              <EmptyState
+                variant="card"
+                icon={<Clock className="w-12 h-12" />}
+                title="No maps assigned"
+                description="Maps will appear here once the session is finalized"
+              />
             ) : (
               <div className="space-y-6">
                 {/* Current Turn Banner (only when live) */}
@@ -1107,15 +1105,12 @@ function SessionDetailPage() {
                 <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
               </div>
             ) : auditLogs.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-12 text-center">
-                <Activity className="w-10 h-10 text-muted-foreground/50 mb-3" />
-                <p className="text-sm font-medium text-muted-foreground">
-                  No activity yet
-                </p>
-                <p className="text-xs text-muted-foreground/70 mt-1">
-                  Activity will appear here as the session progresses
-                </p>
-              </div>
+              <EmptyState
+                variant="card"
+                icon={<Activity className="w-12 h-12" />}
+                title="No activity yet"
+                description="Activity will appear here as the session progresses"
+              />
             ) : (
               <ol
                 role="log"

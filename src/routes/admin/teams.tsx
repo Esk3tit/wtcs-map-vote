@@ -32,6 +32,7 @@ import {
 } from "@/components/ui/table";
 import { TeamAvatar } from "@/components/session/team-avatar";
 import { Plus, Pencil, Trash2, Users, Loader2 } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
 import { useState, useCallback } from "react";
 import { usePaginatedQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
@@ -241,22 +242,17 @@ function TeamsPage() {
 
         <main className="flex-1 px-4 py-6 md:px-8 md:py-8">
           {hasNoTeams ? (
-            // Empty State
-            <div className="flex flex-col items-center justify-center py-16 px-4">
-              <div className="w-64 h-64 mb-6 rounded-lg bg-muted/30 flex items-center justify-center">
-                <Users className="w-24 h-24 text-muted-foreground/50" />
-              </div>
-              <h2 className="text-2xl font-semibold text-foreground mb-2">
-                No teams registered yet
-              </h2>
-              <p className="text-muted-foreground mb-6 text-center max-w-md">
-                Add teams to quickly select them when creating voting sessions.
-              </p>
-              <Button onClick={handleAddTeam} size="lg" className="gap-2">
-                <Plus className="w-5 h-5" />
-                Add Team
-              </Button>
-            </div>
+            <EmptyState
+              icon={<Users className="w-24 h-24 text-muted-foreground/50" />}
+              title="No teams registered yet"
+              description="Add teams to quickly select them when creating voting sessions."
+              action={
+                <Button onClick={handleAddTeam} size="lg" className="gap-2">
+                  <Plus className="w-5 h-5" />
+                  Add Team
+                </Button>
+              }
+            />
           ) : (
             // Teams Table
             <div className="space-y-4">

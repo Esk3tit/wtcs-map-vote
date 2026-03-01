@@ -8,9 +8,10 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { Plus, Loader2 } from "lucide-react";
+import { Plus, Loader2, LayoutGrid } from "lucide-react";
 import { SessionCard } from "@/components/session/session-card";
 import { CompletedSessionRow } from "@/components/session/completed-session-row";
+import { EmptyState } from "@/components/ui/empty-state";
 
 export const Route = createFileRoute("/admin/dashboard")({
   component: DashboardPage,
@@ -97,7 +98,7 @@ function DashboardPage() {
           </div>
 
           {activeSessions.length === 0 ? (
-            <EmptyState />
+            <DashboardEmptyState />
           ) : (
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -250,39 +251,23 @@ function DashboardPageSkeleton() {
   );
 }
 
-function EmptyState() {
+function DashboardEmptyState() {
   return (
-    <div className="flex flex-col items-center justify-center py-16 px-4">
-      <div className="w-64 h-64 mb-6 rounded-lg bg-muted/30 flex items-center justify-center">
-        <svg
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="w-24 h-24 text-muted-foreground/50"
+    <EmptyState
+      icon={<LayoutGrid className="w-24 h-24 text-muted-foreground/50" />}
+      title="No active sessions"
+      description="Get started by creating your first voting session"
+      action={
+        <Button
+          size="lg"
+          className="gap-2"
+          render={<Link to="/admin/create" />}
         >
-          <rect x="3" y="3" width="18" height="18" rx="2" ry="2" />
-          <line x1="9" y1="9" x2="15" y2="15" />
-          <line x1="15" y1="9" x2="9" y2="15" />
-        </svg>
-      </div>
-      <h2 className="text-2xl font-semibold text-foreground mb-2">
-        No active sessions
-      </h2>
-      <p className="text-muted-foreground mb-6 text-center max-w-sm">
-        Get started by creating your first voting session
-      </p>
-      <Button
-        size="lg"
-        className="gap-2"
-        render={<Link to="/admin/create" />}
-      >
-        <Plus className="w-5 h-5" />
-        Create Session
-      </Button>
-    </div>
+          <Plus className="w-5 h-5" />
+          Create Session
+        </Button>
+      }
+    />
   );
 }
 
