@@ -860,12 +860,12 @@ function SessionDetailPage() {
           </CardHeader>
           <CardContent className="space-y-3">
             {session.players.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-8 text-center">
-                <User className="w-10 h-10 text-muted-foreground/50 mb-3" />
-                <p className="text-sm text-muted-foreground">
-                  No players assigned yet
-                </p>
-              </div>
+              <EmptyState
+                variant="card"
+                icon={<User className="w-10 h-10" />}
+                title="No players assigned yet"
+                description="Players will appear here once assigned to the session"
+              />
             ) : (
               session.players.map((player) => {
                 const lobbyUrl = buildLobbyUrl(player.token);
@@ -1107,7 +1107,7 @@ function SessionDetailPage() {
             ) : auditLogs.length === 0 ? (
               <EmptyState
                 variant="card"
-                icon={<Activity className="w-12 h-12" />}
+                icon={<Activity className="w-10 h-10" />}
                 title="No activity yet"
                 description="Activity will appear here as the session progresses"
               />

@@ -268,7 +268,7 @@ function MapsPage() {
         <main className="flex-1 px-4 py-6 md:px-8 md:py-8 overflow-y-auto">
           {hasNoMaps ? (
             <EmptyState
-              icon={<MapIcon className="w-24 h-24 text-muted-foreground/50" />}
+              icon={<MapIcon className="w-24 h-24" />}
               title="No maps in the pool yet"
               description="Add maps to create a pool for voting sessions."
               action={

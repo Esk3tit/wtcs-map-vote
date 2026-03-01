@@ -243,7 +243,7 @@ function TeamsPage() {
         <main className="flex-1 px-4 py-6 md:px-8 md:py-8">
           {hasNoTeams ? (
             <EmptyState
-              icon={<Users className="w-24 h-24 text-muted-foreground/50" />}
+              icon={<Users className="w-24 h-24" />}
               title="No teams registered yet"
               description="Add teams to quickly select them when creating voting sessions."
               action={

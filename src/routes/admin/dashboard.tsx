@@ -98,7 +98,21 @@ function DashboardPage() {
           </div>
 
           {activeSessions.length === 0 ? (
-            <DashboardEmptyState />
+            <EmptyState
+              icon={<LayoutGrid className="w-24 h-24" />}
+              title="No active sessions"
+              description="Get started by creating your first voting session"
+              action={
+                <Button
+                  size="lg"
+                  className="gap-2"
+                  render={<Link to="/admin/create" />}
+                >
+                  <Plus className="w-5 h-5" />
+                  Create Session
+                </Button>
+              }
+            />
           ) : (
             <div className="space-y-4">
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -248,26 +262,6 @@ function DashboardPageSkeleton() {
         </div>
       </div>
     </div>
-  );
-}
-
-function DashboardEmptyState() {
-  return (
-    <EmptyState
-      icon={<LayoutGrid className="w-24 h-24 text-muted-foreground/50" />}
-      title="No active sessions"
-      description="Get started by creating your first voting session"
-      action={
-        <Button
-          size="lg"
-          className="gap-2"
-          render={<Link to="/admin/create" />}
-        >
-          <Plus className="w-5 h-5" />
-          Create Session
-        </Button>
-      }
-    />
   );
 }
 
