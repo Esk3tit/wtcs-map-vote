@@ -1487,6 +1487,12 @@ export const cloneSession = mutation({
   handler: async (ctx, args) => {
     const admin = await requireAdmin(ctx);
 
+    // Rate limit session creation (shared with createSession/createSessionFull — 50/hour per admin)
+    await rateLimiter.limit(ctx, "createSession", {
+      key: admin._id,
+      throws: true,
+    });
+
     // 1. Read source session
     const source = await ctx.db.get(args.sessionId);
     if (!source) throw new ConvexError("Session not found");
