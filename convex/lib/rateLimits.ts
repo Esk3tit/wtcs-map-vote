@@ -5,8 +5,9 @@
  * All rate limits are transactional — tokens roll back if the mutation fails.
  */
 
-import { RateLimiter, MINUTE, HOUR } from "@convex-dev/rate-limiter";
 import { components } from "../_generated/api";
+
+import { RateLimiter, MINUTE, HOUR } from "@convex-dev/rate-limiter";
 
 export const rateLimiter = new RateLimiter(components.rateLimiter, {
   // Player voting: 30/min with burst of 5 (prevents double-click spam)

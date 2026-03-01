@@ -31,11 +31,11 @@ type AuthError =
 
 type ValidateTokenResponse =
   | { status: "ok" }
-  | { status: "error"; error: AuthError };
+  | { status: "error"; error: AuthError; retryAfter?: number };
 
 type HeartbeatResponse =
   | { status: "ok" }
-  | { status: "error"; error: AuthError };
+  | { status: "error"; error: AuthError; retryAfter?: number };
 
 export interface UsePlayerAuthOptions {
   /**
@@ -181,7 +181,7 @@ export function usePlayerAuth(token: string, options?: UsePlayerAuthOptions): Us
     type HeartbeatResult =
       | { kind: "ok" }
       | { kind: "auth_error"; error: AuthError }
-      | { kind: "network_error" };
+      | { kind: "network_error"; retryAfter?: number };
 
     async function sendHeartbeat(): Promise<HeartbeatResult> {
       const { signal, cleanup } = createTimeoutSignal(HEARTBEAT_FETCH_TIMEOUT_MS);
@@ -202,7 +202,7 @@ export function usePlayerAuth(token: string, options?: UsePlayerAuthOptions): Us
         if (data.status === "error") {
           // Treat rate limiting as transient (retry with backoff) not permanent
           if (data.error === "RATE_LIMITED") {
-            return { kind: "network_error" };
+            return { kind: "network_error", retryAfter: data.retryAfter };
           }
           return { kind: "auth_error", error: data.error };
         }
@@ -239,13 +239,13 @@ export function usePlayerAuth(token: string, options?: UsePlayerAuthOptions): Us
         } else {
           // Network error → switch to retry mode
           stopNormalHeartbeat();
-          startRetrySequence(0);
+          startRetrySequence(0, r.retryAfter);
         }
       }, HEARTBEAT_INTERVAL_MS);
     }
 
     // --- Retry mode: chained setTimeout with backoff ---
-    function startRetrySequence(attempt: number) {
+    function startRetrySequence(attempt: number, retryAfterMs?: number) {
       if (controller.signal.aborted || generation !== generationRef.current)
         return;
 
@@ -258,6 +258,11 @@ export function usePlayerAuth(token: string, options?: UsePlayerAuthOptions): Us
 
       updateStatus("reconnecting");
       setRetryAttempt(attempt + 1);
+
+      // Use server-provided retryAfter if available, otherwise use backoff schedule
+      const delayMs = retryAfterMs && retryAfterMs > 0
+        ? retryAfterMs
+        : RETRY_DELAYS_MS[attempt];
 
       retryTimeoutRef.current = setTimeout(async () => {
         if (controller.signal.aborted || generation !== generationRef.current)
@@ -278,9 +283,9 @@ export function usePlayerAuth(token: string, options?: UsePlayerAuthOptions): Us
           setError(r.error);
           stopAll();
         } else {
-          startRetrySequence(attempt + 1);
+          startRetrySequence(attempt + 1, r.retryAfter);
         }
-      }, RETRY_DELAYS_MS[attempt]);
+      }, delayMs);
     }
 
     // --- Immediate attempt (visibility handler) ---
@@ -304,7 +309,7 @@ export function usePlayerAuth(token: string, options?: UsePlayerAuthOptions): Us
         setError(r.error);
       } else {
         // Failed → start retry from attempt 0
-        startRetrySequence(0);
+        startRetrySequence(0, r.retryAfter);
       }
     }
 
@@ -362,7 +367,7 @@ export function usePlayerAuth(token: string, options?: UsePlayerAuthOptions): Us
           startNormalHeartbeat();
         } else if (data.error === "RATE_LIMITED") {
           // Treat rate limiting as transient — start retry sequence
-          startRetrySequence(0);
+          startRetrySequence(0, data.retryAfter);
         } else {
           updateStatus("error");
           setError(data.error);
