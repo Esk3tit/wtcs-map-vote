@@ -551,10 +551,10 @@ function PlayerVotingPage() {
               <>
                 <div
                   className={cn(
-                    "rounded-lg p-6 text-center mb-4 border-2 motion-safe:transition-colors motion-safe:duration-300",
+                    "rounded-lg p-6 text-center mb-4",
                     isYourTurn
-                      ? "bg-green-950/50 border-green-600"
-                      : "bg-muted border-border"
+                      ? "bg-green-950/50 border-2 border-green-600"
+                      : "bg-muted border-2 border-border"
                   )}
                 >
                   <div className="text-2xl font-bold mb-2">
@@ -581,13 +581,14 @@ function PlayerVotingPage() {
                 </div>
 
                 <div
-                  key={`timer-${session.currentTurn}-${session.currentRound}`}
                   className={cn(
-                    "text-center mb-4 font-mono text-4xl sm:text-5xl md:text-7xl font-bold motion-safe:animate-timer-pulse",
+                    "text-center mb-4 font-mono text-4xl sm:text-5xl md:text-7xl font-bold",
                     isYourTurn ? "text-primary" : "text-muted-foreground"
                   )}
                 >
+                  {/* Key resets the timer when turn changes */}
                   <CountdownTimer
+                    key={`${session.currentTurn}-${session.currentRound}`}
                     turnTimerSeconds={session.turnTimerSeconds}
                     timerStartedAt={session.timerStartedAt}
                     timerPausedAt={session.timerPausedAt}
@@ -680,10 +681,7 @@ function PlayerVotingPage() {
                 ) : (
                   /* Normal voting: show round + player status */
                   <>
-                    <span
-                      key={session.currentRound}
-                      className="text-sm text-muted-foreground motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300"
-                    >
+                    <span className="text-sm text-muted-foreground">
                       Round {session.currentRound}
                     </span>
                     <div className="flex items-center gap-4">
