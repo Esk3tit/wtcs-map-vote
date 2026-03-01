@@ -116,11 +116,11 @@ function VotingResultsPage() {
             <Trophy className="w-16 h-16 text-primary motion-safe:animate-stamp-in" />
 
             <div
-              className="max-w-md w-full motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-4 motion-safe:duration-500 motion-safe:fill-mode-backwards"
+              className="max-w-md w-full shadow-2xl shadow-primary/30 motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-4 motion-safe:duration-500 motion-safe:fill-mode-backwards"
               style={{ animationDelay: `${ANIMATION_DELAY.WINNER_CARD}ms` }}
             >
               <Card
-                className="overflow-hidden border-2 border-primary shadow-2xl shadow-primary/30 motion-safe:animate-winner-pulse motion-reduce:shadow-lg motion-reduce:shadow-amber-400/30"
+                className="overflow-hidden border-2 border-primary motion-safe:animate-winner-pulse motion-reduce:shadow-lg motion-reduce:shadow-amber-400/30"
                 style={{ animationDelay: `${ANIMATION_DELAY.WINNER_PULSE}ms` }}
               >
                 <div className="aspect-video relative">
