@@ -120,7 +120,7 @@ function VotingResultsPage() {
               style={{ animationDelay: `${ANIMATION_DELAY.WINNER_CARD}ms` }}
             >
               <Card
-                className="overflow-hidden border-2 border-primary shadow-2xl shadow-primary/30 motion-safe:animate-winner-pulse"
+                className="overflow-hidden border-2 border-primary shadow-2xl shadow-primary/30 motion-safe:animate-winner-pulse motion-reduce:shadow-lg motion-reduce:shadow-amber-400/30"
                 style={{ animationDelay: `${ANIMATION_DELAY.WINNER_PULSE}ms` }}
               >
                 <div className="aspect-video relative">
