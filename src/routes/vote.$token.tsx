@@ -44,6 +44,15 @@ export const Route = createFileRoute("/vote/$token")({
 });
 
 // ============================================================================
+// Animation Timing
+// ============================================================================
+
+/** Map card stagger: per-card delay (ms) */
+const MAP_STAGGER_DELAY_MS = 50;
+/** Map card fade-in duration (ms) — matches motion-safe:duration-300 */
+const MAP_FADE_DURATION_MS = 300;
+
+// ============================================================================
 // Voting Error Handling
 // ============================================================================
 
@@ -245,18 +254,27 @@ function PlayerVotingPage() {
   // Animation State Tracking (hooks must be before early returns)
   // ============================================================================
 
-  // First-mount flag for map card stagger (latch off after animations complete)
+  // First-mount flag for map card stagger (latch off after animations complete).
+  // Timer starts only once map data arrives so slow fetches don't shorten the window.
   const isFirstMountRef = useRef(true);
-  useEffect(() => {
-    const id = setTimeout(() => { isFirstMountRef.current = false; }, 600);
-    return () => clearTimeout(id);
-  }, []);
+  const staggerTimerSet = useRef(false);
 
   // Safe references for animation hooks (empty when data not yet valid)
   const mapsForAnimation = useMemo(
     () => (data?.status === "valid" ? data.maps : []),
     [data]
   );
+
+  useEffect(() => {
+    if (!isFirstMountRef.current || staggerTimerSet.current) return;
+    if (mapsForAnimation.length === 0) return;
+
+    staggerTimerSet.current = true;
+    const totalDuration =
+      (mapsForAnimation.length - 1) * MAP_STAGGER_DELAY_MS + MAP_FADE_DURATION_MS + 100;
+    const id = setTimeout(() => { isFirstMountRef.current = false; }, totalDuration);
+    return () => clearTimeout(id);
+  }, [mapsForAnimation]);
   const formatForAnimation =
     data?.status === "valid" ? data.session.format : undefined;
 
@@ -702,7 +720,7 @@ function PlayerVotingPage() {
                       ? "motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300 motion-safe:fill-mode-backwards"
                       : undefined
                     }
-                    style={stagger ? { animationDelay: `${index * 50}ms` } : undefined}
+                    style={stagger ? { animationDelay: `${index * MAP_STAGGER_DELAY_MS}ms` } : undefined}
                   >
                     <VoteMapCard
                       map={map}
