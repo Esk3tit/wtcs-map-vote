@@ -30,6 +30,7 @@ import {
 import { useMapAnimations } from "@/hooks/useMapAnimations";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
 import { useRevealPhase } from "@/hooks/useRevealPhase";
+import { MAP_STAGGER_DELAY_MS } from "@/lib/animation";
 import { audioManager } from "@/lib/audio";
 import { useAudioAlerts } from "@/hooks/useAudioAlerts";
 import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
@@ -43,13 +44,6 @@ import { TeamAvatar } from "@/components/session/team-avatar";
 export const Route = createFileRoute("/vote/$token")({
   component: PlayerVotingPage,
 });
-
-// ============================================================================
-// Animation Timing
-// ============================================================================
-
-/** Map card stagger: per-card delay (ms) */
-const MAP_STAGGER_DELAY_MS = 50;
 
 // ============================================================================
 // Voting Error Handling

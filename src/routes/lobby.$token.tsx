@@ -20,8 +20,7 @@ import { audioManager } from "@/lib/audio";
 import { Lock, Loader2, CheckCircle2, Volume2, VolumeX } from "lucide-react";
 import { TeamAvatar } from "@/components/session/team-avatar";
 import { useEffect, useState, useCallback } from "react";
-
-const MAP_STAGGER_DELAY_MS = 50;
+import { MAP_STAGGER_DELAY_MS } from "@/lib/animation";
 
 export const Route = createFileRoute("/lobby/$token")({
   component: PlayerLobbyPage,
