@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef, useMemo } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
@@ -27,6 +27,7 @@ import {
   ConnectionStatusBadge,
   STATUS_CONFIG,
 } from "@/components/session/ConnectionStatusBadge";
+import { useMapAnimations } from "@/hooks/useMapAnimations";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
 import { useRevealPhase } from "@/hooks/useRevealPhase";
 import { audioManager } from "@/lib/audio";
@@ -49,8 +50,6 @@ export const Route = createFileRoute("/vote/$token")({
 
 /** Map card stagger: per-card delay (ms) */
 const MAP_STAGGER_DELAY_MS = 50;
-/** Map card fade-in duration (ms) — matches motion-safe:duration-300 */
-const MAP_FADE_DURATION_MS = 300;
 
 // ============================================================================
 // Voting Error Handling
@@ -250,100 +249,20 @@ function PlayerVotingPage() {
     }
   }, [data, optimisticVotedMapId]);
 
-  // ============================================================================
-  // Animation State Tracking (hooks must be before early returns)
-  // ============================================================================
-
-  // First-mount flag for map card stagger (latch off after animations complete).
-  // Timer starts only once map data arrives so slow fetches don't shorten the window.
+  // First-mount flag for map card stagger — flipped after initial paint.
+  // CSS animations complete regardless since key={map._id} keeps DOM nodes stable.
   const isFirstMountRef = useRef(true);
-  const staggerTimerSet = useRef(false);
-
-  // Safe references for animation hooks (empty when data not yet valid)
-  const mapsForAnimation = useMemo(
-    () => (data?.status === "valid" ? data.maps : []),
-    [data]
-  );
-
   useEffect(() => {
-    if (!isFirstMountRef.current || staggerTimerSet.current) return;
-    if (mapsForAnimation.length === 0) return;
-
-    staggerTimerSet.current = true;
-    const totalDuration =
-      (mapsForAnimation.length - 1) * MAP_STAGGER_DELAY_MS + MAP_FADE_DURATION_MS + 100;
-    const id = setTimeout(() => { isFirstMountRef.current = false; }, totalDuration);
-    return () => clearTimeout(id);
-  }, [mapsForAnimation]);
-  const formatForAnimation =
-    data?.status === "valid" ? data.session.format : undefined;
-
-  // Track previous map states for ABBA ban animation detection
-  const prevMapStatesRef = useRef<Map<string, string>>(new Map());
-  const banTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
-    new Map()
-  );
-
-  // Persist ban animation state (500ms CSS transition + 100ms buffer)
-  const [animatingBanIds, setAnimatingBanIds] = useState<Set<string>>(
-    new Set()
-  );
-
-  // Detect AVAILABLE→BANNED transitions, animate, then clear after timeout.
-  // Per-id timers survive effect re-runs so Convex subscription updates
-  // mid-animation don't cancel pending cleanup timeouts.
-  useEffect(() => {
-    const newlyBanned = new Set<string>();
-    if (formatForAnimation === "ABBA") {
-      for (const map of mapsForAnimation) {
-        const prev = prevMapStatesRef.current.get(map._id);
-        if (prev === "AVAILABLE" && map.state === "BANNED") {
-          newlyBanned.add(map._id);
-        }
-      }
-    }
-
-    // Update ref for next render (must happen every render, not just on ban)
-    prevMapStatesRef.current = new Map(
-      mapsForAnimation.map((m) => [m._id, m.state])
-    );
-
-    if (newlyBanned.size === 0) return;
-
-    setAnimatingBanIds((prev) => new Set([...prev, ...newlyBanned]));
-    for (const id of newlyBanned) {
-      const existing = banTimersRef.current.get(id);
-      if (existing) clearTimeout(existing);
-
-      const timer = setTimeout(() => {
-        setAnimatingBanIds((prev) => {
-          const next = new Set(prev);
-          next.delete(id);
-          return next;
-        });
-        banTimersRef.current.delete(id);
-      }, 600);
-
-      banTimersRef.current.set(id, timer);
-    }
-  }, [mapsForAnimation, formatForAnimation]);
-
-  // Clean up all pending ban timers on unmount
-  useEffect(() => {
-    return () => {
-      for (const timer of banTimersRef.current.values()) {
-        clearTimeout(timer);
-      }
-      banTimersRef.current.clear();
-    };
+    isFirstMountRef.current = false;
   }, []);
 
-  // Compute stagger index for multiplayer elimination reveal
-  const getStaggerIndex = (mapId: Id<"sessionMaps">): number | undefined => {
-    if (!isAnyReveal || !revealData?.eliminatedMapIds) return undefined;
-    const idx = revealData.eliminatedMapIds.indexOf(mapId);
-    return idx >= 0 ? idx : undefined;
-  };
+  // Animation state: ABBA ban detection, elimination stagger indices
+  const { animatingBanIds, getStaggerIndex } = useMapAnimations({
+    maps: data?.status === "valid" ? data.maps : [],
+    format: data?.status === "valid" ? data.session.format : undefined,
+    isAnyReveal,
+    revealData,
+  });
 
   // Auth loading
   if (auth.status === "loading") {

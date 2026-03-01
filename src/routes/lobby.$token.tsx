@@ -21,6 +21,8 @@ import { Lock, Loader2, CheckCircle2, Volume2, VolumeX } from "lucide-react";
 import { TeamAvatar } from "@/components/session/team-avatar";
 import { useEffect, useState, useCallback } from "react";
 
+const MAP_STAGGER_DELAY_MS = 50;
+
 export const Route = createFileRoute("/lobby/$token")({
   component: PlayerLobbyPage,
 });
@@ -237,7 +239,7 @@ function PlayerLobbyPage() {
           {/* Waiting Indicator */}
           <div className="flex flex-col items-center gap-4 py-8">
             <Loader2 className="h-8 w-8 text-primary animate-spin" />
-            <p className="text-lg text-muted-foreground animate-pulse">{getWaitingMessage()}</p>
+            <p className="text-lg text-muted-foreground motion-safe:animate-pulse">{getWaitingMessage()}</p>
           </div>
 
           {/* Map Preview */}
@@ -250,7 +252,7 @@ function PlayerLobbyPage() {
                 <div
                   key={map._id}
                   className="space-y-2 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300 motion-safe:fill-mode-backwards"
-                  style={{ animationDelay: `${index * 50}ms` }}
+                  style={{ animationDelay: `${index * MAP_STAGGER_DELAY_MS}ms` }}
                 >
                   <div className="relative aspect-video rounded-lg overflow-hidden border border-border">
                     <img
