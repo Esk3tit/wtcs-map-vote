@@ -37,6 +37,7 @@ import {
 import { Badge } from '@/components/ui/badge'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { toast } from 'sonner'
+import { getMutationErrorMessage } from '@/lib/errors'
 import {
   Trash2,
   ShieldCheck,
@@ -113,7 +114,7 @@ function AdminSettings() {
       setNewName('')
       setMakeRoot(false)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to add admin')
+      toast.error(getMutationErrorMessage(error, 'Failed to add admin'))
     } finally {
       setIsSubmitting(false)
     }
@@ -124,7 +125,7 @@ function AdminSettings() {
       await removeAdminMutation({ adminId })
       toast.success(`Removed ${email} from whitelist (sessions invalidated)`)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to remove admin')
+      toast.error(getMutationErrorMessage(error, 'Failed to remove admin'))
     }
   }
 
@@ -133,7 +134,7 @@ function AdminSettings() {
       await updateRoleMutation({ adminId, isRootAdmin: !currentIsRoot })
       toast.success(`${currentIsRoot ? 'Demoted' : 'Promoted'} ${email}`)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to update role')
+      toast.error(getMutationErrorMessage(error, 'Failed to update role'))
     }
   }
 
@@ -142,7 +143,7 @@ function AdminSettings() {
       await invalidateSessionsMutation({ adminId })
       toast.success(`Force logged out ${email}`)
     } catch (error) {
-      toast.error(error instanceof Error ? error.message : 'Failed to invalidate sessions')
+      toast.error(getMutationErrorMessage(error, 'Failed to invalidate sessions'))
     }
   }
 

@@ -26,6 +26,7 @@ type AuthError =
   | "SESSION_NOT_ACTIVE"
   | "IP_MISMATCH"
   | "TOKEN_NOT_ACTIVATED"
+  | "RATE_LIMITED"
   | "NETWORK_ERROR";
 
 type ValidateTokenResponse =
@@ -199,6 +200,10 @@ export function usePlayerAuth(token: string, options?: UsePlayerAuthOptions): Us
         if (controller.signal.aborted) return { kind: "network_error" };
 
         if (data.status === "error") {
+          // Treat rate limiting as transient (retry with backoff) not permanent
+          if (data.error === "RATE_LIMITED") {
+            return { kind: "network_error" };
+          }
           return { kind: "auth_error", error: data.error };
         }
         return { kind: "ok" };
@@ -355,6 +360,9 @@ export function usePlayerAuth(token: string, options?: UsePlayerAuthOptions): Us
           setError(null);
           setRetryAttempt(0);
           startNormalHeartbeat();
+        } else if (data.error === "RATE_LIMITED") {
+          // Treat rate limiting as transient — start retry sequence
+          startRetrySequence(0);
         } else {
           updateStatus("error");
           setError(data.error);

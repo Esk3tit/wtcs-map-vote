@@ -1,0 +1,41 @@
+/**
+ * Rate Limiting
+ *
+ * Central rate limit definitions using @convex-dev/rate-limiter.
+ * All rate limits are transactional — tokens roll back if the mutation fails.
+ */
+
+import { RateLimiter, MINUTE, HOUR } from "@convex-dev/rate-limiter";
+import { components } from "../_generated/api";
+
+export const rateLimiter = new RateLimiter(components.rateLimiter, {
+  // Player voting: 30/min with burst of 5 (prevents double-click spam)
+  submitVote: { kind: "token bucket", rate: 30, period: MINUTE, capacity: 5 },
+
+  // Player heartbeat: matches ~5s interval config
+  playerHeartbeat: {
+    kind: "token bucket",
+    rate: 12,
+    period: MINUTE,
+    capacity: 3,
+  },
+
+  // Token validation: brute force protection
+  validateToken: {
+    kind: "token bucket",
+    rate: 30,
+    period: MINUTE,
+    capacity: 10,
+  },
+
+  // Session creation: 50/hour (admins may need many sessions for tournaments)
+  createSession: { kind: "fixed window", rate: 50, period: HOUR },
+
+  // General admin mutations
+  adminMutation: {
+    kind: "token bucket",
+    rate: 100,
+    period: MINUTE,
+    capacity: 20,
+  },
+});

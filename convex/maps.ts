@@ -16,6 +16,7 @@ import { isSecureUrl } from "./lib/urlValidation";
 import { validateName } from "./lib/validation";
 import { validateStorageFile } from "./lib/storageValidation";
 import { requireAdmin } from "./lib/auth";
+import { rateLimiter } from "./lib/rateLimits";
 
 // ============================================================================
 // Private Helpers
@@ -167,7 +168,11 @@ export const createMap = mutation({
   },
   returns: v.object({ mapId: v.id("maps") }),
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    const admin = await requireAdmin(ctx);
+    await rateLimiter.limit(ctx, "adminMutation", {
+      key: admin._id,
+      throws: true,
+    });
 
     const trimmedName = validateMapName(args.name);
 
@@ -234,7 +239,11 @@ export const updateMap = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    const admin = await requireAdmin(ctx);
+    await rateLimiter.limit(ctx, "adminMutation", {
+      key: admin._id,
+      throws: true,
+    });
 
     // Verify map exists
     const existing = await ctx.db.get(args.mapId);
@@ -412,7 +421,11 @@ export const deactivateMap = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    const admin = await requireAdmin(ctx);
+    await rateLimiter.limit(ctx, "adminMutation", {
+      key: admin._id,
+      throws: true,
+    });
 
     const map = await ctx.db.get(args.mapId);
     if (!map) {
@@ -467,7 +480,11 @@ export const reactivateMap = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    const admin = await requireAdmin(ctx);
+    await rateLimiter.limit(ctx, "adminMutation", {
+      key: admin._id,
+      throws: true,
+    });
 
     const map = await ctx.db.get(args.mapId);
     if (!map) {

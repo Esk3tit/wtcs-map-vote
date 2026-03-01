@@ -43,6 +43,7 @@ import {
   connectionStatusValidator,
 } from "./lib/validators";
 import { requireAdmin } from "./lib/auth";
+import { rateLimiter } from "./lib/rateLimits";
 import { resolveTeamLogos, logoMapToRecord } from "./lib/teamLogos";
 import {
   completeSession,
@@ -526,6 +527,12 @@ export const createSession = mutation({
   returns: v.object({ sessionId: v.id("sessions") }),
   handler: async (ctx, args) => {
     const admin = await requireAdmin(ctx);
+
+    // Rate limit session creation (50/hour per admin)
+    await rateLimiter.limit(ctx, "createSession", {
+      key: admin._id,
+      throws: true,
+    });
 
     // Validate match name
     const trimmedName = validateMatchName(args.matchName);

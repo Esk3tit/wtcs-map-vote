@@ -9,6 +9,7 @@ export type TokenError =
   | "TOKEN_NOT_ACTIVATED"
   | "IP_MISMATCH"
   | "SESSION_NOT_ACTIVE"
+  | "RATE_LIMITED"
   | "NETWORK_ERROR";
 
 export function TokenErrorPage({ error, onRetry }: { error: TokenError; onRetry?: () => void }) {
@@ -42,6 +43,11 @@ export function TokenErrorPage({ error, onRetry }: { error: TokenError; onRetry?
       title: "Session Not Active",
       message:
         "This voting session is no longer active. It may have been completed or expired.",
+    },
+    RATE_LIMITED: {
+      title: "Too Many Requests",
+      message:
+        "You're sending requests too quickly. Please wait a moment and try again.",
     },
     NETWORK_ERROR: {
       title: "Connection Error",

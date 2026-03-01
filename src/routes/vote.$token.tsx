@@ -62,7 +62,8 @@ type VotingErrorCode =
   | "FORMAT_NOT_ABBA"
   | "FORMAT_NOT_MULTIPLAYER"
   | "INVALID_REQUEST"
-  | "INVALID_IP";
+  | "INVALID_IP"
+  | "RATE_LIMITED";
 
 // Map backend error codes to user-friendly messages
 function getVotingErrorMessage(error: VotingErrorCode): string {
@@ -89,6 +90,8 @@ function getVotingErrorMessage(error: VotingErrorCode): string {
       return "Invalid request. Please refresh and try again.";
     case "INVALID_IP":
       return "Session is locked to another device";
+    case "RATE_LIMITED":
+      return "Too many requests. Please wait a moment and try again.";
     default:
       return "Something went wrong. Please try again.";
   }

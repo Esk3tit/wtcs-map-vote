@@ -7,6 +7,7 @@
  */
 
 import { convexTest } from "convex-test";
+import { register as registerRateLimiter } from "@convex-dev/rate-limiter/test";
 
 import schema from "./schema";
 import { adminFactory } from "./test.factories";
@@ -35,7 +36,9 @@ export const modules = import.meta.glob("./**/!(*.*.*)*.*s");
  * Call this at the start of each test for isolation.
  */
 export function createTestContext() {
-  return convexTest(schema, modules);
+  const t = convexTest(schema, modules);
+  registerRateLimiter(t);
+  return t;
 }
 
 /**
@@ -52,6 +55,7 @@ export async function createAuthenticatedContext(identity: {
   issuer?: string;
 }) {
   const t = convexTest(schema, modules);
+  registerRateLimiter(t);
 
   // Insert auth user into users table (required for getAuthUserId lookup)
   const authUserId = await t.run(async (ctx) =>
