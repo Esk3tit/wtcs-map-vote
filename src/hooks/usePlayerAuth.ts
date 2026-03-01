@@ -368,8 +368,20 @@ export function usePlayerAuth(token: string, options?: UsePlayerAuthOptions): Us
           setRetryAttempt(0);
           startNormalHeartbeat();
         } else if (data.error === "RATE_LIMITED") {
-          // Treat rate limiting as transient — start retry sequence
-          startRetrySequence(0, data.retryAfter);
+          // Retry validateToken (not heartbeat) — token is not yet activated
+          updateStatus("reconnecting");
+          const delayMs =
+            data.retryAfter && data.retryAfter > 0
+              ? Math.min(data.retryAfter, MAX_RETRY_DELAY_MS)
+              : RETRY_DELAYS_MS[0];
+          retryTimeoutRef.current = setTimeout(() => {
+            if (
+              !controller.signal.aborted &&
+              generation === generationRef.current
+            ) {
+              validateToken();
+            }
+          }, delayMs);
         } else {
           updateStatus("error");
           setError(data.error);
