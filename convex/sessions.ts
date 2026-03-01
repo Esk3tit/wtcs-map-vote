@@ -43,6 +43,7 @@ import {
   connectionStatusValidator,
 } from "./lib/validators";
 import { requireAdmin } from "./lib/auth";
+import { rateLimiter } from "./lib/rateLimits";
 import { resolveTeamLogos, logoMapToRecord } from "./lib/teamLogos";
 import {
   completeSession,
@@ -527,6 +528,12 @@ export const createSession = mutation({
   handler: async (ctx, args) => {
     const admin = await requireAdmin(ctx);
 
+    // Rate limit session creation (50/hour per admin)
+    await rateLimiter.limit(ctx, "createSession", {
+      key: admin._id,
+      throws: true,
+    });
+
     // Validate match name
     const trimmedName = validateMatchName(args.matchName);
 
@@ -984,6 +991,12 @@ export const createSessionFull = mutation({
   }),
   handler: async (ctx, args) => {
     const admin = await requireAdmin(ctx);
+
+    // Rate limit session creation (same budget as createSession)
+    await rateLimiter.limit(ctx, "createSession", {
+      key: admin._id,
+      throws: true,
+    });
 
     // ========================================================================
     // 1. Validate all inputs upfront before any DB writes
@@ -1473,6 +1486,12 @@ export const cloneSession = mutation({
   returns: v.object({ newSessionId: v.id("sessions") }),
   handler: async (ctx, args) => {
     const admin = await requireAdmin(ctx);
+
+    // Rate limit session creation (shared with createSession/createSessionFull — 50/hour per admin)
+    await rateLimiter.limit(ctx, "createSession", {
+      key: admin._id,
+      throws: true,
+    });
 
     // 1. Read source session
     const source = await ctx.db.get(args.sessionId);

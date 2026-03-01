@@ -12,6 +12,7 @@ import { v } from "convex/values";
 
 import { ACTIVE_SESSION_STATUSES, HEARTBEAT_SKIP_MS, READY_SKIP_MS } from "./lib/constants";
 import { lookupAndValidatePlayer } from "./lib/auth";
+import { rateLimiter } from "./lib/rateLimits";
 
 import { logAction } from "./audit";
 
@@ -50,14 +51,33 @@ export const validateAndLockToken = internalMutation({
         v.literal("TOKEN_EXPIRED"),
         v.literal("SESSION_NOT_FOUND"),
         v.literal("SESSION_NOT_ACTIVE"),
-        v.literal("IP_MISMATCH")
+        v.literal("IP_MISMATCH"),
+        v.literal("RATE_LIMITED")
       ),
+      retryAfter: v.optional(v.number()),
     })
   ),
   handler: async (ctx, args) => {
     const { token } = args;
     const ipAddress = args.ipAddress.trim();
     const now = Date.now();
+
+    // Reject unresolved IPs before rate limiting to avoid a shared "unknown" bucket
+    if (!ipAddress || ipAddress === "unknown") {
+      return { status: "error" as const, error: "INVALID_IP" as const };
+    }
+
+    // Rate limit by IP address (brute force protection)
+    const { ok, retryAfter } = await rateLimiter.limit(ctx, "validateToken", {
+      key: ipAddress,
+    });
+    if (!ok) {
+      return {
+        status: "error" as const,
+        error: "RATE_LIMITED" as const,
+        retryAfter,
+      };
+    }
 
     // Shared read-only validation: IP check, token lookup, expiry, session
     const result = await lookupAndValidatePlayer(ctx, token, ipAddress);
@@ -159,14 +179,30 @@ export const playerHeartbeat = internalMutation({
         v.literal("INVALID_IP"),
         v.literal("TOKEN_EXPIRED"),
         v.literal("IP_MISMATCH"),
-        v.literal("TOKEN_NOT_ACTIVATED")
+        v.literal("TOKEN_NOT_ACTIVATED"),
+        v.literal("RATE_LIMITED")
       ),
+      retryAfter: v.optional(v.number()),
     })
   ),
   handler: async (ctx, args) => {
     const { token } = args;
     const ipAddress = args.ipAddress.trim();
     const now = Date.now();
+
+    // Rate limit by player token
+    const { ok, retryAfter } = await rateLimiter.limit(
+      ctx,
+      "playerHeartbeat",
+      { key: token }
+    );
+    if (!ok) {
+      return {
+        status: "error" as const,
+        error: "RATE_LIMITED" as const,
+        retryAfter,
+      };
+    }
 
     // Reject empty, whitespace-only, or unresolved IP addresses
     if (!ipAddress || ipAddress === "unknown") {
@@ -243,13 +279,27 @@ export const playerReady = internalMutation({
         v.literal("SESSION_NOT_FOUND"),
         v.literal("SESSION_NOT_WAITING"),
         v.literal("TOKEN_NOT_ACTIVATED"),
-        v.literal("IP_MISMATCH")
+        v.literal("IP_MISMATCH"),
+        v.literal("RATE_LIMITED")
       ),
+      retryAfter: v.optional(v.number()),
     })
   ),
   handler: async (ctx, args) => {
     const { token } = args;
     const ipAddress = args.ipAddress.trim();
+
+    // Rate limit by player token
+    const { ok, retryAfter } = await rateLimiter.limit(ctx, "playerReady", {
+      key: token,
+    });
+    if (!ok) {
+      return {
+        status: "error" as const,
+        error: "RATE_LIMITED" as const,
+        retryAfter,
+      };
+    }
 
     // Shared read-only validation: IP check, token lookup, expiry, session
     const result = await lookupAndValidatePlayer(ctx, token, ipAddress);

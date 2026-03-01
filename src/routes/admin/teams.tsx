@@ -38,6 +38,7 @@ import { usePaginatedQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { toast } from "sonner";
+import { getMutationErrorMessage } from "@/lib/errors";
 import {
   ImageSourcePicker,
   type ImageSource,
@@ -108,9 +109,7 @@ function TeamsPage() {
       toast.success(`Team "${deleteConfirmTeam.name}" deleted`);
       setDeleteConfirmTeam(null);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to delete team";
-      toast.error(message);
+      toast.error(getMutationErrorMessage(error, "Failed to delete team"));
     } finally {
       setIsDeleting(false);
     }
@@ -200,8 +199,7 @@ function TeamsPage() {
       setIsDialogOpen(false);
       resetDialog();
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to save team";
+      const message = getMutationErrorMessage(error, "Failed to save team");
       setSaveError(message);
       toast.error(message);
     } finally {

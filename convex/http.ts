@@ -100,12 +100,28 @@ function createPlayerHandler(
 
     const ipAddress = extractClientIp(req);
     const result = await ctx.runMutation(mutationRef, { token, ipAddress });
-    // Use 403 for all auth failures to avoid leaking token/session existence
-    const statusCode = result.status === "ok" ? 200 : 403;
+
+    let statusCode: number;
+    if (result.status === "ok") {
+      statusCode = 200;
+    } else if (result.error === "RATE_LIMITED") {
+      statusCode = 429;
+    } else {
+      // Use 403 for all auth failures to avoid leaking token/session existence
+      statusCode = 403;
+    }
+
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...corsHeaders,
+    };
+    if (statusCode === 429 && "retryAfter" in result && result.retryAfter) {
+      headers["Retry-After"] = String(Math.ceil(result.retryAfter / 1000));
+    }
 
     return new Response(JSON.stringify(result), {
       status: statusCode,
-      headers: { "Content-Type": "application/json", ...corsHeaders },
+      headers,
     });
   });
 }
@@ -223,10 +239,27 @@ function createVotingHandler(
         mapId: mapId as Id<"sessionMaps">,
         ipAddress,
       });
-      const statusCode = result.status === "ok" ? 200 : 403;
+
+      let statusCode: number;
+      if (result.status === "ok") {
+        statusCode = 200;
+      } else if (result.error === "RATE_LIMITED") {
+        statusCode = 429;
+      } else {
+        statusCode = 403;
+      }
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        ...corsHeaders,
+      };
+      if (statusCode === 429 && "retryAfter" in result && result.retryAfter) {
+        headers["Retry-After"] = String(Math.ceil(result.retryAfter / 1000));
+      }
+
       return new Response(JSON.stringify(result), {
         status: statusCode,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
+        headers,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

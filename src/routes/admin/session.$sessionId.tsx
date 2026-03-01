@@ -61,6 +61,7 @@ import {
 } from "lucide-react";
 import { useState, useRef, useEffect, useMemo } from "react";
 import { toast } from "sonner";
+import { getMutationErrorMessage } from "@/lib/errors";
 import { cn } from "@/lib/utils";
 import {
   getStatusColor,
@@ -366,9 +367,7 @@ function SessionDetailPage() {
       const result = await mutation();
       await onSuccess(result);
     } catch (error) {
-      toast.error(
-        error instanceof Error ? error.message : `Failed to ${actionName}`
-      );
+      toast.error(getMutationErrorMessage(error, `Failed to ${actionName}`));
     } finally {
       setActionLoading(null);
     }
@@ -931,9 +930,7 @@ function SessionDetailPage() {
                                 await regenerateTokenMutation({ playerId: player._id });
                                 toast.success(`Link regenerated for ${player.teamName}`);
                               } catch (error) {
-                                toast.error(
-                                  error instanceof Error ? error.message : "Failed to regenerate link"
-                                );
+                                toast.error(getMutationErrorMessage(error, "Failed to regenerate link"));
                               } finally {
                                 setRegeneratingPlayerId(null);
                               }

@@ -38,6 +38,7 @@ import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
 import type { Id } from "../../../convex/_generated/dataModel";
 import { toast } from "sonner";
+import { getMutationErrorMessage } from "@/lib/errors";
 import {
   ImageSourcePicker,
   type ImageSource,
@@ -114,9 +115,7 @@ function MapsPage() {
       await deactivateMap({ mapId: mapToDeactivate.id });
       toast.success(`"${mapToDeactivate.name}" deactivated`);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to deactivate map";
-      toast.error(message);
+      toast.error(getMutationErrorMessage(error, "Failed to deactivate map"));
     } finally {
       setDeactivateDialogOpen(false);
       setMapToDeactivate(null);
@@ -128,9 +127,7 @@ function MapsPage() {
       await reactivateMap({ mapId });
       toast.success(`"${mapName}" reactivated`);
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to reactivate map";
-      toast.error(message);
+      toast.error(getMutationErrorMessage(error, "Failed to reactivate map"));
     }
   };
 
@@ -215,8 +212,7 @@ function MapsPage() {
       setIsDialogOpen(false);
       resetDialog();
     } catch (error) {
-      const message =
-        error instanceof Error ? error.message : "Failed to save map";
+      const message = getMutationErrorMessage(error, "Failed to save map");
       setSaveError(message);
       toast.error(message);
     } finally {

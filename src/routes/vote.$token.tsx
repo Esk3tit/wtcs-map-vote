@@ -62,7 +62,8 @@ type VotingErrorCode =
   | "FORMAT_NOT_ABBA"
   | "FORMAT_NOT_MULTIPLAYER"
   | "INVALID_REQUEST"
-  | "INVALID_IP";
+  | "INVALID_IP"
+  | "RATE_LIMITED";
 
 // Map backend error codes to user-friendly messages
 function getVotingErrorMessage(error: VotingErrorCode): string {
@@ -89,6 +90,8 @@ function getVotingErrorMessage(error: VotingErrorCode): string {
       return "Invalid request. Please refresh and try again.";
     case "INVALID_IP":
       return "Session is locked to another device";
+    case "RATE_LIMITED":
+      return "Too many requests. Please wait a moment and try again.";
     default:
       return "Something went wrong. Please try again.";
   }
@@ -395,12 +398,22 @@ function PlayerVotingPage() {
         signal: AbortSignal.timeout(10_000),
       });
 
+      const result: { status: string; error?: string } = await res
+        .json()
+        .catch(() => ({ status: "error" }));
+
       if (!res.ok) {
-        toast.error("Server error. Please try again.");
+        if (res.status === 429) {
+          toast.error(
+            getVotingErrorMessage(
+              (result.error ?? "RATE_LIMITED") as VotingErrorCode
+            )
+          );
+        } else {
+          toast.error("Server error. Please try again.");
+        }
         return;
       }
-
-      const result: { status: string; error?: string } = await res.json();
 
       if (result.status === "ok") {
         if (pendingAction.type === "vote" && currentRound !== undefined) {

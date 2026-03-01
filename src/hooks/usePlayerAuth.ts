@@ -11,6 +11,8 @@ const MAX_RETRIES = RETRY_DELAYS_MS.length;
 const HEARTBEAT_FETCH_TIMEOUT_MS = 8_000;
 /** Minimum interval between heartbeat attempts (visibility handler debounce). */
 const ATTEMPT_DEBOUNCE_MS = 2_000;
+/** Maximum delay for any single retry attempt (prevents server misconfiguration causing indefinite waits). */
+const MAX_RETRY_DELAY_MS = 60_000;
 
 export type AuthStatus =
   | "loading"
@@ -26,15 +28,16 @@ type AuthError =
   | "SESSION_NOT_ACTIVE"
   | "IP_MISMATCH"
   | "TOKEN_NOT_ACTIVATED"
+  | "RATE_LIMITED"
   | "NETWORK_ERROR";
 
 type ValidateTokenResponse =
   | { status: "ok" }
-  | { status: "error"; error: AuthError };
+  | { status: "error"; error: AuthError; retryAfter?: number };
 
 type HeartbeatResponse =
   | { status: "ok" }
-  | { status: "error"; error: AuthError };
+  | { status: "error"; error: AuthError; retryAfter?: number };
 
 export interface UsePlayerAuthOptions {
   /**
@@ -180,7 +183,7 @@ export function usePlayerAuth(token: string, options?: UsePlayerAuthOptions): Us
     type HeartbeatResult =
       | { kind: "ok" }
       | { kind: "auth_error"; error: AuthError }
-      | { kind: "network_error" };
+      | { kind: "network_error"; retryAfter?: number };
 
     async function sendHeartbeat(): Promise<HeartbeatResult> {
       const { signal, cleanup } = createTimeoutSignal(HEARTBEAT_FETCH_TIMEOUT_MS);
@@ -199,6 +202,10 @@ export function usePlayerAuth(token: string, options?: UsePlayerAuthOptions): Us
         if (controller.signal.aborted) return { kind: "network_error" };
 
         if (data.status === "error") {
+          // Treat rate limiting as transient (retry with backoff) not permanent
+          if (data.error === "RATE_LIMITED") {
+            return { kind: "network_error", retryAfter: data.retryAfter };
+          }
           return { kind: "auth_error", error: data.error };
         }
         return { kind: "ok" };
@@ -234,13 +241,13 @@ export function usePlayerAuth(token: string, options?: UsePlayerAuthOptions): Us
         } else {
           // Network error → switch to retry mode
           stopNormalHeartbeat();
-          startRetrySequence(0);
+          startRetrySequence(0, r.retryAfter);
         }
       }, HEARTBEAT_INTERVAL_MS);
     }
 
     // --- Retry mode: chained setTimeout with backoff ---
-    function startRetrySequence(attempt: number) {
+    function startRetrySequence(attempt: number, retryAfterMs?: number) {
       if (controller.signal.aborted || generation !== generationRef.current)
         return;
 
@@ -253,6 +260,11 @@ export function usePlayerAuth(token: string, options?: UsePlayerAuthOptions): Us
 
       updateStatus("reconnecting");
       setRetryAttempt(attempt + 1);
+
+      // Use server-provided retryAfter if available, otherwise use backoff schedule
+      const delayMs = retryAfterMs && retryAfterMs > 0
+        ? Math.min(retryAfterMs, MAX_RETRY_DELAY_MS)
+        : RETRY_DELAYS_MS[attempt];
 
       retryTimeoutRef.current = setTimeout(async () => {
         if (controller.signal.aborted || generation !== generationRef.current)
@@ -273,9 +285,9 @@ export function usePlayerAuth(token: string, options?: UsePlayerAuthOptions): Us
           setError(r.error);
           stopAll();
         } else {
-          startRetrySequence(attempt + 1);
+          startRetrySequence(attempt + 1, r.retryAfter);
         }
-      }, RETRY_DELAYS_MS[attempt]);
+      }, delayMs);
     }
 
     // --- Immediate attempt (visibility handler) ---
@@ -299,7 +311,7 @@ export function usePlayerAuth(token: string, options?: UsePlayerAuthOptions): Us
         setError(r.error);
       } else {
         // Failed → start retry from attempt 0
-        startRetrySequence(0);
+        startRetrySequence(0, r.retryAfter);
       }
     }
 
@@ -355,6 +367,21 @@ export function usePlayerAuth(token: string, options?: UsePlayerAuthOptions): Us
           setError(null);
           setRetryAttempt(0);
           startNormalHeartbeat();
+        } else if (data.error === "RATE_LIMITED") {
+          // Retry validateToken (not heartbeat) — token is not yet activated
+          updateStatus("reconnecting");
+          const delayMs =
+            data.retryAfter && data.retryAfter > 0
+              ? Math.min(data.retryAfter, MAX_RETRY_DELAY_MS)
+              : RETRY_DELAYS_MS[0];
+          retryTimeoutRef.current = setTimeout(() => {
+            if (
+              !controller.signal.aborted &&
+              generation === generationRef.current
+            ) {
+              validateToken();
+            }
+          }, delayMs);
         } else {
           updateStatus("error");
           setError(data.error);

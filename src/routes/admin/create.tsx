@@ -20,6 +20,7 @@ import { ArrowLeft, Users, UserCircle2, Check, ChevronsUpDown, Loader2 } from 'l
 import { useState, useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
+import { getMutationErrorMessage } from '@/lib/errors'
 
 type SessionFormat = 'ABBA' | 'MULTIPLAYER'
 
@@ -201,7 +202,7 @@ function CreateSessionPage() {
       navigate({ to: `/admin/session/${sessionId}` })
     } catch (error) {
       console.error('Failed to create session:', error)
-      toast.error(error instanceof Error ? error.message : 'Failed to create session')
+      toast.error(getMutationErrorMessage(error, 'Failed to create session'))
     } finally {
       setIsSubmitting(false)
     }

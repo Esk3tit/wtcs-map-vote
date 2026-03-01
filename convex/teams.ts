@@ -15,6 +15,7 @@ import { isSecureUrl } from "./lib/urlValidation";
 import { validateName } from "./lib/validation";
 import { validateStorageFile } from "./lib/storageValidation";
 import { requireAdmin } from "./lib/auth";
+import { rateLimiter } from "./lib/rateLimits";
 import { resolveTeamLogoUrl } from "./lib/teamLogos";
 
 // ============================================================================
@@ -114,7 +115,11 @@ export const createTeam = mutation({
   },
   returns: v.object({ teamId: v.id("teams") }),
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    const admin = await requireAdmin(ctx);
+    await rateLimiter.limit(ctx, "adminMutation", {
+      key: admin._id,
+      throws: true,
+    });
 
     const trimmedName = validateTeamName(args.name);
 
@@ -169,7 +174,11 @@ export const updateTeam = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    const admin = await requireAdmin(ctx);
+    await rateLimiter.limit(ctx, "adminMutation", {
+      key: admin._id,
+      throws: true,
+    });
 
     const existing = await ctx.db.get(args.teamId);
     if (!existing) {
@@ -311,7 +320,11 @@ export const deleteTeam = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    await requireAdmin(ctx);
+    const admin = await requireAdmin(ctx);
+    await rateLimiter.limit(ctx, "adminMutation", {
+      key: admin._id,
+      throws: true,
+    });
 
     const team = await ctx.db.get(args.teamId);
     if (!team) {

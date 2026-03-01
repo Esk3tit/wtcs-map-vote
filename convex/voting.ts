@@ -20,6 +20,7 @@ import {
   requireAdmin,
   type PlayerLookupError,
 } from "./lib/auth";
+import { rateLimiter } from "./lib/rateLimits";
 import {
   executeBan,
   executeVote,
@@ -120,13 +121,27 @@ export const submitBan = internalMutation({
         v.literal("FORMAT_NOT_ABBA"),
         v.literal("NOT_YOUR_TURN"),
         v.literal("MAP_UNAVAILABLE"),
-        v.literal("IP_MISMATCH")
+        v.literal("IP_MISMATCH"),
+        v.literal("RATE_LIMITED")
       ),
+      retryAfter: v.optional(v.number()),
     })
   ),
   handler: async (ctx, args) => {
     const { token, mapId } = args;
     const ipAddress = args.ipAddress.trim();
+
+    // Rate limit by player token (shared with submitVote — bans and votes use the same action budget)
+    const { ok, retryAfter } = await rateLimiter.limit(ctx, "submitVote", {
+      key: token,
+    });
+    if (!ok) {
+      return {
+        status: "error" as const,
+        error: "RATE_LIMITED" as const,
+        retryAfter,
+      };
+    }
 
     const authResult = await validatePlayerForVoting(ctx, token, ipAddress);
     if (authResult.status === "error") {
@@ -230,13 +245,27 @@ export const submitVote = internalMutation({
         v.literal("FORMAT_NOT_MULTIPLAYER"),
         v.literal("ALREADY_VOTED"),
         v.literal("MAP_UNAVAILABLE"),
-        v.literal("IP_MISMATCH")
+        v.literal("IP_MISMATCH"),
+        v.literal("RATE_LIMITED")
       ),
+      retryAfter: v.optional(v.number()),
     })
   ),
   handler: async (ctx, args) => {
     const { token, mapId } = args;
     const ipAddress = args.ipAddress.trim();
+
+    // Rate limit by player token (shared with submitBan — bans and votes use the same action budget)
+    const { ok, retryAfter } = await rateLimiter.limit(ctx, "submitVote", {
+      key: token,
+    });
+    if (!ok) {
+      return {
+        status: "error" as const,
+        error: "RATE_LIMITED" as const,
+        retryAfter,
+      };
+    }
 
     const authResult = await validatePlayerForVoting(ctx, token, ipAddress);
     if (authResult.status === "error") {
@@ -321,6 +350,12 @@ export const adminVoteOnBehalf = mutation({
   }),
   handler: async (ctx, args) => {
     const admin = await requireAdmin(ctx);
+
+    // Rate limit admin mutations (100/min per admin)
+    await rateLimiter.limit(ctx, "adminMutation", {
+      key: admin._id,
+      throws: true,
+    });
 
     // --- Shared validation ---
 
