@@ -1,18 +1,23 @@
-interface EmptyStateProps {
-  icon: React.ReactNode;
+import type { ReactNode } from "react";
+
+type EmptyStateProps = {
+  icon: ReactNode;
   title: string;
   description: string;
-  action?: React.ReactNode;
-  variant?: "page" | "card";
-}
+} & (
+  | {
+      variant?: "page";
+      action?: ReactNode;
+    }
+  | {
+      variant: "card";
+      action?: never;
+    }
+);
 
-export function EmptyState({
-  icon,
-  title,
-  description,
-  action,
-  variant = "page",
-}: EmptyStateProps) {
+export function EmptyState(props: EmptyStateProps) {
+  const { icon, title, description, variant = "page" } = props;
+
   if (variant === "card") {
     return (
       <div className="flex flex-col items-center justify-center py-12 text-center animate-in fade-in duration-300">
@@ -32,7 +37,7 @@ export function EmptyState({
       <p className="text-muted-foreground mb-6 text-center max-w-sm">
         {description}
       </p>
-      {action}
+      {props.action}
     </div>
   );
 }
