@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import type { Id } from "../../convex/_generated/dataModel";
-import type { RevealData } from "./useRevealPhase";
+import type { RevealData } from "@/hooks/useRevealPhase";
 
 // ============================================================================
 // Types

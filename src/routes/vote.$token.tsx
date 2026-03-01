@@ -635,10 +635,7 @@ function PlayerVotingPage() {
                 return (
                   <div
                     key={map._id}
-                    className={stagger
-                      ? "motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300 motion-safe:fill-mode-backwards"
-                      : undefined
-                    }
+                    className={cn(stagger && "motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300 motion-safe:fill-mode-backwards")}
                     style={stagger ? { animationDelay: `${index * MAP_STAGGER_DELAY_MS}ms` } : undefined}
                   >
                     <VoteMapCard
