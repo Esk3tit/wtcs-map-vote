@@ -99,23 +99,34 @@ function VotingResultsPage() {
         {/* Winner Showcase */}
         {winnerMap ? (
           <div className="flex flex-col items-center space-y-6">
-            <Trophy className="w-16 h-16 text-primary" />
+            <Trophy className="w-16 h-16 text-primary motion-safe:animate-stamp-in" />
 
-            <Card className="overflow-hidden border-2 border-primary shadow-2xl shadow-primary/30 max-w-md w-full">
-              <div className="aspect-video relative">
-                <img
-                  src={winnerMap.imageUrl || "/placeholder.svg"}
-                  alt={winnerMap.name}
-                  className="w-full h-full object-cover"
-                />
-              </div>
-              <div className="p-6 text-center space-y-3">
-                <h2 className="text-4xl font-bold">{winnerMap.name}</h2>
-                <Badge className="bg-primary text-primary-foreground text-base px-4 py-1">
-                  WINNER
-                </Badge>
-              </div>
-            </Card>
+            <div
+              className="max-w-md w-full motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-4 motion-safe:duration-500"
+              style={{ animationDelay: "400ms" }}
+            >
+              <Card
+                className="overflow-hidden border-2 border-primary shadow-2xl shadow-primary/30 motion-safe:animate-winner-pulse"
+                style={{ animationDelay: "800ms" }}
+              >
+                <div className="aspect-video relative">
+                  <img
+                    src={winnerMap.imageUrl || "/placeholder.svg"}
+                    alt={winnerMap.name}
+                    className="w-full h-full object-cover"
+                  />
+                </div>
+                <div
+                  className="p-6 text-center space-y-3 motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-75 motion-safe:duration-300"
+                  style={{ animationDelay: "600ms" }}
+                >
+                  <h2 className="text-4xl font-bold">{winnerMap.name}</h2>
+                  <Badge className="bg-primary text-primary-foreground text-base px-4 py-1">
+                    WINNER
+                  </Badge>
+                </div>
+              </Card>
+            </div>
           </div>
         ) : (
           <div className="flex flex-col items-center space-y-4">
@@ -128,7 +139,10 @@ function VotingResultsPage() {
 
         {/* Ban History Section */}
         {banHistory.length > 0 && (
-          <Card className="p-6">
+          <Card
+            className="p-6 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500"
+            style={{ animationDelay: "1000ms" }}
+          >
             <h3 className="text-2xl font-bold mb-6">Ban Order</h3>
             <div className="space-y-4">
               {banHistory.map((ban) => (
@@ -166,47 +180,57 @@ function VotingResultsPage() {
 
         {/* Visual Map Summary */}
         <div>
-          <h3 className="text-xl font-bold mb-4 text-center">Map Summary</h3>
+          <h3
+            className="text-xl font-bold mb-4 text-center motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300"
+            style={{ animationDelay: "1100ms" }}
+          >
+            Map Summary
+          </h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
-            {maps.map((map) => {
+            {maps.map((map, index) => {
               const isBanned = map.state === "BANNED";
               const isWinner = map.state === "WINNER";
 
               return (
-                <Card
+                <div
                   key={map._id}
-                  className={`overflow-hidden transition-all ${
-                    isWinner
-                      ? "border-2 border-primary ring-2 ring-primary/50"
-                      : ""
-                  } ${isBanned ? "opacity-60" : ""}`}
+                  className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300"
+                  style={{ animationDelay: `${1200 + index * 50}ms` }}
                 >
-                  <div className="aspect-video relative">
-                    <img
-                      src={map.imageUrl || "/placeholder.svg"}
-                      alt={map.name}
-                      className={`w-full h-full object-cover ${isBanned ? "grayscale" : ""}`}
-                    />
+                  <Card
+                    className={`overflow-hidden ${
+                      isWinner
+                        ? "border-2 border-primary ring-2 ring-primary/50"
+                        : ""
+                    } ${isBanned ? "opacity-60" : ""}`}
+                  >
+                    <div className="aspect-video relative">
+                      <img
+                        src={map.imageUrl || "/placeholder.svg"}
+                        alt={map.name}
+                        className={`w-full h-full object-cover ${isBanned ? "grayscale" : ""}`}
+                      />
 
-                    {isBanned && (
-                      <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
-                        <X className="w-12 h-12 text-red-600" strokeWidth={4} />
-                      </div>
-                    )}
+                      {isBanned && (
+                        <div className="absolute inset-0 bg-black/60 flex items-center justify-center">
+                          <X className="w-12 h-12 text-red-600" strokeWidth={4} />
+                        </div>
+                      )}
 
-                    {isWinner && (
-                      <div className="absolute top-2 right-2">
-                        <Trophy className="w-6 h-6 text-primary" />
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="p-2">
-                    <div className="text-sm font-semibold text-center">
-                      {map.name}
+                      {isWinner && (
+                        <div className="absolute top-2 right-2">
+                          <Trophy className="w-6 h-6 text-primary" />
+                        </div>
+                      )}
                     </div>
-                  </div>
-                </Card>
+
+                    <div className="p-2">
+                      <div className="text-sm font-semibold text-center">
+                        {map.name}
+                      </div>
+                    </div>
+                  </Card>
+                </div>
               );
             })}
           </div>
