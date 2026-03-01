@@ -28,7 +28,7 @@ function StepCircle({
     <div
       className={cn(
         sizeClasses,
-        "rounded-full flex items-center justify-center border-2 flex-shrink-0",
+        "rounded-full flex items-center justify-center border-2 flex-shrink-0 motion-safe:transition-colors motion-safe:duration-300",
         completed
           ? "bg-primary border-primary"
           : isCurrent
@@ -115,7 +115,7 @@ export function ABBAProgressTracker({
                 />
                 <span
                   className={cn(
-                    "text-sm text-center",
+                    "text-sm text-center motion-safe:transition-colors motion-safe:duration-300",
                     currentStepIndex === index
                       ? "text-foreground font-semibold"
                       : "text-muted-foreground"
@@ -146,7 +146,7 @@ export function ABBAProgressTracker({
               {index < banSteps.length - 1 && (
                 <div
                   className={cn(
-                    "flex-1 h-0.5 mx-4 mt-5",
+                    "flex-1 h-0.5 mx-4 mt-5 motion-safe:transition-colors motion-safe:duration-300",
                     step.completed ? "bg-primary" : "bg-border"
                   )}
                 />
@@ -177,7 +177,7 @@ export function ABBAProgressTracker({
                 {index < banSteps.length - 1 && (
                   <div
                     className={cn(
-                      "w-0.5 h-4 mt-1",
+                      "w-0.5 h-4 mt-1 motion-safe:transition-colors motion-safe:duration-300",
                       step.completed ? "bg-primary" : "bg-border"
                     )}
                   />
@@ -193,7 +193,7 @@ export function ABBAProgressTracker({
                 />
                 <span
                   className={cn(
-                    "text-sm flex-shrink-0",
+                    "text-sm flex-shrink-0 motion-safe:transition-colors motion-safe:duration-300",
                     currentStepIndex === index
                       ? "text-foreground font-semibold"
                       : "text-muted-foreground"
