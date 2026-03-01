@@ -245,6 +245,13 @@ function PlayerVotingPage() {
   // Animation State Tracking (hooks must be before early returns)
   // ============================================================================
 
+  // First-mount flag for map card stagger (latch off after animations complete)
+  const isFirstMountRef = useRef(true);
+  useEffect(() => {
+    const id = setTimeout(() => { isFirstMountRef.current = false; }, 600);
+    return () => clearTimeout(id);
+  }, []);
+
   // Safe references for animation hooks (empty when data not yet valid)
   const mapsForAnimation = useMemo(
     () => (data?.status === "valid" ? data.maps : []),
@@ -675,7 +682,7 @@ function PlayerVotingPage() {
               {(session.format === "MULTIPLAYER"
                 ? activeMaps
                 : maps
-              ).map((map) => {
+              ).map((map, index) => {
                 // MULTIPLAYER: use bannedByTeamNames; ABBA: look up player
                 const bannedByTeamName =
                   session.format === "MULTIPLAYER"
@@ -686,24 +693,33 @@ function PlayerVotingPage() {
                   (map._id === data.playerVotedMapId ||
                     map._id === optimisticVotedMapId) &&
                   map.state === "AVAILABLE";
+                const stagger = isFirstMountRef.current;
 
                 return (
-                  <VoteMapCard
+                  <div
                     key={map._id}
-                    map={map}
-                    isMyVote={isMyVote}
-                    isYourTurn={isYourTurn}
-                    isSubmitting={isSubmitting}
-                    isInteractive={isInteractive}
-                    isAnyReveal={isAnyReveal}
-                    justEliminated={isJustEliminated(map._id)}
-                    justBanned={animatingBanIds.has(map._id)}
-                    eliminationStaggerIndex={getStaggerIndex(map._id)}
-                    survivor={isSurvivor(map._id, map.state)}
-                    winner={isWinnerMap(map._id)}
-                    bannedByTeamName={bannedByTeamName}
-                    onMapClick={handleMapClick}
-                  />
+                    className={stagger
+                      ? "motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300 motion-safe:fill-mode-backwards"
+                      : undefined
+                    }
+                    style={stagger ? { animationDelay: `${index * 50}ms` } : undefined}
+                  >
+                    <VoteMapCard
+                      map={map}
+                      isMyVote={isMyVote}
+                      isYourTurn={isYourTurn}
+                      isSubmitting={isSubmitting}
+                      isInteractive={isInteractive}
+                      isAnyReveal={isAnyReveal}
+                      justEliminated={isJustEliminated(map._id)}
+                      justBanned={animatingBanIds.has(map._id)}
+                      eliminationStaggerIndex={getStaggerIndex(map._id)}
+                      survivor={isSurvivor(map._id, map.state)}
+                      winner={isWinnerMap(map._id)}
+                      bannedByTeamName={bannedByTeamName}
+                      onMapClick={handleMapClick}
+                    />
+                  </div>
                 );
               })}
             </div>
