@@ -149,6 +149,18 @@
     }
   }
 
+  /* Timer scale pulse — one-shot on turn change (GPU-composited) */
+  --animate-timer-pulse: timer-pulse 300ms ease-in-out;
+
+  @keyframes timer-pulse {
+    0%, 100% {
+      transform: scale(1);
+    }
+    50% {
+      transform: scale(1.05);
+    }
+  }
+
   /* Winner amber/gold pulse — one-shot, settles to steady glow.
      Note: box-shadow triggers paint (not GPU-composited). Acceptable
      for a single card, one-shot animation. Consider pseudo-element
