@@ -20,6 +20,7 @@ import { audioManager } from "@/lib/audio";
 import { Lock, Loader2, CheckCircle2, Volume2, VolumeX } from "lucide-react";
 import { TeamAvatar } from "@/components/session/team-avatar";
 import { useEffect, useState, useCallback } from "react";
+import { MAP_STAGGER_DELAY_MS } from "@/lib/animation";
 
 export const Route = createFileRoute("/lobby/$token")({
   component: PlayerLobbyPage,
@@ -237,7 +238,7 @@ function PlayerLobbyPage() {
           {/* Waiting Indicator */}
           <div className="flex flex-col items-center gap-4 py-8">
             <Loader2 className="h-8 w-8 text-primary animate-spin" />
-            <p className="text-lg text-muted-foreground">{getWaitingMessage()}</p>
+            <p className="text-lg text-muted-foreground motion-safe:animate-pulse">{getWaitingMessage()}</p>
           </div>
 
           {/* Map Preview */}
@@ -246,8 +247,12 @@ function PlayerLobbyPage() {
               Maps in this session:
             </h3>
             <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-3 sm:gap-4">
-              {maps.map((map) => (
-                <div key={map._id} className="space-y-2">
+              {maps.map((map, index) => (
+                <div
+                  key={map._id}
+                  className="space-y-2 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300 motion-safe:fill-mode-backwards"
+                  style={{ animationDelay: `${index * MAP_STAGGER_DELAY_MS}ms` }}
+                >
                   <div className="relative aspect-video rounded-lg overflow-hidden border border-border">
                     <img
                       src={map.imageUrl || "/placeholder.svg"}
