@@ -992,8 +992,8 @@ export const createSessionFull = mutation({
   handler: async (ctx, args) => {
     const admin = await requireAdmin(ctx);
 
-    // Rate limit session creation (via adminMutation limit)
-    await rateLimiter.limit(ctx, "adminMutation", {
+    // Rate limit session creation (same budget as createSession)
+    await rateLimiter.limit(ctx, "createSession", {
       key: admin._id,
       throws: true,
     });
