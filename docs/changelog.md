@@ -6,6 +6,43 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.21.0] - 2026-03-01 - Animation & Visual Polish (WAR-60–70, PRs #80–90)
+
+This release completes the player experience polish phase and introduces a comprehensive animation system across all player-facing pages.
+
+### Added
+
+- **ABBA turn flash overlay** (WAR-69, PR #80) — Green viewport-edge glow pulse (~700ms) when it becomes your turn to ban, using `pointer-events: none` to avoid blocking interaction
+- **ABBA progress tracker** (WAR-61, PR #81) — Extracted `ABBAProgressTracker` component showing completed bans with map thumbnails; multiplayer round history table with vote counts per round
+- **Audio alerts** (WAR-62, PR #84) — HTML5 Audio sound effects for 6 voting events (your-turn, ban-confirmed, round-resolved, winner, countdown-warning, error); `AudioManager` singleton with preloading, mute toggle persisted to localStorage, autoplay unlock on first gesture
+- **Skeleton loading screens** (WAR-65, PR #85) — Layout-matching skeleton screens replace spinner on lobby, vote, results, and admin dashboard; each mirrors actual grid columns, aspect ratios, and responsive breakpoints
+- **Team logos integration** (WAR-71, PR #86) — `TeamAvatar` component with deterministic color fallbacks and 2-letter initials; `resolveTeamLogos()` shared backend utility for batch logo resolution; logos shown in admin lobby, player lobby, voting status bar, ABBA progress tracker, results page, and session detail
+- **Animated map transitions** (WAR-63, PR #87) — ABBA ban: 0.5s grayscale + red X stamp-in overlay; multiplayer elimination: 0.8s staggered grayscale per card (150ms intervals); winner pulse: amber/gold one-shot glow; `useMapAnimations` hook for detecting AVAILABLE→BANNED via Convex subscription diffs
+- **Winner celebration animation** (WAR-64, PR #88) — Choreographed CSS-only sequence on results page: trophy bounce → card slide-up → winner glow pulse → ban history fade → staggered map grid entrance; reuses `stamp-in` and `winner-pulse` keyframes
+- **Standardized empty states** (WAR-68, PR #89) — Shared `EmptyState` component (`src/components/ui/empty-state.tsx`) with `"page"` and `"card"` variants using discriminated union TypeScript type; replaces 5 inline implementations across admin pages
+- **Lobby entrance animations** (WAR-66, PR #90) — Pulsing "Waiting for admin..." text; staggered `animate-in fade-in` + 50ms delay per map card on lobby; staggered map card entrance on vote page first mount
+- **Animation system documentation** — `docs/solutions/animation-system.md` catalogs all custom keyframes, tw-animate-css utilities, JS-managed animation state, CSS transitions, decision criteria, accessibility conventions, and z-index layering
+
+### Changed
+
+- **Multiplayer voting logic** (WAR-70, PR #82) — 3-rule ban strategy: (1) unvoted maps exist → ban all voted maps, (2) all maps voted + partial tie → ban highest, (3) global tie → deadlock/revote
+- **Timer expiration** (WAR-70, PR #82) — Random selection now uses CSPRNG for fairness; timer wording updated
+- **Session pause/resume** (PR #83) — `isRevoteRound` flag preserved through pause/resume to prevent infinite deadlock loops
+
+### Fixed
+
+- **Revote deadlock loop** (PR #83) — `resumeSession` was clearing `isRevoteRound`, causing infinite REVOTE cycles instead of triggering random selection on second tie
+- **Stakeholder feedback** (WAR-70, PR #82) — Timer, voting logic, and UX fixes from user testing session
+
+### Technical Notes
+
+- **4 custom CSS keyframes** in `src/index.css` `@theme` block: `border-flash` (700ms), `stamp-in` (400ms), `timer-pulse` (300ms), `winner-pulse` (1.5s)
+- **Accessibility**: All decorative animations use `motion-safe:` prefix; functional spinners use bare `animate-spin`
+- **Z-index scale**: z-40 (overlays) → z-[45] (priority overlays) → z-50 (dialogs) → z-[100] (toasts)
+- **New shared modules**: `src/hooks/useMapAnimations.ts`, `src/lib/animation.ts`, `convex/lib/teamLogos.ts`, `src/components/session/team-avatar.tsx`
+
+---
+
 ## [0.20.0] - 2026-02-23 - Session Error States for Active Players (WAR-60, PR #78)
 
 ### Added
