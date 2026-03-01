@@ -8,6 +8,19 @@ import { Badge } from "@/components/ui/badge";
 import { Trophy, X, Loader2, AlertTriangle, Clock } from "lucide-react";
 import { TeamAvatar } from "@/components/session/team-avatar";
 
+// ============================================================================
+// Animation Timing (ms)
+// ============================================================================
+
+/** Choreographed celebration entrance sequence — all delays relative to mount */
+const ANIMATION_DELAY = {
+  WINNER_CARD: 400,
+  WINNER_PULSE: 800,
+  BAN_HISTORY: 1000,
+  MAP_GRID_BASE: 1200,
+  MAP_GRID_STAGGER: 50,
+} as const;
+
 export const Route = createFileRoute("/results/$sessionId")({
   component: VotingResultsPage,
   validateSearch: (
@@ -103,11 +116,11 @@ function VotingResultsPage() {
 
             <div
               className="max-w-md w-full motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-4 motion-safe:duration-500 motion-safe:fill-mode-backwards"
-              style={{ animationDelay: "400ms" }}
+              style={{ animationDelay: `${ANIMATION_DELAY.WINNER_CARD}ms` }}
             >
               <Card
                 className="overflow-hidden border-2 border-primary shadow-2xl shadow-primary/30 motion-safe:animate-winner-pulse"
-                style={{ animationDelay: "800ms" }}
+                style={{ animationDelay: `${ANIMATION_DELAY.WINNER_PULSE}ms` }}
               >
                 <div className="aspect-video relative">
                   <img
@@ -138,7 +151,7 @@ function VotingResultsPage() {
         {banHistory.length > 0 && (
           <Card
             className="p-6 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500 motion-safe:fill-mode-backwards"
-            style={{ animationDelay: "1000ms" }}
+            style={{ animationDelay: `${ANIMATION_DELAY.BAN_HISTORY}ms` }}
           >
             <h3 className="text-2xl font-bold mb-6">Ban Order</h3>
             <div className="space-y-4">
@@ -187,7 +200,7 @@ function VotingResultsPage() {
                 <div
                   key={map._id}
                   className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300 motion-safe:fill-mode-backwards"
-                  style={{ animationDelay: `${1200 + index * 50}ms` }}
+                  style={{ animationDelay: `${ANIMATION_DELAY.MAP_GRID_BASE + index * ANIMATION_DELAY.MAP_GRID_STAGGER}ms` }}
                 >
                   <Card
                     className={`overflow-hidden ${
