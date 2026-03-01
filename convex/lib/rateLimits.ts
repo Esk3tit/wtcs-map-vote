@@ -10,7 +10,8 @@ import { components } from "../_generated/api";
 import { RateLimiter, MINUTE, HOUR } from "@convex-dev/rate-limiter";
 
 export const rateLimiter = new RateLimiter(components.rateLimiter, {
-  // Player voting: 30/min with burst of 5 (prevents double-click spam)
+  // Player voting/banning: 30/min with burst of 5 (prevents double-click spam)
+  // Shared by submitVote and submitBan — both consume the same per-token budget
   submitVote: { kind: "token bucket", rate: 30, period: MINUTE, capacity: 5 },
 
   // Player heartbeat: 30s interval with burst headroom for retries

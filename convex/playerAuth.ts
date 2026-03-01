@@ -62,6 +62,11 @@ export const validateAndLockToken = internalMutation({
     const ipAddress = args.ipAddress.trim();
     const now = Date.now();
 
+    // Reject unresolved IPs before rate limiting to avoid a shared "unknown" bucket
+    if (!ipAddress || ipAddress === "unknown") {
+      return { status: "error" as const, error: "INVALID_IP" as const };
+    }
+
     // Rate limit by IP address (brute force protection)
     const { ok, retryAfter } = await rateLimiter.limit(ctx, "validateToken", {
       key: ipAddress,

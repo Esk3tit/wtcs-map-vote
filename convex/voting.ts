@@ -131,7 +131,7 @@ export const submitBan = internalMutation({
     const { token, mapId } = args;
     const ipAddress = args.ipAddress.trim();
 
-    // Rate limit by player token
+    // Rate limit by player token (shared with submitVote — bans and votes use the same action budget)
     const { ok, retryAfter } = await rateLimiter.limit(ctx, "submitVote", {
       key: token,
     });
@@ -255,7 +255,7 @@ export const submitVote = internalMutation({
     const { token, mapId } = args;
     const ipAddress = args.ipAddress.trim();
 
-    // Rate limit by player token
+    // Rate limit by player token (shared with submitBan — bans and votes use the same action budget)
     const { ok, retryAfter } = await rateLimiter.limit(ctx, "submitVote", {
       key: token,
     });
