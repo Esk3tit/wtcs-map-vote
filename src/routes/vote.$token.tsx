@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
 import { api } from "../../convex/_generated/api";
@@ -241,6 +241,85 @@ function PlayerVotingPage() {
     }
   }, [data, optimisticVotedMapId]);
 
+  // ============================================================================
+  // Animation State Tracking (hooks must be before early returns)
+  // ============================================================================
+
+  // Safe references for animation hooks (empty when data not yet valid)
+  const mapsForAnimation = useMemo(
+    () => (data?.status === "valid" ? data.maps : []),
+    [data]
+  );
+  const formatForAnimation =
+    data?.status === "valid" ? data.session.format : undefined;
+
+  // Track previous map states for ABBA ban animation detection
+  const prevMapStatesRef = useRef<Map<string, string>>(new Map());
+  const banTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(
+    new Map()
+  );
+
+  // Persist ban animation state (500ms CSS transition + 100ms buffer)
+  const [animatingBanIds, setAnimatingBanIds] = useState<Set<string>>(
+    new Set()
+  );
+
+  // Detect AVAILABLE→BANNED transitions, animate, then clear after timeout.
+  // Per-id timers survive effect re-runs so Convex subscription updates
+  // mid-animation don't cancel pending cleanup timeouts.
+  useEffect(() => {
+    const newlyBanned = new Set<string>();
+    if (formatForAnimation === "ABBA") {
+      for (const map of mapsForAnimation) {
+        const prev = prevMapStatesRef.current.get(map._id);
+        if (prev === "AVAILABLE" && map.state === "BANNED") {
+          newlyBanned.add(map._id);
+        }
+      }
+    }
+
+    // Update ref for next render (must happen every render, not just on ban)
+    prevMapStatesRef.current = new Map(
+      mapsForAnimation.map((m) => [m._id, m.state])
+    );
+
+    if (newlyBanned.size === 0) return;
+
+    setAnimatingBanIds((prev) => new Set([...prev, ...newlyBanned]));
+    for (const id of newlyBanned) {
+      const existing = banTimersRef.current.get(id);
+      if (existing) clearTimeout(existing);
+
+      const timer = setTimeout(() => {
+        setAnimatingBanIds((prev) => {
+          const next = new Set(prev);
+          next.delete(id);
+          return next;
+        });
+        banTimersRef.current.delete(id);
+      }, 600);
+
+      banTimersRef.current.set(id, timer);
+    }
+  }, [mapsForAnimation, formatForAnimation]);
+
+  // Clean up all pending ban timers on unmount
+  useEffect(() => {
+    return () => {
+      for (const timer of banTimersRef.current.values()) {
+        clearTimeout(timer);
+      }
+      banTimersRef.current.clear();
+    };
+  }, []);
+
+  // Compute stagger index for multiplayer elimination reveal
+  const getStaggerIndex = (mapId: Id<"sessionMaps">): number | undefined => {
+    if (!isAnyReveal || !revealData?.eliminatedMapIds) return undefined;
+    const idx = revealData.eliminatedMapIds.indexOf(mapId);
+    return idx >= 0 ? idx : undefined;
+  };
+
   // Auth loading
   if (auth.status === "loading") {
     return <VotePageSkeleton />;
@@ -412,6 +491,10 @@ function PlayerVotingPage() {
     (m) => m.state === "AVAILABLE"
   ).length;
 
+  const bannedMapNames = maps
+    .filter((m) => animatingBanIds.has(m._id))
+    .map((m) => m.name);
+
   return (
     <>
     <div
@@ -440,6 +523,9 @@ function PlayerVotingPage() {
           session.format === "ABBA" &&
           isYourTurn &&
           "Your turn to ban."}
+        {animatingBanIds.size > 0 &&
+          bannedMapNames.length > 0 &&
+          `${bannedMapNames.join(", ")} ${bannedMapNames.length === 1 ? "has" : "have"} been banned.`}
       </div>
 
       <div inert={!isInteractive}>
@@ -611,6 +697,8 @@ function PlayerVotingPage() {
                     isInteractive={isInteractive}
                     isAnyReveal={isAnyReveal}
                     justEliminated={isJustEliminated(map._id)}
+                    justBanned={animatingBanIds.has(map._id)}
+                    eliminationStaggerIndex={getStaggerIndex(map._id)}
                     survivor={isSurvivor(map._id, map.state)}
                     winner={isWinnerMap(map._id)}
                     bannedByTeamName={bannedByTeamName}
