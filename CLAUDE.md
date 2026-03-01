@@ -418,6 +418,7 @@ No additional GitHub Actions deploy job needed - Netlify manages both frontend h
 - [Project Spec](docs/SPECIFICATION.md) - Full project requirements, API specs, tech details
 - [Architecture](docs/architecture.md) - System design and data flow
 - [Convex Rules](docs/convex_rules.md) - Convex coding guidelines and best practices
+- [Sentry Rules](docs/sentry_rules.md) - Sentry error tracking guidelines       
 - [Changelog](docs/changelog.md) - Version history (append only, never overwrite)
 - [Project Status](docs/project_status.md) - Current progress and next steps
 - [Pagination Guide](docs/solutions/pagination/convex-pagination-best-practices.md) - Convex pagination patterns
