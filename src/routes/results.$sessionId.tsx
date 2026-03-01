@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Trophy, X, Loader2, AlertTriangle, Clock } from "lucide-react";
 import { TeamAvatar } from "@/components/session/team-avatar";
+import { cn } from "@/lib/utils";
 
 // ============================================================================
 // Animation Timing (ms)
@@ -203,17 +204,17 @@ function VotingResultsPage() {
                   style={{ animationDelay: `${ANIMATION_DELAY.MAP_GRID_BASE + index * ANIMATION_DELAY.MAP_GRID_STAGGER}ms` }}
                 >
                   <Card
-                    className={`overflow-hidden ${
-                      isWinner
-                        ? "border-2 border-primary ring-2 ring-primary/50"
-                        : ""
-                    } ${isBanned ? "opacity-60" : ""}`}
+                    className={cn(
+                      "overflow-hidden",
+                      isWinner && "border-2 border-primary ring-2 ring-primary/50",
+                      isBanned && "opacity-60",
+                    )}
                   >
                     <div className="aspect-video relative">
                       <img
                         src={map.imageUrl || "/placeholder.svg"}
                         alt={map.name}
-                        className={`w-full h-full object-cover ${isBanned ? "grayscale" : ""}`}
+                        className={cn("w-full h-full object-cover", isBanned && "grayscale")}
                       />
 
                       {isBanned && (
