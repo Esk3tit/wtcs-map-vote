@@ -6,6 +6,7 @@
  */
 
 import * as Sentry from "@sentry/react";
+import type { AnyRouter } from "@tanstack/react-router";
 
 const SENTRY_DSN = import.meta.env.VITE_SENTRY_DSN;
 
@@ -14,7 +15,7 @@ const SENTRY_DSN = import.meta.env.VITE_SENTRY_DSN;
  *
  * @param router - TanStack Router instance for route-aware tracing
  */
-export function initSentry(router: unknown) {
+export function initSentry(router: AnyRouter) {
   Sentry.init({
     dsn: SENTRY_DSN,
     environment: import.meta.env.MODE,

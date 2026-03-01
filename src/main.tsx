@@ -6,9 +6,9 @@ import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import * as Sentry from "@sentry/react";
 import { toast } from "sonner";
 
-import { router } from './router'
-import App from './App'
-import { initSentry } from './lib/sentry'
+import { router } from '@/router'
+import App from '@/App'
+import { initSentry } from '@/lib/sentry'
 
 import './index.css'
 
