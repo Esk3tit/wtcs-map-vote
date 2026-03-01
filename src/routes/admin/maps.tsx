@@ -32,6 +32,7 @@ import {
   Eye,
   EyeOff,
 } from "lucide-react";
+import { EmptyState } from "@/components/ui/empty-state";
 import React, { useState, useCallback, useMemo } from "react";
 import { useQuery, useMutation } from "convex/react";
 import { api } from "../../../convex/_generated/api";
@@ -266,22 +267,17 @@ function MapsPage() {
 
         <main className="flex-1 px-4 py-6 md:px-8 md:py-8 overflow-y-auto">
           {hasNoMaps ? (
-            // Empty State
-            <div className="flex flex-col items-center justify-center py-16 px-4">
-              <div className="w-64 h-64 mb-6 rounded-lg bg-muted/30 flex items-center justify-center">
-                <MapIcon className="w-24 h-24 text-muted-foreground/50" />
-              </div>
-              <h2 className="text-2xl font-semibold text-foreground mb-2">
-                No maps in the pool yet
-              </h2>
-              <p className="text-muted-foreground mb-6 text-center max-w-md">
-                Add maps to create a pool for voting sessions.
-              </p>
-              <Button onClick={handleAddMap} size="lg" className="gap-2">
-                <Plus className="w-5 h-5" />
-                Add Map
-              </Button>
-            </div>
+            <EmptyState
+              icon={<MapIcon className="w-24 h-24" />}
+              title="No maps in the pool yet"
+              description="Add maps to create a pool for voting sessions."
+              action={
+                <Button onClick={handleAddMap} size="lg" className="gap-2">
+                  <Plus className="w-5 h-5" />
+                  Add Map
+                </Button>
+              }
+            />
           ) : (
             <div className="space-y-8">
               {/* Active Maps */}
