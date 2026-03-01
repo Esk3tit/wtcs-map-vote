@@ -102,7 +102,7 @@ function VotingResultsPage() {
             <Trophy className="w-16 h-16 text-primary motion-safe:animate-stamp-in" />
 
             <div
-              className="max-w-md w-full motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-4 motion-safe:duration-500"
+              className="max-w-md w-full motion-safe:animate-in motion-safe:fade-in motion-safe:slide-in-from-bottom-4 motion-safe:duration-500 motion-safe:fill-mode-backwards"
               style={{ animationDelay: "400ms" }}
             >
               <Card
@@ -116,10 +116,7 @@ function VotingResultsPage() {
                     className="w-full h-full object-cover"
                   />
                 </div>
-                <div
-                  className="p-6 text-center space-y-3 motion-safe:animate-in motion-safe:fade-in motion-safe:zoom-in-75 motion-safe:duration-300"
-                  style={{ animationDelay: "600ms" }}
-                >
+                <div className="p-6 text-center space-y-3">
                   <h2 className="text-4xl font-bold">{winnerMap.name}</h2>
                   <Badge className="bg-primary text-primary-foreground text-base px-4 py-1">
                     WINNER
@@ -140,7 +137,7 @@ function VotingResultsPage() {
         {/* Ban History Section */}
         {banHistory.length > 0 && (
           <Card
-            className="p-6 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500"
+            className="p-6 motion-safe:animate-in motion-safe:fade-in motion-safe:duration-500 motion-safe:fill-mode-backwards"
             style={{ animationDelay: "1000ms" }}
           >
             <h3 className="text-2xl font-bold mb-6">Ban Order</h3>
@@ -180,12 +177,7 @@ function VotingResultsPage() {
 
         {/* Visual Map Summary */}
         <div>
-          <h3
-            className="text-xl font-bold mb-4 text-center motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300"
-            style={{ animationDelay: "1100ms" }}
-          >
-            Map Summary
-          </h3>
+          <h3 className="text-xl font-bold mb-4 text-center">Map Summary</h3>
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-5 gap-4">
             {maps.map((map, index) => {
               const isBanned = map.state === "BANNED";
@@ -194,7 +186,7 @@ function VotingResultsPage() {
               return (
                 <div
                   key={map._id}
-                  className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300"
+                  className="motion-safe:animate-in motion-safe:fade-in motion-safe:duration-300 motion-safe:fill-mode-backwards"
                   style={{ animationDelay: `${1200 + index * 50}ms` }}
                 >
                   <Card
