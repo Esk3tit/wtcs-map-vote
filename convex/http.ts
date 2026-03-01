@@ -111,9 +111,17 @@ function createPlayerHandler(
       statusCode = 403;
     }
 
+    const headers: Record<string, string> = {
+      "Content-Type": "application/json",
+      ...corsHeaders,
+    };
+    if (statusCode === 429 && "retryAfter" in result && result.retryAfter) {
+      headers["Retry-After"] = String(Math.ceil(result.retryAfter / 1000));
+    }
+
     return new Response(JSON.stringify(result), {
       status: statusCode,
-      headers: { "Content-Type": "application/json", ...corsHeaders },
+      headers,
     });
   });
 }
@@ -241,9 +249,17 @@ function createVotingHandler(
         statusCode = 403;
       }
 
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        ...corsHeaders,
+      };
+      if (statusCode === 429 && "retryAfter" in result && result.retryAfter) {
+        headers["Retry-After"] = String(Math.ceil(result.retryAfter / 1000));
+      }
+
       return new Response(JSON.stringify(result), {
         status: statusCode,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
+        headers,
       });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);

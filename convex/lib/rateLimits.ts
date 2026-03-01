@@ -13,12 +13,12 @@ export const rateLimiter = new RateLimiter(components.rateLimiter, {
   // Player voting: 30/min with burst of 5 (prevents double-click spam)
   submitVote: { kind: "token bucket", rate: 30, period: MINUTE, capacity: 5 },
 
-  // Player heartbeat: matches ~5s interval config
+  // Player heartbeat: 30s interval with burst headroom for retries
   playerHeartbeat: {
     kind: "token bucket",
     rate: 12,
     period: MINUTE,
-    capacity: 3,
+    capacity: 6,
   },
 
   // Player ready: lobby ready-up action

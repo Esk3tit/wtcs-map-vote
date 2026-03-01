@@ -992,6 +992,12 @@ export const createSessionFull = mutation({
   handler: async (ctx, args) => {
     const admin = await requireAdmin(ctx);
 
+    // Rate limit session creation (via adminMutation limit)
+    await rateLimiter.limit(ctx, "adminMutation", {
+      key: admin._id,
+      throws: true,
+    });
+
     // ========================================================================
     // 1. Validate all inputs upfront before any DB writes
     // ========================================================================

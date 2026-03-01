@@ -11,6 +11,8 @@ const MAX_RETRIES = RETRY_DELAYS_MS.length;
 const HEARTBEAT_FETCH_TIMEOUT_MS = 8_000;
 /** Minimum interval between heartbeat attempts (visibility handler debounce). */
 const ATTEMPT_DEBOUNCE_MS = 2_000;
+/** Maximum delay for any single retry attempt (prevents server misconfiguration causing indefinite waits). */
+const MAX_RETRY_DELAY_MS = 60_000;
 
 export type AuthStatus =
   | "loading"
@@ -261,7 +263,7 @@ export function usePlayerAuth(token: string, options?: UsePlayerAuthOptions): Us
 
       // Use server-provided retryAfter if available, otherwise use backoff schedule
       const delayMs = retryAfterMs && retryAfterMs > 0
-        ? retryAfterMs
+        ? Math.min(retryAfterMs, MAX_RETRY_DELAY_MS)
         : RETRY_DELAYS_MS[attempt];
 
       retryTimeoutRef.current = setTimeout(async () => {
