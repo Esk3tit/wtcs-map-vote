@@ -21,9 +21,15 @@ import { Lock, Loader2, CheckCircle2, Volume2, VolumeX } from "lucide-react";
 import { TeamAvatar } from "@/components/session/team-avatar";
 import { useEffect, useState, useCallback } from "react";
 import { MAP_STAGGER_DELAY_MS } from "@/lib/animation";
+import { PlayerErrorFallback } from "@/components/error-boundary";
+import { Sentry } from "@/lib/sentry";
 
 export const Route = createFileRoute("/lobby/$token")({
   component: PlayerLobbyPage,
+  errorComponent: ({ error }) => {
+    Sentry.captureException(error);
+    return <PlayerErrorFallback error={error} />;
+  },
 });
 
 function PlayerLobbyPage() {

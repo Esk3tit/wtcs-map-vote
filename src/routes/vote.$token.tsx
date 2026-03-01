@@ -36,6 +36,8 @@ import { useAudioAlerts } from "@/hooks/useAudioAlerts";
 import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
 import { SITE_URL } from "@/lib/convexHttp";
 import { cn } from "@/lib/utils";
+import { PlayerErrorFallback } from "@/components/error-boundary";
+import { Sentry } from "@/lib/sentry";
 import { Check, Lock, Loader2, Trophy, Volume2, VolumeX } from "lucide-react";
 import { toast } from "sonner";
 import type { Id } from "../../convex/_generated/dataModel";
@@ -43,6 +45,10 @@ import { TeamAvatar } from "@/components/session/team-avatar";
 
 export const Route = createFileRoute("/vote/$token")({
   component: PlayerVotingPage,
+  errorComponent: ({ error }) => {
+    Sentry.captureException(error);
+    return <PlayerErrorFallback error={error} />;
+  },
 });
 
 // ============================================================================

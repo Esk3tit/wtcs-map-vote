@@ -8,6 +8,8 @@ import { Badge } from "@/components/ui/badge";
 import { Trophy, X, Loader2, AlertTriangle, Clock } from "lucide-react";
 import { TeamAvatar } from "@/components/session/team-avatar";
 import { cn } from "@/lib/utils";
+import { PlayerErrorFallback } from "@/components/error-boundary";
+import { Sentry } from "@/lib/sentry";
 
 // ============================================================================
 // Animation Timing (ms)
@@ -24,6 +26,10 @@ const ANIMATION_DELAY = {
 
 export const Route = createFileRoute("/results/$sessionId")({
   component: VotingResultsPage,
+  errorComponent: ({ error }) => {
+    Sentry.captureException(error);
+    return <PlayerErrorFallback error={error} />;
+  },
   validateSearch: (
     search: Record<string, unknown>
   ): { token?: string } => ({
