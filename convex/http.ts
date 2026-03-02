@@ -10,8 +10,9 @@ import type { Id } from "./_generated/dataModel";
 
 import { httpRouter } from "convex/server";
 
-import { auth } from "./auth";
 import { createWideEvent } from "./lib/wideEvent";
+
+import { auth } from "./auth";
 
 const http = httpRouter();
 

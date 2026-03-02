@@ -60,7 +60,7 @@ function fakePlayer(
     sessionId: "session456" as Id<"sessions">,
     role: "PLAYER_A",
     teamName: "Team Alpha",
-    token: "abcdefghijklmnop1234567890",
+    token: "test-player-token-not-a-secret",
     tokenExpiresAt: Date.now() + 86400000,
     isConnected: true,
     hasVotedThisRound: false,
@@ -144,10 +144,10 @@ describe("WideEvent.setAdmin", () => {
 describe("WideEvent.setPlayer", () => {
   it("truncates token to first 8 characters", () => {
     const ev = createWideEvent("test", "fn", "mutation");
-    ev.setPlayer("abcdefghijklmnop1234567890", fakePlayer());
+    ev.setPlayer("test-player-token-not-a-secret", fakePlayer());
 
     const json = ev.toJSON();
-    expect(json.tokenPrefix).toBe("abcdefgh");
+    expect(json.tokenPrefix).toBe("test-pla");
     expect(json.playerId).toBe("player789");
     expect(json.teamName).toBe("Team Alpha");
   });
@@ -170,10 +170,10 @@ describe("WideEvent.setPlayer", () => {
 
   it("handles token without player", () => {
     const ev = createWideEvent("test", "fn", "mutation");
-    ev.setPlayer("abcdefghijklmnop", null);
+    ev.setPlayer("test-fake-token-xyz", null);
 
     const json = ev.toJSON();
-    expect(json.tokenPrefix).toBe("abcdefgh");
+    expect(json.tokenPrefix).toBe("test-fak");
     expect(json.playerId).toBeUndefined();
   });
 });
@@ -319,13 +319,12 @@ describe("WideEvent.setError", () => {
     expect(ev.toJSON().outcome).toBe("error");
   });
 
-  it("does not overwrite existing outcome", () => {
+  it("unconditionally overrides outcome to error", () => {
     const ev = createWideEvent("test", "fn", "mutation");
     ev.setOutcome("noop");
     ev.setError("fail");
-    // outcome was already set, setError should not overwrite
-    // Actually per the code, it only sets if !this.fields.outcome
-    expect(ev.toJSON().outcome).toBe("noop");
+    // setError always wins — if you called setError, it's an error
+    expect(ev.toJSON().outcome).toBe("error");
   });
 
   it("defaults errorType to system", () => {
@@ -431,6 +430,45 @@ describe("WideEvent.emit", () => {
     const parsed = JSON.parse(payload);
     expect(parsed._truncated).toBe(true);
     expect(parsed.bigList).toBeUndefined(); // array was stripped
+    expect(new TextEncoder().encode(payload).length).toBeLessThanOrEqual(3584);
+  });
+
+  it("strips large non-array objects during truncation", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const ev = createWideEvent("test", "fn", "mutation");
+
+    // Add a large nested object that pushes payload over 3.5 KiB
+    const largeObj: Record<string, string> = {};
+    for (let i = 0; i < 200; i++) {
+      largeObj[`key${i}`] = "x".repeat(20);
+    }
+    ev.set("bigObj", largeObj);
+    ev.emit();
+
+    const payload = logSpy.mock.calls[0][0] as string;
+    const parsed = JSON.parse(payload);
+    expect(parsed._truncated).toBe(true);
+    expect(parsed.bigObj).toBeUndefined(); // object was stripped
+    expect(new TextEncoder().encode(payload).length).toBeLessThanOrEqual(3584);
+  });
+
+  it("emits minimal safe payload when still oversized after trimming", () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const ev = createWideEvent("test", "fn", "mutation");
+    ev.setOutcome("ok");
+
+    // Add many large string fields (not arrays/objects) to exceed limit
+    for (let i = 0; i < 50; i++) {
+      ev.set(`field${i}`, "x".repeat(100));
+    }
+    ev.emit();
+
+    const payload = logSpy.mock.calls[0][0] as string;
+    const parsed = JSON.parse(payload);
+    expect(parsed._truncated).toBe(true);
+    expect(parsed._oversized).toBe(true);
+    expect(parsed._event).toBe("wide_event");
+    expect(parsed.fn).toBe("test.fn");
     expect(new TextEncoder().encode(payload).length).toBeLessThanOrEqual(3584);
   });
 

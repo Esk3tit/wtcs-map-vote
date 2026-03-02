@@ -133,13 +133,14 @@ export class WideEvent {
 
   /**
    * Set error context from a caught error or error code string.
-   * Automatically sets outcome to "error" if not already set.
+   * Unconditionally sets outcome to "error" — if setError is called, the
+   * invocation is an error regardless of any prior setOutcome call.
    *
    * @param err - The caught error (Error, ConvexError, string, or unknown)
    * @param errorType - "business" for returned/ConvexError, "system" for unexpected throws
    */
   setError(err: unknown, errorType: ErrorType = "system"): void {
-    if (!this.fields.outcome) this.fields.outcome = "error";
+    this.fields.outcome = "error";
     this.fields.errorType = errorType;
 
     if (typeof err === "string") {
@@ -192,9 +193,22 @@ export class WideEvent {
         };
         // Remove array/object fields that might be large
         for (const key of Object.keys(trimmed)) {
-          if (Array.isArray(trimmed[key])) delete trimmed[key];
+          if (typeof trimmed[key] === "object" && trimmed[key] !== null) {
+            delete trimmed[key];
+          }
         }
         payload = JSON.stringify(trimmed);
+
+        // Final guard: if still over limit after trimming, emit minimal safe payload
+        if (new TextEncoder().encode(payload).length > MAX_PAYLOAD_BYTES) {
+          payload = JSON.stringify({
+            _event: "wide_event",
+            fn: this.fields.fn,
+            outcome: this.fields.outcome ?? "error",
+            _truncated: true,
+            _oversized: true,
+          });
+        }
       }
 
       console.log(payload);

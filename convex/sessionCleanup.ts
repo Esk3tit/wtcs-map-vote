@@ -16,9 +16,9 @@ import { getActivePlayerIndex, sortPlayersByJoinOrder, HEARTBEAT_TIMEOUT_MS } fr
 import { advanceRound, executeBan, resolveRound } from "./lib/votingHelpers";
 import { completeSession, transitionSession } from "./lib/sessionLifecycle";
 import { pickRandom } from "./lib/random";
+import { createWideEvent } from "./lib/wideEvent";
 
 import { logAction } from "./audit";
-import { createWideEvent } from "./lib/wideEvent";
 
 // ============================================================================
 // Internal Mutations

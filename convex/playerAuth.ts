@@ -13,9 +13,9 @@ import { v } from "convex/values";
 import { ACTIVE_SESSION_STATUSES, HEARTBEAT_SKIP_MS, READY_SKIP_MS } from "./lib/constants";
 import { lookupAndValidatePlayer } from "./lib/auth";
 import { rateLimiter } from "./lib/rateLimits";
+import { createWideEvent } from "./lib/wideEvent";
 
 import { logAction } from "./audit";
-import { createWideEvent } from "./lib/wideEvent";
 
 // ============================================================================
 // Internal Mutations
