@@ -12,6 +12,7 @@ WTCS Map Vote - A React application for map voting functionality.
 - **UI Components:** shadcn/ui (base-vega style) with Base UI primitives
 - **Icons:** Lucide React
 - **Notifications:** Sonner (toast)
+- **Error Tracking:** Sentry (`@sentry/react`)
 - **Package Manager:** Bun
 
 ## Commands

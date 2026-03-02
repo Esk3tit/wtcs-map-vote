@@ -6,6 +6,32 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [0.22.0] - 2026-03-01 - Turn Transitions, Rate Limiting & Sentry (WAR-67, 72–73, PRs #91–94)
+
+### Added
+
+- **Turn transition animations** (WAR-67, PRs #91–92) — Banner crossfade, timer pulse, ABBA tracker transitions, and round fade-in for ABBA format
+- **Rate limiting on all mutations** (WAR-72, PR #93) — Server-side rate limiting to prevent abuse
+- **Sentry error tracking** (WAR-73, PR #94) — Full Sentry integration with `@sentry/react`:
+  - React 19 error hooks (`onUncaughtError`, `onCaughtError`, `onRecoverableError`)
+  - `Sentry.ErrorBoundary` in root layout as last-resort catch-all
+  - TanStack Router `defaultErrorComponent` for admin routes, shared `PlayerRouteErrorComponent` for player routes
+  - Session replay (error-only, privacy-first defaults with `maskAllText`/`blockAllMedia`)
+  - Source map upload via `@sentry/vite-plugin` with post-upload cleanup
+  - Release tracking tied to git commit SHA
+  - ConvexError filtering, browser noise suppression, extension error filtering
+  - Sentry rules documentation (`docs/sentry_rules.md`)
+
+### Changed
+
+- Sourcemap generation gated on Sentry upload configuration (`sentryUploadEnabled` flag)
+- `initSentry` short-circuits when DSN is missing (no SDK initialization)
+- Admin error fallback hides error details in production (`import.meta.env.DEV` guard)
+- HMR-safe `unhandledrejection` handler with `import.meta.hot.dispose()` cleanup
+- `execSync` in vite.config.ts wrapped in try/catch for non-git environments
+
+---
+
 ## [0.21.0] - 2026-03-01 - Animation & Visual Polish (WAR-60–70, PRs #80–90)
 
 This release completes the player experience polish phase and introduces a comprehensive animation system across all player-facing pages.

@@ -2,7 +2,7 @@
 
 Current progress and next steps for the WTCS Map Vote project.
 
-**Last Updated:** March 1, 2026
+**Last Updated:** March 2, 2026
 
 ---
 
@@ -175,8 +175,15 @@ Current progress and next steps for the WTCS Map Vote project.
 - [x] Lobby & vote page entrance animations (WAR-66, PR #90) — staggered map card entrances, pulsing wait text
 - [x] Animation system documentation — `docs/solutions/animation-system.md`
 
-### Phase 7b: Turn Transition Animations (IN PROGRESS)
-- [ ] Turn transition animations (WAR-67, PR #92) — banner crossfade, timer pulse, ABBA tracker transitions, round fade-in
+### Phase 7b: Turn Transition Animations (COMPLETE)
+- [x] Turn transition animations (WAR-67, PR #92) — banner crossfade, timer pulse, ABBA tracker transitions, round fade-in
+
+### Phase 8: Hardening & Observability (COMPLETE)
+- [x] Rate limiting on all mutations (WAR-72, PR #93)
+- [x] Sentry error tracking and React error boundaries (WAR-73, PR #94)
+  - React 19 error hooks, Sentry.ErrorBoundary, player/admin error fallbacks
+  - Session replay (error-only), source map upload, release tracking
+  - ConvexError filtering, browser noise suppression, privacy-first defaults
 
 ---
 
@@ -184,7 +191,6 @@ Current progress and next steps for the WTCS Map Vote project.
 
 ### Future Work
 
-- [ ] Rate limiting
 - [ ] Production deployment to Netlify + Convex Cloud
 - [ ] Performance optimizations
 - [ ] Analytics and monitoring
