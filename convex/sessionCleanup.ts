@@ -319,6 +319,7 @@ export const handleTimerExpiry = internalMutation({
         const activePlayer = sortedPlayers[activePlayerIndex];
 
         if (!activePlayer) {
+          // Log error but don't throw — timer jobs should complete even with data inconsistencies
           ev.setError(`No active player at index ${activePlayerIndex}`);
           return { processed: false };
         }
@@ -331,6 +332,7 @@ export const handleTimerExpiry = internalMutation({
           .collect();
 
         if (availableMaps.length === 0) {
+          // Log error but don't throw — timer jobs should complete even with data inconsistencies
           ev.setError("No available maps");
           return { processed: false };
         }
@@ -406,6 +408,7 @@ export const handleTimerExpiry = internalMutation({
           .collect();
 
         if (availableMaps.length === 0) {
+          // Log error but don't throw — timer jobs should complete even with data inconsistencies
           ev.setError("No available maps");
           return { processed: false };
         }
