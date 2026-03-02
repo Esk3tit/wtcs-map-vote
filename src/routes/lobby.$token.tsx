@@ -21,9 +21,11 @@ import { Lock, Loader2, CheckCircle2, Volume2, VolumeX } from "lucide-react";
 import { TeamAvatar } from "@/components/session/team-avatar";
 import { useEffect, useState, useCallback } from "react";
 import { MAP_STAGGER_DELAY_MS } from "@/lib/animation";
+import { PlayerRouteErrorComponent } from "@/components/error-boundary";
 
 export const Route = createFileRoute("/lobby/$token")({
   component: PlayerLobbyPage,
+  errorComponent: PlayerRouteErrorComponent,
 });
 
 function PlayerLobbyPage() {

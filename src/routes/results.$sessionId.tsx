@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Trophy, X, Loader2, AlertTriangle, Clock } from "lucide-react";
 import { TeamAvatar } from "@/components/session/team-avatar";
 import { cn } from "@/lib/utils";
+import { PlayerRouteErrorComponent } from "@/components/error-boundary";
 
 // ============================================================================
 // Animation Timing (ms)
@@ -24,6 +25,7 @@ const ANIMATION_DELAY = {
 
 export const Route = createFileRoute("/results/$sessionId")({
   component: VotingResultsPage,
+  errorComponent: PlayerRouteErrorComponent,
   validateSearch: (
     search: Record<string, unknown>
   ): { token?: string } => ({

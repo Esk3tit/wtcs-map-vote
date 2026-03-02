@@ -1,8 +1,23 @@
 import path from "path"
+import { execSync } from "child_process"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { tanstackRouter } from '@tanstack/router-plugin/vite'
+import { sentryVitePlugin } from "@sentry/vite-plugin"
 import { defineConfig } from "vite"
+
+const commitSha = (() => {
+  try {
+    return execSync("git rev-parse --short HEAD").toString().trim()
+  } catch {
+    return "unknown"
+  }
+})()
+
+const sentryUploadEnabled =
+  Boolean(process.env.SENTRY_AUTH_TOKEN) &&
+  Boolean(process.env.SENTRY_ORG) &&
+  Boolean(process.env.SENTRY_PROJECT)
 
 // https://vite.dev/config/
 export default defineConfig({
@@ -12,8 +27,31 @@ export default defineConfig({
       autoCodeSplitting: true,
     }),
     react(),
-    tailwindcss()
+    tailwindcss(),
+    // Sentry must be last — uploads source maps after build
+    sentryVitePlugin({
+      org: process.env.SENTRY_ORG,
+      project: process.env.SENTRY_PROJECT,
+      authToken: process.env.SENTRY_AUTH_TOKEN,
+      release: {
+        name: commitSha,
+      },
+      sourcemaps: {
+        filesToDeleteAfterUpload: ["./dist/**/*.map"],
+      },
+      reactComponentAnnotation: {
+        enabled: true,
+      },
+      disable: !sentryUploadEnabled,
+      telemetry: false,
+    }),
   ],
+  define: {
+    "import.meta.env.VITE_SENTRY_RELEASE": JSON.stringify(commitSha),
+  },
+  build: {
+    sourcemap: sentryUploadEnabled ? "hidden" : false,
+  },
   resolve: {
     alias: {
       "@": path.resolve(__dirname, "./src"),
