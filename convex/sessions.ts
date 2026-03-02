@@ -820,14 +820,17 @@ export const assignPlayer = mutation({
         );
       }
 
+      // Validate and normalize team name input
+      const validatedTeamName = validateName(args.teamName, "Team");
+
       // Validate team exists
       const team = await ctx.db
         .query("teams")
-        .withIndex("by_name", (q) => q.eq("name", args.teamName))
+        .withIndex("by_name", (q) => q.eq("name", validatedTeamName))
         .first();
       ev.set("teamFound", !!team);
       if (!team) {
-        throw new ConvexError(`Team "${args.teamName}" not found`);
+        throw new ConvexError(`Team "${validatedTeamName}" not found`);
       }
 
       // Generate unique token
@@ -838,7 +841,7 @@ export const assignPlayer = mutation({
       const playerId = await ctx.db.insert("sessionPlayers", {
         sessionId: args.sessionId,
         role: validatedRole,
-        teamName: args.teamName,
+        teamName: validatedTeamName,
         token,
         tokenExpiresAt: now + TOKEN_EXPIRY_MS,
         isConnected: false,
@@ -851,7 +854,7 @@ export const assignPlayer = mutation({
         action: "PLAYER_ASSIGNED",
         actorType: "ADMIN",
         actorId: admin._id,
-        details: { teamName: args.teamName },
+        details: { teamName: validatedTeamName },
       });
 
       ev.setOutcome("ok");
@@ -1149,22 +1152,23 @@ export const createSessionFull = mutation({
         "Player count"
       );
 
-      // Validate and collect player roles (check for duplicates)
+      // Validate and collect player roles and team names (check for duplicates)
       const validatedPlayers: Array<{ role: string; teamName: string }> = [];
       const seenRoles = new Set<string>();
       for (const player of args.players) {
         const validatedRole = validateName(player.role, "Role");
+        const validatedTeamName = validateName(player.teamName, "Team");
         if (seenRoles.has(validatedRole)) {
           throw new ConvexError(
             `Duplicate role "${validatedRole}" in player list`
           );
         }
         seenRoles.add(validatedRole);
-        validatedPlayers.push({ role: validatedRole, teamName: player.teamName });
+        validatedPlayers.push({ role: validatedRole, teamName: validatedTeamName });
       }
 
-      // Validate all teams exist
-      const teamNames = [...new Set(args.players.map((p) => p.teamName))];
+      // Validate all teams exist (use normalized names from validatedPlayers)
+      const teamNames = [...new Set(validatedPlayers.map((p) => p.teamName))];
       for (const teamName of teamNames) {
         const team = await ctx.db
           .query("teams")
@@ -1387,7 +1391,6 @@ export const startSession = mutation({
       );
 
       // Schedule timer expiry for first turn/round (WAR-47)
-      ev.set("timerScheduled", true);
       await scheduleTimerExpiry(
         ctx,
         session._id,
@@ -1395,6 +1398,7 @@ export const startSession = mutation({
         session.turnTimerSeconds,
         session.format as "ABBA" | "MULTIPLAYER"
       );
+      ev.set("timerScheduled", true);
 
       ev.setOutcome("ok");
       return { success: true };

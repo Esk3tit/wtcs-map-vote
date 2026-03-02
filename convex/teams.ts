@@ -336,9 +336,13 @@ export const updateTeam = mutation({
       // Patch database first - ensures update succeeds before cleanup
       await ctx.db.patch(args.teamId, updates);
 
-      // Then cleanup old storage (safe to fail - just creates orphan)
+      // Then cleanup old storage (best-effort; do not fail mutation)
       if (oldStorageIdToDelete) {
-        await ctx.storage.delete(oldStorageIdToDelete);
+        try {
+          await ctx.storage.delete(oldStorageIdToDelete);
+        } catch {
+          ev.set("storageCleanupFailed", true);
+        }
       }
 
       ev.setOutcome("ok");
@@ -411,9 +415,13 @@ export const deleteTeam = mutation({
       // Delete database record first - ensures delete succeeds before cleanup
       await ctx.db.delete(args.teamId);
 
-      // Then clean up storage (safe to fail - just creates orphan handled by cron)
+      // Then clean up storage (best-effort; do not fail mutation)
       if (logoStorageId) {
-        await ctx.storage.delete(logoStorageId);
+        try {
+          await ctx.storage.delete(logoStorageId);
+        } catch {
+          ev.set("storageCleanupFailed", true);
+        }
       }
 
       ev.set("hadLogo", !!logoStorageId);

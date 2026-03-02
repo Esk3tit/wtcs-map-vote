@@ -435,9 +435,13 @@ export const updateMap = mutation({
       // Patch database first - ensures update succeeds before cleanup
       await ctx.db.patch(args.mapId, updates);
 
-      // Then cleanup old storage (safe to fail - just creates orphan)
+      // Then cleanup old storage (best-effort; do not fail mutation)
       if (oldStorageIdToDelete) {
-        await ctx.storage.delete(oldStorageIdToDelete);
+        try {
+          await ctx.storage.delete(oldStorageIdToDelete);
+        } catch {
+          ev.set("storageCleanupFailed", true);
+        }
       }
 
       ev.setOutcome("ok");
