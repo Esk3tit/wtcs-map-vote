@@ -14,6 +14,12 @@ import { createWideEvent } from "./lib/wideEvent";
 
 import { auth } from "./auth";
 
+/** Typed accessor for Convex runtime env vars (injected at runtime in httpAction handlers). */
+function getEnv(): Record<string, string | undefined> | undefined {
+  // Convex injects process.env at runtime; may not exist in all contexts
+  return (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
+}
+
 const http = httpRouter();
 
 auth.addHttpRoutes(http);
@@ -44,8 +50,7 @@ export function extractClientIp(req: Request): string {
  * Must be called inside handlers because env vars are only available at runtime.
  */
 export function getCorsHeaders(): Record<string, string> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const env = (globalThis as any).process?.env as Record<string, string> | undefined;
+  const env = getEnv();
   let origin: string;
   if (env?.SITE_URL) {
     origin = env.SITE_URL.replace(/\/+$/, "");
@@ -79,6 +84,9 @@ function createPlayerHandler(
   endpointName: string
 ) {
   return httpAction(async (ctx, req) => {
+    // Wide event for transport-level context (status code, path, method).
+    // The underlying mutation also emits its own wide event for business logic.
+    // This dual emission is intentional — do not remove.
     const ev = createWideEvent("http", endpointName, "httpAction");
     const startTime = Date.now();
     try {
@@ -90,8 +98,7 @@ function createPlayerHandler(
       try {
         body = await req.json();
       } catch {
-        ev.setOutcome("error");
-        ev.set("error", "INVALID_REQUEST");
+        ev.returnError("INVALID_REQUEST");
         ev.set("httpStatus", 400);
         return new Response(
           JSON.stringify({ status: "error", error: "INVALID_REQUEST" }),
@@ -104,8 +111,7 @@ function createPlayerHandler(
         : undefined;
 
       if (typeof token !== "string" || token.length === 0) {
-        ev.setOutcome("error");
-        ev.set("error", "INVALID_TOKEN");
+        ev.returnError("INVALID_TOKEN");
         ev.set("httpStatus", 400);
         return new Response(
           JSON.stringify({ status: "error", error: "INVALID_TOKEN" }),
@@ -130,9 +136,10 @@ function createPlayerHandler(
       }
 
       ev.set("httpStatus", statusCode);
-      ev.setOutcome(result.status === "ok" ? "ok" : "error");
-      if (result.status !== "ok") {
-        ev.set("error", result.error);
+      if (result.status === "ok") {
+        ev.setOutcome("ok");
+      } else {
+        ev.returnError(result.error);
       }
 
       const headers: Record<string, string> = {
@@ -229,6 +236,9 @@ function createVotingHandler(
   endpointName: string
 ) {
   return httpAction(async (ctx, req) => {
+    // Wide event for transport-level context (status code, path, method).
+    // The underlying mutation also emits its own wide event for business logic.
+    // This dual emission is intentional — do not remove.
     const ev = createWideEvent("http", endpointName, "httpAction");
     const startTime = Date.now();
     try {
@@ -240,8 +250,7 @@ function createVotingHandler(
       try {
         body = await req.json();
       } catch {
-        ev.setOutcome("error");
-        ev.set("error", "INVALID_REQUEST");
+        ev.returnError("INVALID_REQUEST");
         ev.set("httpStatus", 400);
         return new Response(
           JSON.stringify({ status: "error", error: "INVALID_REQUEST" }),
@@ -259,8 +268,7 @@ function createVotingHandler(
           : undefined;
 
       if (typeof token !== "string" || token.length === 0) {
-        ev.setOutcome("error");
-        ev.set("error", "INVALID_TOKEN");
+        ev.returnError("INVALID_TOKEN");
         ev.set("httpStatus", 400);
         return new Response(
           JSON.stringify({ status: "error", error: "INVALID_TOKEN" }),
@@ -269,8 +277,7 @@ function createVotingHandler(
       }
 
       if (typeof mapId !== "string" || mapId.length === 0) {
-        ev.setOutcome("error");
-        ev.set("error", "INVALID_REQUEST");
+        ev.returnError("INVALID_REQUEST");
         ev.set("httpStatus", 400);
         return new Response(
           JSON.stringify({ status: "error", error: "INVALID_REQUEST" }),
@@ -301,9 +308,10 @@ function createVotingHandler(
         }
 
         ev.set("httpStatus", statusCode);
-        ev.setOutcome(result.status === "ok" ? "ok" : "error");
-        if (result.status !== "ok") {
-          ev.set("error", result.error);
+        if (result.status === "ok") {
+          ev.setOutcome("ok");
+        } else {
+          ev.returnError(result.error);
         }
 
         const headers: Record<string, string> = {
@@ -322,8 +330,7 @@ function createVotingHandler(
         const message = error instanceof Error ? error.message : String(error);
         // Invalid Convex ID format surfaces as an argument validation error
         if (message.includes("is not a valid ID")) {
-          ev.setOutcome("error");
-          ev.set("error", "INVALID_REQUEST");
+          ev.returnError("INVALID_REQUEST");
           ev.set("httpStatus", 400);
           return new Response(
             JSON.stringify({ status: "error", error: "INVALID_REQUEST" }),

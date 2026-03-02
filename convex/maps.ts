@@ -17,6 +17,7 @@ import { validateName } from "./lib/validation";
 import { validateStorageFile } from "./lib/storageValidation";
 import { requireAdmin } from "./lib/auth";
 import { rateLimiter } from "./lib/rateLimits";
+import { createWideEvent } from "./lib/wideEvent";
 
 // ============================================================================
 // Private Helpers
@@ -168,58 +169,74 @@ export const createMap = mutation({
   },
   returns: v.object({ mapId: v.id("maps") }),
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
-    await rateLimiter.limit(ctx, "adminMutation", {
-      key: admin._id,
-      throws: true,
-    });
+    const ev = createWideEvent("maps", "createMap", "mutation");
+    const startTime = Date.now();
+    try {
+      const admin = await requireAdmin(ctx);
+      ev.setAdmin(admin);
+      await rateLimiter.limit(ctx, "adminMutation", {
+        key: admin._id,
+        throws: true,
+      });
 
-    const trimmedName = validateMapName(args.name);
+      const trimmedName = validateMapName(args.name);
+      ev.set("mapName", trimmedName);
 
-    // Normalize imageUrl first (handles whitespace-only strings)
-    const trimmedImageUrl = validateImageUrl(args.imageUrl);
+      // Normalize imageUrl first (handles whitespace-only strings)
+      const trimmedImageUrl = validateImageUrl(args.imageUrl);
 
-    // Validate mutual exclusivity: can't provide both imageUrl and imageStorageId
-    if (trimmedImageUrl && args.imageStorageId) {
-      throw new ConvexError(
-        "Cannot provide both imageUrl and imageStorageId. Choose one."
-      );
+      // Validate mutual exclusivity: can't provide both imageUrl and imageStorageId
+      if (trimmedImageUrl && args.imageStorageId) {
+        throw new ConvexError(
+          "Cannot provide both imageUrl and imageStorageId. Choose one."
+        );
+      }
+
+      // Require at least one image source
+      if (!trimmedImageUrl && !args.imageStorageId) {
+        throw new ConvexError(
+          "An image is required. Provide imageUrl or upload a file."
+        );
+      }
+
+      ev.set("imageSource", args.imageStorageId ? "storage" : "url");
+
+      // Validate storage file if provided (size and content type)
+      if (args.imageStorageId) {
+        await validateStorageFile(ctx, args.imageStorageId);
+      }
+
+      // Check uniqueness (indexes don't enforce uniqueness in Convex)
+      // Note: There's a theoretical race condition where two concurrent requests
+      // could both pass this check before either inserts. This is acceptable for
+      // this low-traffic admin application (~12 concurrent users max per spec).
+      const existingMap = await ctx.db
+        .query("maps")
+        .withIndex("by_name", (q) => q.eq("name", trimmedName))
+        .first();
+
+      if (existingMap) {
+        throw new ConvexError("A map with this name already exists");
+      }
+
+      const mapId = await ctx.db.insert("maps", {
+        name: trimmedName,
+        imageUrl: trimmedImageUrl,
+        imageStorageId: args.imageStorageId,
+        isActive: true,
+        updatedAt: Date.now(),
+      });
+
+      ev.set("mapId", mapId);
+      ev.setOutcome("ok");
+      return { mapId };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    // Require at least one image source
-    if (!trimmedImageUrl && !args.imageStorageId) {
-      throw new ConvexError(
-        "An image is required. Provide imageUrl or upload a file."
-      );
-    }
-
-    // Validate storage file if provided (size and content type)
-    if (args.imageStorageId) {
-      await validateStorageFile(ctx, args.imageStorageId);
-    }
-
-    // Check uniqueness (indexes don't enforce uniqueness in Convex)
-    // Note: There's a theoretical race condition where two concurrent requests
-    // could both pass this check before either inserts. This is acceptable for
-    // this low-traffic admin application (~12 concurrent users max per spec).
-    const existingMap = await ctx.db
-      .query("maps")
-      .withIndex("by_name", (q) => q.eq("name", trimmedName))
-      .first();
-
-    if (existingMap) {
-      throw new ConvexError("A map with this name already exists");
-    }
-
-    const mapId = await ctx.db.insert("maps", {
-      name: trimmedName,
-      imageUrl: trimmedImageUrl,
-      imageStorageId: args.imageStorageId,
-      isActive: true,
-      updatedAt: Date.now(),
-    });
-
-    return { mapId };
   },
 });
 
@@ -239,175 +256,196 @@ export const updateMap = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
-    await rateLimiter.limit(ctx, "adminMutation", {
-      key: admin._id,
-      throws: true,
-    });
+    const ev = createWideEvent("maps", "updateMap", "mutation");
+    const startTime = Date.now();
+    try {
+      const admin = await requireAdmin(ctx);
+      ev.setAdmin(admin);
+      ev.set("mapId", args.mapId);
 
-    // Verify map exists
-    const existing = await ctx.db.get(args.mapId);
-    if (!existing) {
-      throw new ConvexError("Map not found");
-    }
+      await rateLimiter.limit(ctx, "adminMutation", {
+        key: admin._id,
+        throws: true,
+      });
 
-    // Validate mutual exclusivity: can't set both in same update call
-    const settingImageUrl = args.imageUrl !== undefined && args.imageUrl !== null;
-    const settingImageStorageId =
-      args.imageStorageId !== undefined && args.imageStorageId !== null;
-    if (settingImageUrl && settingImageStorageId) {
-      throw new ConvexError(
-        "Cannot set both imageUrl and imageStorageId. Choose one."
-      );
-    }
-
-    // Validate storage file if being set (size and content type)
-    if (settingImageStorageId) {
-      await validateStorageFile(ctx, args.imageStorageId!);
-    }
-
-    // Build updates object
-    const updates: {
-      name?: string;
-      imageUrl?: string | undefined;
-      imageStorageId?: typeof existing.imageStorageId;
-      updatedAt: number;
-    } = {
-      updatedAt: Date.now(),
-    };
-
-    // Handle name update
-    if (args.name !== undefined) {
-      const trimmedName = validateMapName(args.name);
-
-      // Only check for duplicates and update if name is actually changing
-      if (trimmedName !== existing.name) {
-        const duplicate = await ctx.db
-          .query("maps")
-          .withIndex("by_name", (q) => q.eq("name", trimmedName))
-          .first();
-
-        if (duplicate) {
-          throw new ConvexError("A map with this name already exists");
-        }
-
-        updates.name = trimmedName;
+      // Verify map exists
+      const existing = await ctx.db.get(args.mapId);
+      if (!existing) {
+        throw new ConvexError("Map not found");
       }
-    }
 
-    // Track if we need to clean up old storage
-    let oldStorageIdToDelete: typeof existing.imageStorageId | undefined;
+      ev.set("mapName", existing.name);
 
-    // Handle imageUrl update (null means unset)
-    if (args.imageUrl !== undefined) {
-      if (args.imageUrl === null) {
-        updates.imageUrl = undefined;
-        // If clearing URL and we have a storage file, keep storage (unless explicitly clearing it)
-        // But if no storage and clearing URL, that's an error (need at least one image source)
-        if (!existing.imageStorageId && args.imageStorageId === undefined) {
-          throw new ConvexError(
-            "Cannot remove image URL without providing an uploaded image."
-          );
-        }
-      } else {
-        const validatedUrl = validateImageUrl(args.imageUrl);
-        updates.imageUrl = validatedUrl;
-        // Setting URL clears storage ID
-        if (validatedUrl && existing.imageStorageId) {
-          updates.imageStorageId = undefined;
-          oldStorageIdToDelete = existing.imageStorageId;
+      // Validate mutual exclusivity: can't set both in same update call
+      const settingImageUrl = args.imageUrl !== undefined && args.imageUrl !== null;
+      const settingImageStorageId =
+        args.imageStorageId !== undefined && args.imageStorageId !== null;
+      if (settingImageUrl && settingImageStorageId) {
+        throw new ConvexError(
+          "Cannot set both imageUrl and imageStorageId. Choose one."
+        );
+      }
+
+      // Validate storage file if being set (size and content type)
+      if (settingImageStorageId) {
+        await validateStorageFile(ctx, args.imageStorageId!);
+      }
+
+      // Build updates object
+      const updates: {
+        name?: string;
+        imageUrl?: string | undefined;
+        imageStorageId?: typeof existing.imageStorageId;
+        updatedAt: number;
+      } = {
+        updatedAt: Date.now(),
+      };
+
+      // Handle name update
+      if (args.name !== undefined) {
+        const trimmedName = validateMapName(args.name);
+
+        // Only check for duplicates and update if name is actually changing
+        if (trimmedName !== existing.name) {
+          const duplicate = await ctx.db
+            .query("maps")
+            .withIndex("by_name", (q) => q.eq("name", trimmedName))
+            .first();
+
+          if (duplicate) {
+            throw new ConvexError("A map with this name already exists");
+          }
+
+          updates.name = trimmedName;
+          ev.set("newName", trimmedName);
         }
       }
-    }
 
-    // Handle imageStorageId update (null means unset)
-    if (args.imageStorageId !== undefined) {
-      if (args.imageStorageId === null) {
-        updates.imageStorageId = undefined;
-        // If clearing storage and we have no URL, that's an error
-        if (!existing.imageUrl && args.imageUrl === undefined) {
-          throw new ConvexError(
-            "Cannot remove uploaded image without providing an image URL."
-          );
-        }
-        // Delete the old storage file if we're unsetting
-        if (existing.imageStorageId) {
-          oldStorageIdToDelete = existing.imageStorageId;
-        }
-      } else {
-        updates.imageStorageId = args.imageStorageId;
-        // Setting storage ID clears URL
-        if (existing.imageUrl) {
+      // Track if we need to clean up old storage
+      let oldStorageIdToDelete: typeof existing.imageStorageId | undefined;
+
+      // Handle imageUrl update (null means unset)
+      if (args.imageUrl !== undefined) {
+        if (args.imageUrl === null) {
           updates.imageUrl = undefined;
-        }
-        // Replace old storage file if different
-        if (
-          existing.imageStorageId &&
-          existing.imageStorageId !== args.imageStorageId
-        ) {
-          oldStorageIdToDelete = existing.imageStorageId;
+          // If clearing URL and we have a storage file, keep storage (unless explicitly clearing it)
+          // But if no storage and clearing URL, that's an error (need at least one image source)
+          if (!existing.imageStorageId && args.imageStorageId === undefined) {
+            throw new ConvexError(
+              "Cannot remove image URL without providing an uploaded image."
+            );
+          }
+        } else {
+          const validatedUrl = validateImageUrl(args.imageUrl);
+          updates.imageUrl = validatedUrl;
+          // Setting URL clears storage ID
+          if (validatedUrl && existing.imageStorageId) {
+            updates.imageStorageId = undefined;
+            oldStorageIdToDelete = existing.imageStorageId;
+          }
         }
       }
-    }
 
-    // Final validation: ensure at least one image source will remain after update
-    // Use hasOwn to distinguish "set to undefined" from "never set"
-    const hasImageUrlUpdate = Object.hasOwn(updates, "imageUrl");
-    const hasImageStorageIdUpdate = Object.hasOwn(updates, "imageStorageId");
+      // Handle imageStorageId update (null means unset)
+      if (args.imageStorageId !== undefined) {
+        if (args.imageStorageId === null) {
+          updates.imageStorageId = undefined;
+          // If clearing storage and we have no URL, that's an error
+          if (!existing.imageUrl && args.imageUrl === undefined) {
+            throw new ConvexError(
+              "Cannot remove uploaded image without providing an image URL."
+            );
+          }
+          // Delete the old storage file if we're unsetting
+          if (existing.imageStorageId) {
+            oldStorageIdToDelete = existing.imageStorageId;
+          }
+        } else {
+          updates.imageStorageId = args.imageStorageId;
+          // Setting storage ID clears URL
+          if (existing.imageUrl) {
+            updates.imageUrl = undefined;
+          }
+          // Replace old storage file if different
+          if (
+            existing.imageStorageId &&
+            existing.imageStorageId !== args.imageStorageId
+          ) {
+            oldStorageIdToDelete = existing.imageStorageId;
+          }
+        }
+      }
 
-    // Determine final state of each field after applying updates
-    const finalImageUrl = hasImageUrlUpdate
-      ? updates.imageUrl
-      : existing.imageUrl;
-    const finalStorageId = hasImageStorageIdUpdate
-      ? updates.imageStorageId
-      : existing.imageStorageId;
+      // Final validation: ensure at least one image source will remain after update
+      // Use hasOwn to distinguish "set to undefined" from "never set"
+      const hasImageUrlUpdate = Object.hasOwn(updates, "imageUrl");
+      const hasImageStorageIdUpdate = Object.hasOwn(updates, "imageStorageId");
 
-    if (!finalImageUrl && !finalStorageId) {
-      throw new ConvexError(
-        "Cannot remove all image sources. A map must have either an image URL or uploaded image."
-      );
-    }
+      // Determine final state of each field after applying updates
+      const finalImageUrl = hasImageUrlUpdate
+        ? updates.imageUrl
+        : existing.imageUrl;
+      const finalStorageId = hasImageStorageIdUpdate
+        ? updates.imageStorageId
+        : existing.imageStorageId;
 
-    // Check for active session usage if name or image is changing
-    const nameChanging =
-      updates.name !== undefined && updates.name !== existing.name;
-    const imageChanging = hasImageUrlUpdate || hasImageStorageIdUpdate;
-
-    if (nameChanging || imageChanging) {
-      const sessionMapsWithMap = await ctx.db
-        .query("sessionMaps")
-        .withIndex("by_mapId", (q) => q.eq("mapId", args.mapId))
-        .collect();
-
-      if (sessionMapsWithMap.length > 0) {
-        const sessionIds = [
-          ...new Set(sessionMapsWithMap.map((sm) => sm.sessionId)),
-        ];
-        const sessions = await Promise.all(
-          sessionIds.map((id) => ctx.db.get(id))
+      if (!finalImageUrl && !finalStorageId) {
+        throw new ConvexError(
+          "Cannot remove all image sources. A map must have either an image URL or uploaded image."
         );
-        const activeSession = sessions.find(
-          (session) => session && ACTIVE_SESSION_STATUSES.has(session.status)
-        );
+      }
 
-        if (activeSession) {
-          throw new ConvexError(
-            `Cannot update map "${existing.name}": it is currently in use in an active session`
+      // Check for active session usage if name or image is changing
+      const nameChanging =
+        updates.name !== undefined && updates.name !== existing.name;
+      const imageChanging = hasImageUrlUpdate || hasImageStorageIdUpdate;
+
+      if (nameChanging || imageChanging) {
+        const sessionMapsWithMap = await ctx.db
+          .query("sessionMaps")
+          .withIndex("by_mapId", (q) => q.eq("mapId", args.mapId))
+          .collect();
+
+        if (sessionMapsWithMap.length > 0) {
+          const sessionIds = [
+            ...new Set(sessionMapsWithMap.map((sm) => sm.sessionId)),
+          ];
+          const sessions = await Promise.all(
+            sessionIds.map((id) => ctx.db.get(id))
           );
+          const activeSession = sessions.find(
+            (session) => session && ACTIVE_SESSION_STATUSES.has(session.status)
+          );
+
+          if (activeSession) {
+            throw new ConvexError(
+              `Cannot update map "${existing.name}": it is currently in use in an active session`
+            );
+          }
         }
       }
+
+      ev.set("nameChanged", nameChanging);
+      ev.set("imageChanged", imageChanging);
+      ev.set("storageCleanup", !!oldStorageIdToDelete);
+
+      // Patch database first - ensures update succeeds before cleanup
+      await ctx.db.patch(args.mapId, updates);
+
+      // Then cleanup old storage (safe to fail - just creates orphan)
+      if (oldStorageIdToDelete) {
+        await ctx.storage.delete(oldStorageIdToDelete);
+      }
+
+      ev.setOutcome("ok");
+      return { success: true };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    // Patch database first - ensures update succeeds before cleanup
-    await ctx.db.patch(args.mapId, updates);
-
-    // Then cleanup old storage (safe to fail - just creates orphan)
-    if (oldStorageIdToDelete) {
-      await ctx.storage.delete(oldStorageIdToDelete);
-    }
-
-    return { success: true };
   },
 });
 
@@ -421,53 +459,69 @@ export const deactivateMap = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
-    await rateLimiter.limit(ctx, "adminMutation", {
-      key: admin._id,
-      throws: true,
-    });
+    const ev = createWideEvent("maps", "deactivateMap", "mutation");
+    const startTime = Date.now();
+    try {
+      const admin = await requireAdmin(ctx);
+      ev.setAdmin(admin);
+      ev.set("mapId", args.mapId);
 
-    const map = await ctx.db.get(args.mapId);
-    if (!map) {
-      throw new ConvexError("Map not found");
-    }
+      await rateLimiter.limit(ctx, "adminMutation", {
+        key: admin._id,
+        throws: true,
+      });
 
-    if (!map.isActive) {
-      throw new ConvexError("Map is already inactive");
-    }
-
-    // Check if map is used in active sessions
-    const sessionMapsWithMap = await ctx.db
-      .query("sessionMaps")
-      .withIndex("by_mapId", (q) => q.eq("mapId", args.mapId))
-      .collect();
-
-    if (sessionMapsWithMap.length > 0) {
-      // Batch-fetch sessions in parallel (N+1 fix)
-      const sessionIds = [
-        ...new Set(sessionMapsWithMap.map((sm) => sm.sessionId)),
-      ];
-      const sessions = await Promise.all(
-        sessionIds.map((id) => ctx.db.get(id))
-      );
-
-      const activeSession = sessions.find(
-        (session) => session && ACTIVE_SESSION_STATUSES.has(session.status)
-      );
-
-      if (activeSession) {
-        throw new ConvexError(
-          `Cannot deactivate map "${map.name}": it is currently in use in an active session`
-        );
+      const map = await ctx.db.get(args.mapId);
+      if (!map) {
+        throw new ConvexError("Map not found");
       }
+
+      ev.set("mapName", map.name);
+
+      if (!map.isActive) {
+        throw new ConvexError("Map is already inactive");
+      }
+
+      // Check if map is used in active sessions
+      const sessionMapsWithMap = await ctx.db
+        .query("sessionMaps")
+        .withIndex("by_mapId", (q) => q.eq("mapId", args.mapId))
+        .collect();
+
+      if (sessionMapsWithMap.length > 0) {
+        // Batch-fetch sessions in parallel (N+1 fix)
+        const sessionIds = [
+          ...new Set(sessionMapsWithMap.map((sm) => sm.sessionId)),
+        ];
+        const sessions = await Promise.all(
+          sessionIds.map((id) => ctx.db.get(id))
+        );
+
+        const activeSession = sessions.find(
+          (session) => session && ACTIVE_SESSION_STATUSES.has(session.status)
+        );
+
+        if (activeSession) {
+          throw new ConvexError(
+            `Cannot deactivate map "${map.name}": it is currently in use in an active session`
+          );
+        }
+      }
+
+      await ctx.db.patch(args.mapId, {
+        isActive: false,
+        updatedAt: Date.now(),
+      });
+
+      ev.setOutcome("ok");
+      return { success: true };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    await ctx.db.patch(args.mapId, {
-      isActive: false,
-      updatedAt: Date.now(),
-    });
-
-    return { success: true };
   },
 });
 
@@ -480,39 +534,55 @@ export const reactivateMap = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
-    await rateLimiter.limit(ctx, "adminMutation", {
-      key: admin._id,
-      throws: true,
-    });
+    const ev = createWideEvent("maps", "reactivateMap", "mutation");
+    const startTime = Date.now();
+    try {
+      const admin = await requireAdmin(ctx);
+      ev.setAdmin(admin);
+      ev.set("mapId", args.mapId);
 
-    const map = await ctx.db.get(args.mapId);
-    if (!map) {
-      throw new ConvexError("Map not found");
+      await rateLimiter.limit(ctx, "adminMutation", {
+        key: admin._id,
+        throws: true,
+      });
+
+      const map = await ctx.db.get(args.mapId);
+      if (!map) {
+        throw new ConvexError("Map not found");
+      }
+
+      ev.set("mapName", map.name);
+
+      if (map.isActive) {
+        throw new ConvexError("Map is already active");
+      }
+
+      // Check if another map with the same name now exists
+      const duplicate = await ctx.db
+        .query("maps")
+        .withIndex("by_name", (q) => q.eq("name", map.name))
+        .first();
+
+      if (duplicate && duplicate._id !== args.mapId) {
+        throw new ConvexError(
+          `Cannot reactivate: another map named "${map.name}" already exists`
+        );
+      }
+
+      await ctx.db.patch(args.mapId, {
+        isActive: true,
+        updatedAt: Date.now(),
+      });
+
+      ev.setOutcome("ok");
+      return { success: true };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    if (map.isActive) {
-      throw new ConvexError("Map is already active");
-    }
-
-    // Check if another map with the same name now exists
-    const duplicate = await ctx.db
-      .query("maps")
-      .withIndex("by_name", (q) => q.eq("name", map.name))
-      .first();
-
-    if (duplicate && duplicate._id !== args.mapId) {
-      throw new ConvexError(
-        `Cannot reactivate: another map named "${map.name}" already exists`
-      );
-    }
-
-    await ctx.db.patch(args.mapId, {
-      isActive: true,
-      updatedAt: Date.now(),
-    });
-
-    return { success: true };
   },
 });
 
@@ -541,8 +611,22 @@ export const generateUploadUrl = mutation({
   args: {},
   returns: v.string(),
   handler: async (ctx) => {
-    await requireAdmin(ctx);
+    const ev = createWideEvent("maps", "generateUploadUrl", "mutation");
+    const startTime = Date.now();
+    try {
+      const admin = await requireAdmin(ctx);
+      ev.setAdmin(admin);
 
-    return await ctx.storage.generateUploadUrl();
+      const url = await ctx.storage.generateUploadUrl();
+
+      ev.setOutcome("ok");
+      return url;
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
+    }
   },
 });

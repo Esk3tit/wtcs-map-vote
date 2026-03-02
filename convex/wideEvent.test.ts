@@ -275,6 +275,38 @@ describe("WideEvent.setOutcome", () => {
   });
 });
 
+describe("WideEvent.returnError", () => {
+  it("sets outcome, error, and errorType for returned errors", () => {
+    const ev = createWideEvent("test", "fn", "mutation");
+    ev.returnError("RATE_LIMITED");
+
+    const json = ev.toJSON();
+    expect(json.outcome).toBe("error");
+    expect(json.error).toBe("RATE_LIMITED");
+    expect(json.errorType).toBe("business");
+  });
+
+  it("works with different error codes", () => {
+    const ev = createWideEvent("test", "fn", "mutation");
+    ev.returnError("INVALID_TOKEN");
+
+    const json = ev.toJSON();
+    expect(json.outcome).toBe("error");
+    expect(json.error).toBe("INVALID_TOKEN");
+    expect(json.errorType).toBe("business");
+  });
+
+  it("overrides a previous outcome", () => {
+    const ev = createWideEvent("test", "fn", "mutation");
+    ev.setOutcome("ok");
+    ev.returnError("SESSION_NOT_FOUND");
+
+    const json = ev.toJSON();
+    expect(json.outcome).toBe("error");
+    expect(json.error).toBe("SESSION_NOT_FOUND");
+  });
+});
+
 describe("WideEvent.setError", () => {
   it("handles Error objects", () => {
     const ev = createWideEvent("test", "fn", "mutation");

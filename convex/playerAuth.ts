@@ -70,8 +70,7 @@ export const validateAndLockToken = internalMutation({
 
       // Reject unresolved IPs before rate limiting to avoid a shared "unknown" bucket
       if (!ipAddress || ipAddress === "unknown") {
-        ev.setOutcome("error");
-        ev.set("error", "INVALID_IP");
+        ev.returnError("INVALID_IP");
         return { status: "error" as const, error: "INVALID_IP" as const };
       }
 
@@ -80,8 +79,7 @@ export const validateAndLockToken = internalMutation({
         key: ipAddress,
       });
       if (!ok) {
-        ev.setOutcome("error");
-        ev.set("error", "RATE_LIMITED");
+        ev.returnError("RATE_LIMITED");
         return {
           status: "error" as const,
           error: "RATE_LIMITED" as const,
@@ -92,8 +90,7 @@ export const validateAndLockToken = internalMutation({
       // Shared read-only validation: IP check, token lookup, expiry, session
       const result = await lookupAndValidatePlayer(ctx, token, ipAddress);
       if (result.status === "error") {
-        ev.setOutcome("error");
-        ev.set("error", result.error);
+        ev.returnError(result.error);
         return result;
       }
 
@@ -103,8 +100,7 @@ export const validateAndLockToken = internalMutation({
 
       // Check session is in an active state
       if (!ACTIVE_SESSION_STATUSES.has(session.status)) {
-        ev.setOutcome("error");
-        ev.set("error", "SESSION_NOT_ACTIVE");
+        ev.returnError("SESSION_NOT_ACTIVE");
         return {
           status: "error" as const,
           error: "SESSION_NOT_ACTIVE" as const,
@@ -125,8 +121,7 @@ export const validateAndLockToken = internalMutation({
             },
           });
 
-          ev.setOutcome("error");
-          ev.set("error", "IP_MISMATCH");
+          ev.returnError("IP_MISMATCH");
           return { status: "error" as const, error: "IP_MISMATCH" as const };
         }
 
@@ -230,8 +225,7 @@ export const playerHeartbeat = internalMutation({
         { key: token }
       );
       if (!ok) {
-        ev.setOutcome("error");
-        ev.set("error", "RATE_LIMITED");
+        ev.returnError("RATE_LIMITED");
         return {
           status: "error" as const,
           error: "RATE_LIMITED" as const,
@@ -241,8 +235,7 @@ export const playerHeartbeat = internalMutation({
 
       // Reject empty, whitespace-only, or unresolved IP addresses
       if (!ipAddress || ipAddress === "unknown") {
-        ev.setOutcome("error");
-        ev.set("error", "INVALID_IP");
+        ev.returnError("INVALID_IP");
         return { status: "error" as const, error: "INVALID_IP" as const };
       }
 
@@ -252,29 +245,25 @@ export const playerHeartbeat = internalMutation({
         .first();
 
       if (!player) {
-        ev.setOutcome("error");
-        ev.set("error", "INVALID_TOKEN");
+        ev.returnError("INVALID_TOKEN");
         return { status: "error" as const, error: "INVALID_TOKEN" as const };
       }
       ev.setPlayer(token, player);
 
       if (player.tokenExpiresAt < now) {
-        ev.setOutcome("error");
-        ev.set("error", "TOKEN_EXPIRED");
+        ev.returnError("TOKEN_EXPIRED");
         return { status: "error" as const, error: "TOKEN_EXPIRED" as const };
       }
 
       // Require token to be activated first
       if (!player.ipAddress) {
-        ev.setOutcome("error");
-        ev.set("error", "TOKEN_NOT_ACTIVATED");
+        ev.returnError("TOKEN_NOT_ACTIVATED");
         return { status: "error" as const, error: "TOKEN_NOT_ACTIVATED" as const };
       }
 
       // Verify IP matches
       if (player.ipAddress !== ipAddress) {
-        ev.setOutcome("error");
-        ev.set("error", "IP_MISMATCH");
+        ev.returnError("IP_MISMATCH");
         return { status: "error" as const, error: "IP_MISMATCH" as const };
       }
 
@@ -354,8 +343,7 @@ export const playerReady = internalMutation({
         key: token,
       });
       if (!ok) {
-        ev.setOutcome("error");
-        ev.set("error", "RATE_LIMITED");
+        ev.returnError("RATE_LIMITED");
         return {
           status: "error" as const,
           error: "RATE_LIMITED" as const,
@@ -366,8 +354,7 @@ export const playerReady = internalMutation({
       // Shared read-only validation: IP check, token lookup, expiry, session
       const result = await lookupAndValidatePlayer(ctx, token, ipAddress);
       if (result.status === "error") {
-        ev.setOutcome("error");
-        ev.set("error", result.error);
+        ev.returnError(result.error);
         return result;
       }
 
@@ -377,8 +364,7 @@ export const playerReady = internalMutation({
 
       // Ready only makes sense in WAITING state
       if (session.status !== "WAITING") {
-        ev.setOutcome("error");
-        ev.set("error", "SESSION_NOT_WAITING");
+        ev.returnError("SESSION_NOT_WAITING");
         return {
           status: "error" as const,
           error: "SESSION_NOT_WAITING" as const,
@@ -389,8 +375,7 @@ export const playerReady = internalMutation({
       // lookupAndValidatePlayer handles token/expiry/session checks but not
       // these caller-specific guards (cf. playerHeartbeat which checks inline).
       if (!player.ipAddress) {
-        ev.setOutcome("error");
-        ev.set("error", "TOKEN_NOT_ACTIVATED");
+        ev.returnError("TOKEN_NOT_ACTIVATED");
         return {
           status: "error" as const,
           error: "TOKEN_NOT_ACTIVATED" as const,
@@ -398,8 +383,7 @@ export const playerReady = internalMutation({
       }
 
       if (player.ipAddress !== ipAddress) {
-        ev.setOutcome("error");
-        ev.set("error", "IP_MISMATCH");
+        ev.returnError("IP_MISMATCH");
         return { status: "error" as const, error: "IP_MISMATCH" as const };
       }
 

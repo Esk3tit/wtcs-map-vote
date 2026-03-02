@@ -70,7 +70,7 @@ export const clearSessionIpAddresses = internalMutation({
       }
 
       ev.set("clearedCount", clearedCount);
-      ev.setOutcome("ok");
+      ev.setOutcome(clearedCount > 0 ? "ok" : "noop");
       return { clearedCount };
     } catch (err) {
       ev.setError(err);
@@ -146,13 +146,11 @@ export const expireStaleSessions = internalMutation({
           }
         }
 
-        // Create audit log entry for expiration
-        await ctx.db.insert("auditLogs", {
+        await logAction(ctx, {
           sessionId: session._id,
           action: "SESSION_EXPIRED",
           actorType: "SYSTEM",
           details: {},
-          timestamp: now,
         });
 
         expiredCount++;

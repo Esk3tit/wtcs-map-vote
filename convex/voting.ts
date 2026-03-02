@@ -440,7 +440,7 @@ export const adminVoteOnBehalf = mutation({
       if (!player || player.sessionId !== session._id) {
         throw new ConvexError("Player not found in session");
       }
-      ev.setPlayer(player.token, player);
+      ev.setPlayer(player.token?.slice(0, 8) ?? null, player);
 
       const targetMap = await validateTargetMap(ctx, args.mapId, session._id);
       if (!targetMap) throw new ConvexError("Map not available");

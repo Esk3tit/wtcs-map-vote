@@ -131,6 +131,13 @@ export class WideEvent {
     this.fields.outcome = outcome;
   }
 
+  /** Set error outcome and code for returned (non-thrown) errors. */
+  returnError(code: string): void {
+    this.fields.outcome = "error";
+    this.fields.error = code;
+    this.fields.errorType = "business";
+  }
+
   /**
    * Set error context from a caught error or error code string.
    * Unconditionally sets outcome to "error" — if setError is called, the
