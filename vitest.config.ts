@@ -11,6 +11,10 @@ export default defineConfig({
     },
   },
   test: {
+    // Safety: disable watch mode by default, set timeouts to prevent hung processes
+    watch: false,
+    testTimeout: 30000,
+    hookTimeout: 30000,
     // GitHub Actions integration
     reporters: process.env.GITHUB_ACTIONS
       ? ["dot", "github-actions"]

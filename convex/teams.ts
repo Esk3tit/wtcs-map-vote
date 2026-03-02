@@ -144,6 +144,8 @@ export const createTeam = mutation({
         await validateStorageFile(ctx, args.logoStorageId);
       }
 
+      ev.set("logoSource", args.logoStorageId ? "storage" : trimmedLogoUrl ? "url" : "none");
+
       // Check uniqueness
       const existing = await ctx.db
         .query("teams")
@@ -151,6 +153,7 @@ export const createTeam = mutation({
         .first();
 
       if (existing) {
+        ev.set("duplicateNameFound", true);
         throw new ConvexError("A team with this name already exists");
       }
 
@@ -323,6 +326,13 @@ export const updateTeam = mutation({
         }
       }
 
+      const nameChanged = updates.name !== undefined;
+      const logoChanged =
+        Object.hasOwn(updates, "logoUrl") || Object.hasOwn(updates, "logoStorageId");
+      ev.set("nameChanged", nameChanged);
+      ev.set("logoChanged", logoChanged);
+      ev.set("storageCleanup", !!oldStorageIdToDelete);
+
       // Patch database first - ensures update succeeds before cleanup
       await ctx.db.patch(args.teamId, updates);
 
@@ -376,9 +386,10 @@ export const deleteTeam = mutation({
         .query("sessionPlayers")
         .withIndex("by_teamName", (q) => q.eq("teamName", team.name))
         .collect();
+      const sessionIds = [...new Set(playersInTeam.map((p) => p.sessionId))];
+      ev.set("sessionUsageCount", sessionIds.length);
 
       if (playersInTeam.length > 0) {
-        const sessionIds = [...new Set(playersInTeam.map((p) => p.sessionId))];
         const sessions = await Promise.all(
           sessionIds.map((id) => ctx.db.get(id))
         );

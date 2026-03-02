@@ -204,6 +204,7 @@ export const createMap = mutation({
       // Validate storage file if provided (size and content type)
       if (args.imageStorageId) {
         await validateStorageFile(ctx, args.imageStorageId);
+        ev.set("storageValidationPassed", true);
       }
 
       // Check uniqueness (indexes don't enforce uniqueness in Convex)
@@ -216,6 +217,7 @@ export const createMap = mutation({
         .first();
 
       if (existingMap) {
+        ev.set("duplicateNameFound", true);
         throw new ConvexError("A map with this name already exists");
       }
 
@@ -405,6 +407,7 @@ export const updateMap = mutation({
           .query("sessionMaps")
           .withIndex("by_mapId", (q) => q.eq("mapId", args.mapId))
           .collect();
+        ev.set("usedInSessionCount", sessionMapsWithMap.length);
 
         if (sessionMapsWithMap.length > 0) {
           const sessionIds = [
@@ -479,6 +482,7 @@ export const deactivateMap = mutation({
       ev.set("mapName", map.name);
 
       if (!map.isActive) {
+        ev.set("alreadyInactive", true);
         throw new ConvexError("Map is already inactive");
       }
 
@@ -487,6 +491,7 @@ export const deactivateMap = mutation({
         .query("sessionMaps")
         .withIndex("by_mapId", (q) => q.eq("mapId", args.mapId))
         .collect();
+      ev.set("sessionUsageCount", sessionMapsWithMap.length);
 
       if (sessionMapsWithMap.length > 0) {
         // Batch-fetch sessions in parallel (N+1 fix)
@@ -554,6 +559,7 @@ export const reactivateMap = mutation({
       ev.set("mapName", map.name);
 
       if (map.isActive) {
+        ev.set("alreadyActive", true);
         throw new ConvexError("Map is already active");
       }
 
@@ -564,6 +570,7 @@ export const reactivateMap = mutation({
         .first();
 
       if (duplicate && duplicate._id !== args.mapId) {
+        ev.set("duplicateNameFound", true);
         throw new ConvexError(
           `Cannot reactivate: another map named "${map.name}" already exists`
         );

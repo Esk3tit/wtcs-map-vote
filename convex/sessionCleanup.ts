@@ -114,9 +114,11 @@ export const expireStaleSessions = internalMutation({
         .collect();
 
       // Filter to only DRAFT and WAITING sessions (others shouldn't auto-expire)
+      ev.set("staleSessionsFound", staleSessions.length);
       const sessionsToExpire = staleSessions.filter(
         (s) => s.status === "DRAFT" || s.status === "WAITING"
       );
+      ev.set("filteredToExpire", sessionsToExpire.length);
 
       let expiredCount = 0;
       let totalIpsCleared = 0;
@@ -197,6 +199,7 @@ export const clearCompletedSessionIps = internalMutation({
         .query("sessions")
         .withIndex("by_status", (q) => q.eq("status", "COMPLETE"))
         .collect();
+      ev.set("completedSessionsFound", completedSessions.length);
 
       let sessionsProcessed = 0;
       let totalIpsCleared = 0;
@@ -320,6 +323,7 @@ export const handleTimerExpiry = internalMutation({
 
         if (!activePlayer) {
           // Log error but don't throw — timer jobs should complete even with data inconsistencies
+          ev.set("errorReason", "no_active_player");
           ev.setError(`No active player at index ${activePlayerIndex}`);
           return { processed: false };
         }
@@ -333,6 +337,7 @@ export const handleTimerExpiry = internalMutation({
 
         if (availableMaps.length === 0) {
           // Log error but don't throw — timer jobs should complete even with data inconsistencies
+          ev.set("errorReason", "no_available_maps");
           ev.setError("No available maps");
           return { processed: false };
         }
@@ -409,6 +414,7 @@ export const handleTimerExpiry = internalMutation({
 
         if (availableMaps.length === 0) {
           // Log error but don't throw — timer jobs should complete even with data inconsistencies
+          ev.set("errorReason", "no_available_maps");
           ev.setError("No available maps");
           return { processed: false };
         }
@@ -518,6 +524,8 @@ export const checkHeartbeatTimeouts = internalMutation({
           .withIndex("by_status", (q) => q.eq("status", "WAITING"))
           .collect(),
       ]);
+      ev.set("inProgressChecked", inProgressSessions.length);
+      ev.set("waitingChecked", waitingSessions.length);
       const sessions = [...inProgressSessions, ...waitingSessions];
 
       for (const session of sessions) {

@@ -559,6 +559,8 @@ export const createSession = mutation({
 
       // Validate turn timer
       const turnTimerSeconds = args.turnTimerSeconds ?? DEFAULT_TURN_TIMER_SECONDS;
+      ev.set("turnTimerSeconds", turnTimerSeconds);
+      ev.set("usedDefaultTimer", args.turnTimerSeconds === undefined);
       validateRange(
         turnTimerSeconds,
         MIN_TURN_TIMER_SECONDS,
@@ -569,6 +571,8 @@ export const createSession = mutation({
 
       // Validate map pool size
       const mapPoolSize = args.mapPoolSize ?? DEFAULT_MAP_POOL_SIZE;
+      ev.set("mapPoolSize", mapPoolSize);
+      ev.set("usedDefaultPoolSize", args.mapPoolSize === undefined);
       validateRange(
         mapPoolSize,
         MIN_MAP_POOL_SIZE,
@@ -671,6 +675,7 @@ export const updateSession = mutation({
       const changedFields = Object.keys(updates).filter(
         (key) => key !== "updatedAt"
       );
+      ev.set("changedFieldCount", changedFields.length);
       await logAction(ctx, {
         sessionId: args.sessionId,
         action: "SESSION_UPDATED",
@@ -723,6 +728,8 @@ export const deleteSession = mutation({
         DELETABLE_STATUSES,
         "delete session (pause or end it first)",
       );
+
+      ev.set("deletedFromStatus", session.status);
 
       // Cascade delete related records (players, maps, votes)
       await cascadeDeleteSessionRecords(ctx, args.sessionId);
@@ -793,6 +800,8 @@ export const assignPlayer = mutation({
         .query("sessionPlayers")
         .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
         .collect();
+      ev.set("existingPlayerCount", existingPlayers.length);
+      ev.set("remainingSlots", session.playerCount - existingPlayers.length);
 
       if (existingPlayers.length >= session.playerCount) {
         throw new ConvexError(
@@ -816,6 +825,7 @@ export const assignPlayer = mutation({
         .query("teams")
         .withIndex("by_name", (q) => q.eq("name", args.teamName))
         .first();
+      ev.set("teamFound", !!team);
       if (!team) {
         throw new ConvexError(`Team "${args.teamName}" not found`);
       }
@@ -889,6 +899,9 @@ export const regeneratePlayerToken = mutation({
       ev.setSession(session);
 
       requireSessionStatus(session, TOKEN_REGEN_STATUSES, "regenerate player token");
+
+      ev.set("wasConnected", player.isConnected);
+      ev.set("wasIpLocked", !!player.ipAddress);
 
       // Generate new unique token
       const singleTokenSet = new Set<string>();
@@ -965,7 +978,9 @@ export const setSessionMaps = mutation({
 
       // Check for duplicates in input
       const uniqueMapIds = new Set(args.mapIds);
-      if (uniqueMapIds.size !== args.mapIds.length) {
+      const hasDuplicates = uniqueMapIds.size !== args.mapIds.length;
+      ev.set("duplicatesInInput", hasDuplicates);
+      if (hasDuplicates) {
         throw new ConvexError("Duplicate maps not allowed in the same session");
       }
 
@@ -986,6 +1001,7 @@ export const setSessionMaps = mutation({
         .query("sessionMaps")
         .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
         .collect();
+      ev.set("previousMapCount", existingMaps.length);
 
       await Promise.all(existingMaps.map((m) => ctx.db.delete(m._id)));
 
@@ -1098,6 +1114,7 @@ export const createSessionFull = mutation({
 
       // Validate turn timer
       const turnTimerSeconds = args.turnTimerSeconds ?? DEFAULT_TURN_TIMER_SECONDS;
+      ev.set("turnTimerSeconds", turnTimerSeconds);
       validateRange(
         turnTimerSeconds,
         MIN_TURN_TIMER_SECONDS,
@@ -1108,6 +1125,7 @@ export const createSessionFull = mutation({
 
       // Validate map pool size
       const mapPoolSize = args.mapPoolSize ?? DEFAULT_MAP_POOL_SIZE;
+      ev.set("mapPoolSize", mapPoolSize);
       validateRange(
         mapPoolSize,
         MIN_MAP_POOL_SIZE,
@@ -1363,11 +1381,13 @@ export const startSession = mutation({
         .query("sessionPlayers")
         .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
         .collect();
+      ev.set("playerCount", players.length);
       await Promise.all(
         players.map((player) => ctx.db.patch(player._id, { readyAt: undefined }))
       );
 
       // Schedule timer expiry for first turn/round (WAR-47)
+      ev.set("timerScheduled", true);
       await scheduleTimerExpiry(
         ctx,
         session._id,
@@ -1416,6 +1436,11 @@ export const pauseSession = mutation({
         throw new ConvexError("Reason must be 500 characters or fewer");
       }
 
+      ev.set("hasPauseReason", !!args.reason);
+      if (session.timerStartedAt) {
+        ev.set("elapsedMs", Date.now() - session.timerStartedAt);
+      }
+
       await transitionSession(ctx, session, "PAUSED", {
         auditAction: "SESSION_PAUSED",
         actorType: "ADMIN",
@@ -1462,6 +1487,7 @@ export const resumeSession = mutation({
       const elapsed =
         (session.timerPausedAt ?? now) - (session.timerStartedAt ?? now);
       const adjustedTimerStart = now - elapsed;
+      ev.set("elapsedBeforePauseMs", elapsed);
 
       await transitionSession(ctx, session, "IN_PROGRESS", {
         auditAction: "SESSION_RESUMED",
@@ -1480,6 +1506,8 @@ export const resumeSession = mutation({
         .query("sessionPlayers")
         .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
         .collect();
+      const disconnectedCount = players.filter((p) => !p.isConnected).length;
+      ev.set("disconnectedPlayerCount", disconnectedCount);
       for (const player of players) {
         if (!player.isConnected) {
           await ctx.db.patch(player._id, {
@@ -1529,6 +1557,9 @@ export const endSession = mutation({
       const session = await ctx.db.get(args.sessionId);
       if (!session) throw new ConvexError("Session not found");
       ev.setSession(session);
+
+      ev.set("endedFromStatus", session.status);
+      ev.set("hadWinner", !!session.winnerMapId);
 
       await transitionSession(ctx, session, "COMPLETE", {
         auditAction: "SESSION_ENDED",
@@ -1601,6 +1632,9 @@ export const resetSession = mutation({
       ]);
 
       // 2. Delete votes, reset maps, and reset players in parallel
+      ev.set("votesDeleted", votes.length);
+      ev.set("mapsReset", sessionMaps.length);
+      ev.set("playersReset", players.length);
       const now = Date.now();
       await Promise.all([
         ...votes.map((vote) => ctx.db.delete(vote._id)),
@@ -1680,6 +1714,8 @@ export const cloneSession = mutation({
       if (!source) throw new ConvexError("Session not found");
       ev.setSession(source);
 
+      ev.set("sourceStatus", source.status);
+
       // 2. Read related data in parallel
       const [sourcePlayers, sourceMaps] = await Promise.all([
         ctx.db
@@ -1691,6 +1727,9 @@ export const cloneSession = mutation({
           .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
           .collect(),
       ]);
+
+      ev.set("sourcePlayerCount", sourcePlayers.length);
+      ev.set("sourceMapCount", sourceMaps.length);
 
       // 3. Build cloned matchName (truncate if needed to fit MAX_NAME_LENGTH)
       const maxBase = MAX_NAME_LENGTH - CLONE_NAME_SUFFIX.length;
@@ -1810,6 +1849,7 @@ export const forceRandomSelection = mutation({
         )
         .collect();
 
+      ev.set("availableMapCount", availableMaps.length);
       if (availableMaps.length === 0) {
         throw new ConvexError("No available maps to select from");
       }
@@ -1820,6 +1860,7 @@ export const forceRandomSelection = mutation({
 
       // Ban all other available maps (with metadata so buildRoundHistory sorts correctly)
       const otherMaps = availableMaps.filter((m) => m._id !== winnerMap._id);
+      ev.set("bannedMapCount", otherMaps.length);
       const banPatch =
         session.format === "ABBA"
           ? { state: "BANNED" as const, bannedAtTurn: session.currentTurn }

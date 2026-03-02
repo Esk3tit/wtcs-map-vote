@@ -127,6 +127,8 @@ export const validateAndLockToken = internalMutation({
 
         // IP matches, update heartbeat
         const wasDisconnected = !player.isConnected;
+        ev.set("wasDisconnected", wasDisconnected);
+        ev.set("reconnection", wasDisconnected);
         await ctx.db.patch(player._id, {
           isConnected: true,
           lastHeartbeat: now,
@@ -273,11 +275,17 @@ export const playerHeartbeat = internalMutation({
         player.lastHeartbeat &&
         now - player.lastHeartbeat < HEARTBEAT_SKIP_MS
       ) {
+        ev.set("noopReason", "heartbeat_fresh");
         ev.setOutcome("noop");
         return { status: "ok" as const };
       }
 
       // Update heartbeat
+      const playerActivated = !player.isConnected;
+      ev.set("playerActivated", playerActivated);
+      if (player.lastHeartbeat) {
+        ev.set("timeSinceLastHeartbeatMs", now - player.lastHeartbeat);
+      }
       await ctx.db.patch(player._id, {
         isConnected: true,
         lastHeartbeat: now,
@@ -390,11 +398,17 @@ export const playerReady = internalMutation({
       // Skip write if readyAt is still fresh (reduces reactive query churn)
       const now = Date.now();
       if (player.readyAt && now - player.readyAt < READY_SKIP_MS) {
+        ev.set("noopReason", "ready_fresh");
         ev.setOutcome("noop");
         return { status: "ok" as const };
       }
 
       // Set readyAt timestamp
+      const tokenActivated = !player.readyAt;
+      ev.set("tokenActivated", tokenActivated);
+      if (player.readyAt) {
+        ev.set("timeSinceLastReadyMs", now - player.readyAt);
+      }
       await ctx.db.patch(player._id, { readyAt: now });
 
       ev.setOutcome("ok");

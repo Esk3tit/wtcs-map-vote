@@ -297,10 +297,13 @@ export const addAdmin = mutation({
       const currentAdmin = await requireRootAdmin(ctx);
       ev.setAdmin(currentAdmin);
       const normalizedEmail = normalizeEmail(args.email);
+      const domain = normalizedEmail.split("@")[1];
+      ev.set("targetDomain", domain);
 
       // Validate email format
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
       if (!emailRegex.test(normalizedEmail)) {
+        ev.set("emailFormatValid", false);
         throw new ConvexError("Invalid email format");
       }
 
@@ -310,19 +313,24 @@ export const addAdmin = mutation({
         .withIndex("by_email", (q) => q.eq("email", normalizedEmail))
         .first();
       if (existing) {
+        ev.set("duplicateExists", true);
         throw new ConvexError("Admin with this email already exists");
       }
 
       // Validate name
       const trimmedName = args.name.trim();
       if (trimmedName.length === 0) {
+        ev.set("nameValid", false);
         throw new ConvexError("Name is required");
       }
+
+      const grantedRoot = args.isRootAdmin ?? false;
+      ev.set("grantedRoot", grantedRoot);
 
       const adminId = await ctx.db.insert("admins", {
         email: normalizedEmail,
         name: trimmedName,
-        isRootAdmin: args.isRootAdmin ?? false,
+        isRootAdmin: grantedRoot,
         lastLoginAt: 0,
       });
 
@@ -333,7 +341,7 @@ export const addAdmin = mutation({
         targetId: adminId,
         targetEmail: normalizedEmail,
         details: {
-          isRootAdmin: args.isRootAdmin ?? false,
+          isRootAdmin: grantedRoot,
           targetName: trimmedName,
         },
       });
@@ -366,6 +374,8 @@ export const removeAdmin = mutation({
       const currentAdmin = await requireRootAdmin(ctx);
       ev.setAdmin(currentAdmin);
       const targetAdmin = await getAdminOrThrow(ctx, args.adminId);
+      ev.set("targetIsRoot", targetAdmin.isRootAdmin);
+      ev.set("selfRemoval", currentAdmin._id === args.adminId);
 
       // Self-removal check: only if not last root admin
       if (currentAdmin._id === args.adminId && targetAdmin.isRootAdmin) {
@@ -374,9 +384,11 @@ export const removeAdmin = mutation({
 
       // Invalidate the target admin's auth sessions (boot them out)
       const authUser = await getAuthUserByEmail(ctx, targetAdmin.email);
+      ev.set("authUserFound", !!authUser);
 
       if (authUser) {
-        await deleteUserSessions(ctx, authUser._id);
+        const sessionsDeletedCount = await deleteUserSessions(ctx, authUser._id);
+        ev.set("sessionsDeletedCount", sessionsDeletedCount);
 
         await logAdminAction(ctx, {
           action: "ADMIN_SESSIONS_INVALIDATED",
@@ -435,9 +447,12 @@ export const updateAdminRole = mutation({
       const currentAdmin = await requireRootAdmin(ctx);
       ev.setAdmin(currentAdmin);
       const targetAdmin = await getAdminOrThrow(ctx, args.adminId);
+      ev.set("previousRole", targetAdmin.isRootAdmin ? "root" : "admin");
+      ev.set("newRole", args.isRootAdmin ? "root" : "admin");
 
       // No-op if already at target state
       if (targetAdmin.isRootAdmin === args.isRootAdmin) {
+        ev.set("noopReason", "already_at_target");
         ev.setOutcome("noop");
         return { success: true };
       }
@@ -492,12 +507,14 @@ export const invalidateAdminSessions = mutation({
       const targetAdmin = await getAdminOrThrow(ctx, args.adminId);
 
       const authUser = await getAuthUserByEmail(ctx, targetAdmin.email);
+      ev.set("authUserFound", !!authUser);
 
       if (!authUser) {
         throw new ConvexError("Admin has no active sessions");
       }
 
-      await deleteUserSessions(ctx, authUser._id);
+      const sessionsDeletedCount = await deleteUserSessions(ctx, authUser._id);
+      ev.set("sessionsDeletedCount", sessionsDeletedCount);
 
       await logAdminAction(ctx, {
         action: "ADMIN_SESSIONS_INVALIDATED",

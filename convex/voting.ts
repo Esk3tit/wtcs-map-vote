@@ -201,6 +201,9 @@ export const submitBan = internalMutation({
       }
 
       ev.setMap(targetMap);
+      ev.set("turnNumber", session.currentTurn);
+      ev.set("activePlayerIndex", activePlayerIndex);
+      ev.set("bannedMapName", targetMap.name);
 
       // === Execute ban via shared helper ===
 
@@ -353,6 +356,9 @@ export const submitVote = internalMutation({
         return { status: "error" as const, error: "ALREADY_VOTED" as const };
       }
 
+      ev.set("roundNumber", session.currentRound);
+      ev.set("votedMapName", targetMap.name);
+
       // === Execute vote via shared helper ===
 
       const result = await executeVote(ctx, {
@@ -366,6 +372,7 @@ export const submitVote = internalMutation({
 
       ev.setOutcome("ok");
       ev.set("allVotesSubmitted", result.allVotesSubmitted);
+      ev.set("roundResolved", !!result.resolution);
       return {
         status: "ok" as const,
         vote: { mapId, mapName: result.mapName, round: result.round },
@@ -447,6 +454,7 @@ export const adminVoteOnBehalf = mutation({
       ev.setMap(targetMap);
 
       // --- Format-specific logic ---
+      ev.set("actionFormat", session.format);
 
       if (session.format === "ABBA") {
         // Validate it's this player's turn
@@ -463,6 +471,7 @@ export const adminVoteOnBehalf = mutation({
         }
 
         const activePlayerIndex = getActivePlayerIndex(session.currentTurn);
+        ev.set("turnNumber", session.currentTurn);
         if (playerIndex !== activePlayerIndex) {
           throw new ConvexError("Not this player's turn");
         }
@@ -486,6 +495,7 @@ export const adminVoteOnBehalf = mutation({
       }
 
       // MULTIPLAYER format
+      ev.set("roundNumber", session.currentRound);
       if (player.hasVotedThisRound) {
         throw new ConvexError("Player has already voted this round");
       }

@@ -61,6 +61,7 @@ export const cleanupOrphanedFiles = internalMutation({
 
       let deletedCount = 0;
       let checkedCount = 0;
+      let tooNewSkippedCount = 0;
 
       for (const file of allStorageFiles) {
         checkedCount++;
@@ -73,6 +74,7 @@ export const cleanupOrphanedFiles = internalMutation({
         // Skip files that are too new (less than 1 hour old)
         // This prevents deleting files that are in the process of being uploaded
         if (file._creationTime > oneHourAgo) {
+          tooNewSkippedCount++;
           continue;
         }
 
@@ -80,6 +82,8 @@ export const cleanupOrphanedFiles = internalMutation({
         await ctx.storage.delete(file._id);
         deletedCount++;
       }
+
+      ev.set("tooNewSkippedCount", tooNewSkippedCount);
 
       ev.set("checkedCount", checkedCount);
       ev.set("referencedCount", referencedStorageIds.size);
