@@ -1,5 +1,5 @@
 import { createRouter } from '@tanstack/react-router'
-import { routeTree } from './routeTree.gen'
+import { routeTree } from '@/routeTree.gen'
 import { AdminErrorFallback } from '@/components/error-boundary'
 import { createElement } from 'react'
 

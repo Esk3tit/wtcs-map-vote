@@ -16,11 +16,12 @@ const SENTRY_DSN = import.meta.env.VITE_SENTRY_DSN;
  * @param router - TanStack Router instance for route-aware tracing
  */
 export function initSentry(router: AnyRouter) {
+  if (!SENTRY_DSN) return;
+
   Sentry.init({
     dsn: SENTRY_DSN,
     environment: import.meta.env.MODE,
     release: import.meta.env.VITE_SENTRY_RELEASE || undefined,
-    enabled: !!SENTRY_DSN,
 
     integrations: [
       Sentry.tanstackRouterBrowserTracingIntegration(router),
