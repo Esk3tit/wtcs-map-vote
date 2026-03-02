@@ -142,8 +142,7 @@ export const submitBan = internalMutation({
       });
       ev.set("rateLimited", !ok);
       if (!ok) {
-        ev.setOutcome("error");
-        ev.setError("RATE_LIMITED", "business");
+        ev.returnError("RATE_LIMITED");
         return {
           status: "error" as const,
           error: "RATE_LIMITED" as const,
@@ -153,8 +152,7 @@ export const submitBan = internalMutation({
 
       const authResult = await validatePlayerForVoting(ctx, token, ipAddress);
       if (authResult.status === "error") {
-        ev.setOutcome("error");
-        ev.setError(authResult.error, "business");
+        ev.returnError(authResult.error);
         return authResult;
       }
       const { player, session } = authResult;
@@ -162,14 +160,12 @@ export const submitBan = internalMutation({
       ev.setSession(session);
 
       if (session.status !== "IN_PROGRESS") {
-        ev.setOutcome("error");
-        ev.setError("SESSION_NOT_IN_PROGRESS", "business");
+        ev.returnError("SESSION_NOT_IN_PROGRESS");
         return { status: "error" as const, error: "SESSION_NOT_IN_PROGRESS" as const };
       }
 
       if (session.format !== "ABBA") {
-        ev.setOutcome("error");
-        ev.setError("FORMAT_NOT_ABBA", "business");
+        ev.returnError("FORMAT_NOT_ABBA");
         return { status: "error" as const, error: "FORMAT_NOT_ABBA" as const };
       }
 
@@ -188,15 +184,13 @@ export const submitBan = internalMutation({
       const activePlayerIndex = getActivePlayerIndex(session.currentTurn);
 
       if (playerIndex !== activePlayerIndex) {
-        ev.setOutcome("error");
-        ev.setError("NOT_YOUR_TURN", "business");
+        ev.returnError("NOT_YOUR_TURN");
         return { status: "error" as const, error: "NOT_YOUR_TURN" as const };
       }
 
       const targetMap = await validateTargetMap(ctx, mapId, player.sessionId);
       if (!targetMap) {
-        ev.setOutcome("error");
-        ev.setError("MAP_UNAVAILABLE", "business");
+        ev.returnError("MAP_UNAVAILABLE");
         return { status: "error" as const, error: "MAP_UNAVAILABLE" as const };
       }
 
@@ -297,8 +291,7 @@ export const submitVote = internalMutation({
       });
       ev.set("rateLimited", !ok);
       if (!ok) {
-        ev.setOutcome("error");
-        ev.setError("RATE_LIMITED", "business");
+        ev.returnError("RATE_LIMITED");
         return {
           status: "error" as const,
           error: "RATE_LIMITED" as const,
@@ -308,8 +301,7 @@ export const submitVote = internalMutation({
 
       const authResult = await validatePlayerForVoting(ctx, token, ipAddress);
       if (authResult.status === "error") {
-        ev.setOutcome("error");
-        ev.setError(authResult.error, "business");
+        ev.returnError(authResult.error);
         return authResult;
       }
       const { player, session } = authResult;
@@ -317,27 +309,23 @@ export const submitVote = internalMutation({
       ev.setSession(session);
 
       if (session.status !== "IN_PROGRESS") {
-        ev.setOutcome("error");
-        ev.setError("SESSION_NOT_IN_PROGRESS", "business");
+        ev.returnError("SESSION_NOT_IN_PROGRESS");
         return { status: "error" as const, error: "SESSION_NOT_IN_PROGRESS" as const };
       }
 
       if (session.format !== "MULTIPLAYER") {
-        ev.setOutcome("error");
-        ev.setError("FORMAT_NOT_MULTIPLAYER", "business");
+        ev.returnError("FORMAT_NOT_MULTIPLAYER");
         return { status: "error" as const, error: "FORMAT_NOT_MULTIPLAYER" as const };
       }
 
       if (player.hasVotedThisRound) {
-        ev.setOutcome("error");
-        ev.setError("ALREADY_VOTED", "business");
+        ev.returnError("ALREADY_VOTED");
         return { status: "error" as const, error: "ALREADY_VOTED" as const };
       }
 
       const targetMap = await validateTargetMap(ctx, mapId, player.sessionId);
       if (!targetMap) {
-        ev.setOutcome("error");
-        ev.setError("MAP_UNAVAILABLE", "business");
+        ev.returnError("MAP_UNAVAILABLE");
         return { status: "error" as const, error: "MAP_UNAVAILABLE" as const };
       }
 
@@ -351,8 +339,7 @@ export const submitVote = internalMutation({
         )
         .first();
       if (existingVote) {
-        ev.setOutcome("error");
-        ev.setError("ALREADY_VOTED", "business");
+        ev.returnError("ALREADY_VOTED");
         return { status: "error" as const, error: "ALREADY_VOTED" as const };
       }
 
