@@ -6,7 +6,13 @@ import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import { sentryVitePlugin } from "@sentry/vite-plugin"
 import { defineConfig } from "vite"
 
-const commitSha = execSync("git rev-parse --short HEAD").toString().trim()
+const commitSha = (() => {
+  try {
+    return execSync("git rev-parse --short HEAD").toString().trim()
+  } catch {
+    return "unknown"
+  }
+})()
 
 // https://vite.dev/config/
 export default defineConfig({

@@ -3,12 +3,11 @@ import { createRoot } from 'react-dom/client'
 
 import { ConvexReactClient } from "convex/react";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
-import * as Sentry from "@sentry/react";
 import { toast } from "sonner";
 
 import { router } from '@/router'
 import App from '@/App'
-import { initSentry } from '@/lib/sentry'
+import { Sentry, initSentry } from '@/lib/sentry'
 
 import './index.css'
 
@@ -24,12 +23,12 @@ if (!convexUrl) {
 initSentry(router);
 
 // User-facing handler for unhandled promise rejections
-window.addEventListener("unhandledrejection", (event) => {
+function handleUnhandledRejection(event: PromiseRejectionEvent) {
   const error = event.reason;
 
   // ConvexError is already handled in UI via toast.
   // Use error.name (preserved after minification) instead of constructor.name.
-  if (error?.name === "ConvexError") return;
+  if (error instanceof Error && error.name === "ConvexError") return;
 
   // Chunk load failures — prompt reload
   if (error?.message?.match(/Loading chunk|dynamically imported module/)) {
@@ -39,7 +38,15 @@ window.addEventListener("unhandledrejection", (event) => {
       duration: Infinity,
     });
   }
-});
+}
+
+window.addEventListener("unhandledrejection", handleUnhandledRejection);
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    window.removeEventListener("unhandledrejection", handleUnhandledRejection);
+  });
+}
 
 const convex = new ConvexReactClient(convexUrl);
 

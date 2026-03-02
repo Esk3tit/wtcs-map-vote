@@ -29,6 +29,11 @@ export function PlayerErrorFallback({ resetError }: ErrorFallbackProps) {
   );
 }
 
+/** Shared errorComponent for player routes (lobby, vote, results). */
+export function PlayerRouteErrorComponent({ error, reset }: { error: Error; reset: () => void }) {
+  return <PlayerErrorFallback error={error} resetError={reset} />;
+}
+
 /** Admin-facing error fallback — shows error detail with retry and reload. */
 export function AdminErrorFallback({ error, resetError }: ErrorFallbackProps) {
   return (
@@ -39,9 +44,11 @@ export function AdminErrorFallback({ error, resetError }: ErrorFallbackProps) {
         <p className="text-muted-foreground">
           Please reload the page. If this persists, contact support.
         </p>
-        <pre className="max-w-full overflow-auto rounded bg-muted p-3 text-xs text-left text-muted-foreground">
-          {error.message}
-        </pre>
+        {import.meta.env.DEV && (
+          <pre className="max-w-full overflow-auto rounded bg-muted p-3 text-xs text-left text-muted-foreground">
+            {error.message}
+          </pre>
+        )}
         <div className="flex gap-2 justify-center">
           {resetError && (
             <Button onClick={resetError} variant="outline">

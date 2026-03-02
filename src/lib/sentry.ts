@@ -29,7 +29,7 @@ export function initSentry(router: AnyRouter) {
 
     // Conservative sample rates for free tier (5k errors/month)
     tracesSampleRate: import.meta.env.PROD ? 0.1 : 1.0,
-    tracePropagationTargets: [/^\//, /^https:\/\/.*\.convex\.cloud/],
+    tracePropagationTargets: [/^\//],
 
     // Session replay: only capture on error to preserve budget
     replaysSessionSampleRate: 0,
@@ -52,10 +52,8 @@ export function initSentry(router: AnyRouter) {
       // Drop ConvexError — expected business logic errors.
       // Use error.name (preserved after minification) instead of constructor.name.
       if (
-        error &&
-        typeof error === "object" &&
-        "data" in error &&
-        (error as { name?: string }).name === "ConvexError"
+        error instanceof Error &&
+        error.name === "ConvexError"
       ) {
         return null;
       }
