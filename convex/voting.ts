@@ -140,10 +140,10 @@ export const submitBan = internalMutation({
       const { ok, retryAfter } = await rateLimiter.limit(ctx, "submitVote", {
         key: token,
       });
+      ev.set("rateLimited", !ok);
       if (!ok) {
         ev.setOutcome("error");
         ev.setError("RATE_LIMITED", "business");
-        ev.set("rateLimited", true);
         return {
           status: "error" as const,
           error: "RATE_LIMITED" as const,
@@ -295,10 +295,10 @@ export const submitVote = internalMutation({
       const { ok, retryAfter } = await rateLimiter.limit(ctx, "submitVote", {
         key: token,
       });
+      ev.set("rateLimited", !ok);
       if (!ok) {
         ev.setOutcome("error");
         ev.setError("RATE_LIMITED", "business");
-        ev.set("rateLimited", true);
         return {
           status: "error" as const,
           error: "RATE_LIMITED" as const,

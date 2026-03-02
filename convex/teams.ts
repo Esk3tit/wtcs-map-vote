@@ -152,8 +152,8 @@ export const createTeam = mutation({
         .withIndex("by_name", (q) => q.eq("name", trimmedName))
         .first();
 
+      ev.set("duplicateNameFound", !!existing);
       if (existing) {
-        ev.set("duplicateNameFound", true);
         throw new ConvexError("A team with this name already exists");
       }
 

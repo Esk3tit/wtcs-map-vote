@@ -302,8 +302,9 @@ export const addAdmin = mutation({
 
       // Validate email format
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-      if (!emailRegex.test(normalizedEmail)) {
-        ev.set("emailFormatValid", false);
+      const emailFormatValid = emailRegex.test(normalizedEmail);
+      ev.set("emailFormatValid", emailFormatValid);
+      if (!emailFormatValid) {
         throw new ConvexError("Invalid email format");
       }
 
@@ -312,15 +313,16 @@ export const addAdmin = mutation({
         .query("admins")
         .withIndex("by_email", (q) => q.eq("email", normalizedEmail))
         .first();
+      ev.set("duplicateExists", !!existing);
       if (existing) {
-        ev.set("duplicateExists", true);
         throw new ConvexError("Admin with this email already exists");
       }
 
       // Validate name
       const trimmedName = args.name.trim();
-      if (trimmedName.length === 0) {
-        ev.set("nameValid", false);
+      const nameValid = trimmedName.length > 0;
+      ev.set("nameValid", nameValid);
+      if (!nameValid) {
         throw new ConvexError("Name is required");
       }
 

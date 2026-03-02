@@ -216,8 +216,8 @@ export const createMap = mutation({
         .withIndex("by_name", (q) => q.eq("name", trimmedName))
         .first();
 
+      ev.set("duplicateNameFound", !!existingMap);
       if (existingMap) {
-        ev.set("duplicateNameFound", true);
         throw new ConvexError("A map with this name already exists");
       }
 
@@ -481,8 +481,8 @@ export const deactivateMap = mutation({
 
       ev.set("mapName", map.name);
 
+      ev.set("alreadyInactive", !map.isActive);
       if (!map.isActive) {
-        ev.set("alreadyInactive", true);
         throw new ConvexError("Map is already inactive");
       }
 
@@ -558,8 +558,8 @@ export const reactivateMap = mutation({
 
       ev.set("mapName", map.name);
 
+      ev.set("alreadyActive", map.isActive);
       if (map.isActive) {
-        ev.set("alreadyActive", true);
         throw new ConvexError("Map is already active");
       }
 
@@ -569,8 +569,8 @@ export const reactivateMap = mutation({
         .withIndex("by_name", (q) => q.eq("name", map.name))
         .first();
 
+      ev.set("duplicateNameFound", !!(duplicate && duplicate._id !== args.mapId));
       if (duplicate && duplicate._id !== args.mapId) {
-        ev.set("duplicateNameFound", true);
         throw new ConvexError(
           `Cannot reactivate: another map named "${map.name}" already exists`
         );
