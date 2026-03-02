@@ -39,9 +39,9 @@ Option 1 — this is largely resolved by fixing #073. After removing captureExce
 - **Database Changes**: No
 
 ## Acceptance Criteria
-- [ ] Each error produces exactly 1 Sentry event (verify with DSN enabled)
-- [ ] No explicit `captureException` in errorComponent render bodies
-- [ ] Error capture still works end-to-end
+- [x] Each error produces exactly 1 Sentry event (verify with DSN enabled)
+- [x] No explicit `captureException` in errorComponent render bodies
+- [x] Error capture still works end-to-end
 
 ## Work Log
 

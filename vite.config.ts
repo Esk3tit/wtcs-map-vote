@@ -14,6 +14,11 @@ const commitSha = (() => {
   }
 })()
 
+const sentryUploadEnabled =
+  Boolean(process.env.SENTRY_AUTH_TOKEN) &&
+  Boolean(process.env.SENTRY_ORG) &&
+  Boolean(process.env.SENTRY_PROJECT)
+
 // https://vite.dev/config/
 export default defineConfig({
   plugins: [
@@ -37,7 +42,7 @@ export default defineConfig({
       reactComponentAnnotation: {
         enabled: true,
       },
-      disable: !process.env.SENTRY_AUTH_TOKEN,
+      disable: !sentryUploadEnabled,
       telemetry: false,
     }),
   ],
@@ -45,7 +50,7 @@ export default defineConfig({
     "import.meta.env.VITE_SENTRY_RELEASE": JSON.stringify(commitSha),
   },
   build: {
-    sourcemap: "hidden",
+    sourcemap: sentryUploadEnabled ? "hidden" : false,
   },
   resolve: {
     alias: {

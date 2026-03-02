@@ -24,7 +24,7 @@ export function initSentry(router: AnyRouter) {
 
     integrations: [
       Sentry.tanstackRouterBrowserTracingIntegration(router),
-      Sentry.replayIntegration({ maskAllText: false, blockAllMedia: false }),
+      Sentry.replayIntegration({ maskAllText: true, blockAllMedia: true }),
     ],
 
     // Conservative sample rates for free tier (5k errors/month)
