@@ -17,6 +17,7 @@ import {
   normalizeEmail,
 } from "./lib/auth";
 import { logAdminAction } from "./lib/adminAudit";
+import { createWideEvent } from "./lib/wideEvent";
 
 // ============================================================================
 // Private Helpers
@@ -290,50 +291,72 @@ export const addAdmin = mutation({
   },
   returns: v.object({ adminId: v.id("admins") }),
   handler: async (ctx, args) => {
-    const currentAdmin = await requireRootAdmin(ctx);
-    const normalizedEmail = normalizeEmail(args.email);
+    const ev = createWideEvent("admins", "addAdmin", "mutation");
+    const startTime = Date.now();
+    try {
+      const currentAdmin = await requireRootAdmin(ctx);
+      ev.setAdmin(currentAdmin);
+      const normalizedEmail = normalizeEmail(args.email);
+      const domain = normalizedEmail.split("@")[1];
+      ev.set("targetDomain", domain);
 
-    // Validate email format
-    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-    if (!emailRegex.test(normalizedEmail)) {
-      throw new ConvexError("Invalid email format");
+      // Validate email format
+      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+      const emailFormatValid = emailRegex.test(normalizedEmail);
+      ev.set("emailFormatValid", emailFormatValid);
+      if (!emailFormatValid) {
+        throw new ConvexError("Invalid email format");
+      }
+
+      // Check for duplicate
+      const existing = await ctx.db
+        .query("admins")
+        .withIndex("by_email", (q) => q.eq("email", normalizedEmail))
+        .first();
+      ev.set("duplicateExists", !!existing);
+      if (existing) {
+        throw new ConvexError("Admin with this email already exists");
+      }
+
+      // Validate name
+      const trimmedName = args.name.trim();
+      const nameValid = trimmedName.length > 0;
+      ev.set("nameValid", nameValid);
+      if (!nameValid) {
+        throw new ConvexError("Name is required");
+      }
+
+      const grantedRoot = args.isRootAdmin ?? false;
+      ev.set("grantedRoot", grantedRoot);
+
+      const adminId = await ctx.db.insert("admins", {
+        email: normalizedEmail,
+        name: trimmedName,
+        isRootAdmin: grantedRoot,
+        lastLoginAt: 0,
+      });
+
+      await logAdminAction(ctx, {
+        action: "ADMIN_ADDED",
+        actorId: currentAdmin._id,
+        actorEmail: currentAdmin.email,
+        targetId: adminId,
+        targetEmail: normalizedEmail,
+        details: {
+          isRootAdmin: grantedRoot,
+          targetName: trimmedName,
+        },
+      });
+
+      ev.setOutcome("ok");
+      return { adminId };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    // Check for duplicate
-    const existing = await ctx.db
-      .query("admins")
-      .withIndex("by_email", (q) => q.eq("email", normalizedEmail))
-      .first();
-    if (existing) {
-      throw new ConvexError("Admin with this email already exists");
-    }
-
-    // Validate name
-    const trimmedName = args.name.trim();
-    if (trimmedName.length === 0) {
-      throw new ConvexError("Name is required");
-    }
-
-    const adminId = await ctx.db.insert("admins", {
-      email: normalizedEmail,
-      name: trimmedName,
-      isRootAdmin: args.isRootAdmin ?? false,
-      lastLoginAt: 0,
-    });
-
-    await logAdminAction(ctx, {
-      action: "ADMIN_ADDED",
-      actorId: currentAdmin._id,
-      actorEmail: currentAdmin.email,
-      targetId: adminId,
-      targetEmail: normalizedEmail,
-      details: {
-        isRootAdmin: args.isRootAdmin ?? false,
-        targetName: trimmedName,
-      },
-    });
-
-    return { adminId };
   },
 });
 
@@ -347,46 +370,62 @@ export const removeAdmin = mutation({
   args: { adminId: v.id("admins") },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    const currentAdmin = await requireRootAdmin(ctx);
-    const targetAdmin = await getAdminOrThrow(ctx, args.adminId);
+    const ev = createWideEvent("admins", "removeAdmin", "mutation");
+    const startTime = Date.now();
+    try {
+      const currentAdmin = await requireRootAdmin(ctx);
+      ev.setAdmin(currentAdmin);
+      const targetAdmin = await getAdminOrThrow(ctx, args.adminId);
+      ev.set("targetIsRoot", targetAdmin.isRootAdmin);
+      ev.set("selfRemoval", currentAdmin._id === args.adminId);
 
-    // Self-removal check: only if not last root admin
-    if (currentAdmin._id === args.adminId && targetAdmin.isRootAdmin) {
-      await ensureNotLastRootAdmin(ctx, "Cannot remove the last root admin");
-    }
+      // Self-removal check: only if not last root admin
+      if (currentAdmin._id === args.adminId && targetAdmin.isRootAdmin) {
+        await ensureNotLastRootAdmin(ctx, "Cannot remove the last root admin");
+      }
 
-    // Invalidate the target admin's auth sessions (boot them out)
-    const authUser = await getAuthUserByEmail(ctx, targetAdmin.email);
+      // Invalidate the target admin's auth sessions (boot them out)
+      const authUser = await getAuthUserByEmail(ctx, targetAdmin.email);
+      ev.set("authUserFound", !!authUser);
 
-    if (authUser) {
-      await deleteUserSessions(ctx, authUser._id);
+      if (authUser) {
+        const sessionsDeletedCount = await deleteUserSessions(ctx, authUser._id);
+        ev.set("sessionsDeletedCount", sessionsDeletedCount);
+
+        await logAdminAction(ctx, {
+          action: "ADMIN_SESSIONS_INVALIDATED",
+          actorId: currentAdmin._id,
+          actorEmail: currentAdmin.email,
+          targetEmail: targetAdmin.email,
+          details: {
+            targetName: targetAdmin.name,
+            message: "Sessions invalidated during admin removal",
+          },
+        });
+      }
+
+      await ctx.db.delete(args.adminId);
 
       await logAdminAction(ctx, {
-        action: "ADMIN_SESSIONS_INVALIDATED",
+        action: "ADMIN_REMOVED",
         actorId: currentAdmin._id,
         actorEmail: currentAdmin.email,
         targetEmail: targetAdmin.email,
         details: {
+          isRootAdmin: targetAdmin.isRootAdmin,
           targetName: targetAdmin.name,
-          message: "Sessions invalidated during admin removal",
         },
       });
+
+      ev.setOutcome("ok");
+      return { success: true };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    await ctx.db.delete(args.adminId);
-
-    await logAdminAction(ctx, {
-      action: "ADMIN_REMOVED",
-      actorId: currentAdmin._id,
-      actorEmail: currentAdmin.email,
-      targetEmail: targetAdmin.email,
-      details: {
-        isRootAdmin: targetAdmin.isRootAdmin,
-        targetName: targetAdmin.name,
-      },
-    });
-
-    return { success: true };
   },
 });
 
@@ -404,35 +443,51 @@ export const updateAdminRole = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    const currentAdmin = await requireRootAdmin(ctx);
-    const targetAdmin = await getAdminOrThrow(ctx, args.adminId);
+    const ev = createWideEvent("admins", "updateAdminRole", "mutation");
+    const startTime = Date.now();
+    try {
+      const currentAdmin = await requireRootAdmin(ctx);
+      ev.setAdmin(currentAdmin);
+      const targetAdmin = await getAdminOrThrow(ctx, args.adminId);
+      ev.set("previousRole", targetAdmin.isRootAdmin ? "root" : "admin");
+      ev.set("newRole", args.isRootAdmin ? "root" : "admin");
 
-    // No-op if already at target state
-    if (targetAdmin.isRootAdmin === args.isRootAdmin) {
+      // No-op if already at target state
+      if (targetAdmin.isRootAdmin === args.isRootAdmin) {
+        ev.set("noopReason", "already_at_target");
+        ev.setOutcome("noop");
+        return { success: true };
+      }
+
+      // Prevent demoting the last root admin
+      if (targetAdmin.isRootAdmin && !args.isRootAdmin) {
+        await ensureNotLastRootAdmin(ctx, "Cannot demote the last root admin");
+      }
+
+      await ctx.db.patch(args.adminId, { isRootAdmin: args.isRootAdmin });
+
+      const action = args.isRootAdmin ? "ADMIN_PROMOTED" : "ADMIN_DEMOTED";
+      await logAdminAction(ctx, {
+        action,
+        actorId: currentAdmin._id,
+        actorEmail: currentAdmin.email,
+        targetId: args.adminId,
+        targetEmail: targetAdmin.email,
+        details: {
+          isRootAdmin: args.isRootAdmin,
+          targetName: targetAdmin.name,
+        },
+      });
+
+      ev.setOutcome("ok");
       return { success: true };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    // Prevent demoting the last root admin
-    if (targetAdmin.isRootAdmin && !args.isRootAdmin) {
-      await ensureNotLastRootAdmin(ctx, "Cannot demote the last root admin");
-    }
-
-    await ctx.db.patch(args.adminId, { isRootAdmin: args.isRootAdmin });
-
-    const action = args.isRootAdmin ? "ADMIN_PROMOTED" : "ADMIN_DEMOTED";
-    await logAdminAction(ctx, {
-      action,
-      actorId: currentAdmin._id,
-      actorEmail: currentAdmin.email,
-      targetId: args.adminId,
-      targetEmail: targetAdmin.email,
-      details: {
-        isRootAdmin: args.isRootAdmin,
-        targetName: targetAdmin.name,
-      },
-    });
-
-    return { success: true };
   },
 });
 
@@ -446,29 +501,43 @@ export const invalidateAdminSessions = mutation({
   args: { adminId: v.id("admins") },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    const currentAdmin = await requireRootAdmin(ctx);
-    const targetAdmin = await getAdminOrThrow(ctx, args.adminId);
+    const ev = createWideEvent("admins", "invalidateAdminSessions", "mutation");
+    const startTime = Date.now();
+    try {
+      const currentAdmin = await requireRootAdmin(ctx);
+      ev.setAdmin(currentAdmin);
+      const targetAdmin = await getAdminOrThrow(ctx, args.adminId);
 
-    const authUser = await getAuthUserByEmail(ctx, targetAdmin.email);
+      const authUser = await getAuthUserByEmail(ctx, targetAdmin.email);
+      ev.set("authUserFound", !!authUser);
 
-    if (!authUser) {
-      throw new ConvexError("Admin has no active sessions");
+      if (!authUser) {
+        throw new ConvexError("Admin has no active sessions");
+      }
+
+      const sessionsDeletedCount = await deleteUserSessions(ctx, authUser._id);
+      ev.set("sessionsDeletedCount", sessionsDeletedCount);
+
+      await logAdminAction(ctx, {
+        action: "ADMIN_SESSIONS_INVALIDATED",
+        actorId: currentAdmin._id,
+        actorEmail: currentAdmin.email,
+        targetId: args.adminId,
+        targetEmail: targetAdmin.email,
+        details: {
+          targetName: targetAdmin.name,
+          message: "Manual session invalidation by root admin",
+        },
+      });
+
+      ev.setOutcome("ok");
+      return { success: true };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    await deleteUserSessions(ctx, authUser._id);
-
-    await logAdminAction(ctx, {
-      action: "ADMIN_SESSIONS_INVALIDATED",
-      actorId: currentAdmin._id,
-      actorEmail: currentAdmin.email,
-      targetId: args.adminId,
-      targetEmail: targetAdmin.email,
-      details: {
-        targetName: targetAdmin.name,
-        message: "Manual session invalidation by root admin",
-      },
-    });
-
-    return { success: true };
   },
 });

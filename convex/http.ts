@@ -10,7 +10,15 @@ import type { Id } from "./_generated/dataModel";
 
 import { httpRouter } from "convex/server";
 
+import { createWideEvent } from "./lib/wideEvent";
+
 import { auth } from "./auth";
+
+/** Typed accessor for Convex runtime env vars (injected at runtime in httpAction handlers). */
+function getEnv(): Record<string, string | undefined> | undefined {
+  // Convex injects process.env at runtime; may not exist in all contexts
+  return (globalThis as { process?: { env?: Record<string, string | undefined> } }).process?.env;
+}
 
 const http = httpRouter();
 
@@ -42,8 +50,7 @@ export function extractClientIp(req: Request): string {
  * Must be called inside handlers because env vars are only available at runtime.
  */
 export function getCorsHeaders(): Record<string, string> {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const env = (globalThis as any).process?.env as Record<string, string> | undefined;
+  const env = getEnv();
   let origin: string;
   if (env?.SITE_URL) {
     origin = env.SITE_URL.replace(/\/+$/, "");
@@ -73,56 +80,87 @@ function createPlayerHandler(
   mutationRef:
     | typeof internal.playerAuth.validateAndLockToken
     | typeof internal.playerAuth.playerHeartbeat
-    | typeof internal.playerAuth.playerReady
+    | typeof internal.playerAuth.playerReady,
+  endpointName: string
 ) {
   return httpAction(async (ctx, req) => {
-    const corsHeaders = getCorsHeaders();
-    let body: unknown;
+    // Wide event for transport-level context (status code, path, method).
+    // The underlying mutation also emits its own wide event for business logic.
+    // This dual emission is intentional — do not remove.
+    const ev = createWideEvent("http", endpointName, "httpAction");
+    const startTime = Date.now();
     try {
-      body = await req.json();
-    } catch {
-      return new Response(
-        JSON.stringify({ status: "error", error: "INVALID_REQUEST" }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
+      const corsHeaders = getCorsHeaders();
+      ev.set("method", "POST");
+      ev.set("path", new URL(req.url).pathname);
+
+      let body: unknown;
+      try {
+        body = await req.json();
+      } catch {
+        ev.returnError("INVALID_REQUEST");
+        ev.set("httpStatus", 400);
+        return new Response(
+          JSON.stringify({ status: "error", error: "INVALID_REQUEST" }),
+          { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+
+      const token = typeof body === "object" && body !== null && "token" in body
+        ? (body as { token: unknown }).token
+        : undefined;
+
+      if (typeof token !== "string" || token.length === 0) {
+        ev.returnError("INVALID_TOKEN");
+        ev.set("httpStatus", 400);
+        return new Response(
+          JSON.stringify({ status: "error", error: "INVALID_TOKEN" }),
+          { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+
+      const ipAddress = extractClientIp(req);
+      ev.setIp(ipAddress);
+      ev.setPlayer(token, null);
+
+      const result = await ctx.runMutation(mutationRef, { token, ipAddress });
+
+      let statusCode: number;
+      if (result.status === "ok") {
+        statusCode = 200;
+      } else if (result.error === "RATE_LIMITED") {
+        statusCode = 429;
+      } else {
+        // Use 403 for all auth failures to avoid leaking token/session existence
+        statusCode = 403;
+      }
+
+      ev.set("httpStatus", statusCode);
+      if (result.status === "ok") {
+        ev.setOutcome("ok");
+      } else {
+        ev.returnError(result.error);
+      }
+
+      const headers: Record<string, string> = {
+        "Content-Type": "application/json",
+        ...corsHeaders,
+      };
+      if (statusCode === 429 && "retryAfter" in result && result.retryAfter) {
+        headers["Retry-After"] = String(Math.ceil(result.retryAfter / 1000));
+      }
+
+      return new Response(JSON.stringify(result), {
+        status: statusCode,
+        headers,
+      });
+    } catch (err) {
+      ev.setError(err);
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    const token = typeof body === "object" && body !== null && "token" in body
-      ? (body as { token: unknown }).token
-      : undefined;
-
-    if (typeof token !== "string" || token.length === 0) {
-      return new Response(
-        JSON.stringify({ status: "error", error: "INVALID_TOKEN" }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
-
-    const ipAddress = extractClientIp(req);
-    const result = await ctx.runMutation(mutationRef, { token, ipAddress });
-
-    let statusCode: number;
-    if (result.status === "ok") {
-      statusCode = 200;
-    } else if (result.error === "RATE_LIMITED") {
-      statusCode = 429;
-    } else {
-      // Use 403 for all auth failures to avoid leaking token/session existence
-      statusCode = 403;
-    }
-
-    const headers: Record<string, string> = {
-      "Content-Type": "application/json",
-      ...corsHeaders,
-    };
-    if (statusCode === 429 && "retryAfter" in result && result.retryAfter) {
-      headers["Retry-After"] = String(Math.ceil(result.retryAfter / 1000));
-    }
-
-    return new Response(JSON.stringify(result), {
-      status: statusCode,
-      headers,
-    });
   });
 }
 
@@ -138,7 +176,7 @@ const corsPreflightHandler = httpAction(async () => {
 http.route({
   path: "/api/player/validate-token",
   method: "POST",
-  handler: createPlayerHandler(internal.playerAuth.validateAndLockToken),
+  handler: createPlayerHandler(internal.playerAuth.validateAndLockToken, "validateToken"),
 });
 
 /** Handle CORS preflight for validate-token endpoint. */
@@ -155,7 +193,7 @@ http.route({
 http.route({
   path: "/api/player/heartbeat",
   method: "POST",
-  handler: createPlayerHandler(internal.playerAuth.playerHeartbeat),
+  handler: createPlayerHandler(internal.playerAuth.playerHeartbeat, "heartbeat"),
 });
 
 /** Handle CORS preflight for heartbeat endpoint. */
@@ -172,7 +210,7 @@ http.route({
 http.route({
   path: "/api/player/ready",
   method: "POST",
-  handler: createPlayerHandler(internal.playerAuth.playerReady),
+  handler: createPlayerHandler(internal.playerAuth.playerReady, "playerReady"),
 });
 
 /** Handle CORS preflight for ready endpoint. */
@@ -194,84 +232,120 @@ http.route({
  * @param mutationRef - The internal mutation to invoke with { token, mapId, ipAddress }
  */
 function createVotingHandler(
-  mutationRef: typeof internal.voting.submitBan | typeof internal.voting.submitVote
+  mutationRef: typeof internal.voting.submitBan | typeof internal.voting.submitVote,
+  endpointName: string
 ) {
   return httpAction(async (ctx, req) => {
-    const corsHeaders = getCorsHeaders();
-    let body: unknown;
+    // Wide event for transport-level context (status code, path, method).
+    // The underlying mutation also emits its own wide event for business logic.
+    // This dual emission is intentional — do not remove.
+    const ev = createWideEvent("http", endpointName, "httpAction");
+    const startTime = Date.now();
     try {
-      body = await req.json();
-    } catch {
-      return new Response(
-        JSON.stringify({ status: "error", error: "INVALID_REQUEST" }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
+      const corsHeaders = getCorsHeaders();
+      ev.set("method", "POST");
+      ev.set("path", new URL(req.url).pathname);
 
-    const token =
-      typeof body === "object" && body !== null && "token" in body
-        ? (body as { token: unknown }).token
-        : undefined;
-    const mapId =
-      typeof body === "object" && body !== null && "mapId" in body
-        ? (body as { mapId: unknown }).mapId
-        : undefined;
-
-    if (typeof token !== "string" || token.length === 0) {
-      return new Response(
-        JSON.stringify({ status: "error", error: "INVALID_TOKEN" }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
-
-    if (typeof mapId !== "string" || mapId.length === 0) {
-      return new Response(
-        JSON.stringify({ status: "error", error: "INVALID_REQUEST" }),
-        { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
-      );
-    }
-
-    const ipAddress = extractClientIp(req);
-    // Cast to Id — wrap in try/catch to surface invalid ID format as 400
-    try {
-      const result = await ctx.runMutation(mutationRef, {
-        token,
-        mapId: mapId as Id<"sessionMaps">,
-        ipAddress,
-      });
-
-      let statusCode: number;
-      if (result.status === "ok") {
-        statusCode = 200;
-      } else if (result.error === "RATE_LIMITED") {
-        statusCode = 429;
-      } else {
-        statusCode = 403;
-      }
-
-      const headers: Record<string, string> = {
-        "Content-Type": "application/json",
-        ...corsHeaders,
-      };
-      if (statusCode === 429 && "retryAfter" in result && result.retryAfter) {
-        headers["Retry-After"] = String(Math.ceil(result.retryAfter / 1000));
-      }
-
-      return new Response(JSON.stringify(result), {
-        status: statusCode,
-        headers,
-      });
-    } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      // Invalid Convex ID format surfaces as an argument validation error
-      if (message.includes("is not a valid ID")) {
+      let body: unknown;
+      try {
+        body = await req.json();
+      } catch {
+        ev.returnError("INVALID_REQUEST");
+        ev.set("httpStatus", 400);
         return new Response(
           JSON.stringify({ status: "error", error: "INVALID_REQUEST" }),
           { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
         );
       }
-      // Re-throw unexpected errors so Convex logs them properly
-      throw error;
+
+      const token =
+        typeof body === "object" && body !== null && "token" in body
+          ? (body as { token: unknown }).token
+          : undefined;
+      const mapId =
+        typeof body === "object" && body !== null && "mapId" in body
+          ? (body as { mapId: unknown }).mapId
+          : undefined;
+
+      if (typeof token !== "string" || token.length === 0) {
+        ev.returnError("INVALID_TOKEN");
+        ev.set("httpStatus", 400);
+        return new Response(
+          JSON.stringify({ status: "error", error: "INVALID_TOKEN" }),
+          { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+
+      if (typeof mapId !== "string" || mapId.length === 0) {
+        ev.returnError("INVALID_REQUEST");
+        ev.set("httpStatus", 400);
+        return new Response(
+          JSON.stringify({ status: "error", error: "INVALID_REQUEST" }),
+          { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+        );
+      }
+
+      const ipAddress = extractClientIp(req);
+      ev.setIp(ipAddress);
+      ev.setPlayer(token, null);
+      ev.set("mapId", mapId);
+
+      // Cast to Id — wrap in try/catch to surface invalid ID format as 400
+      try {
+        const result = await ctx.runMutation(mutationRef, {
+          token,
+          mapId: mapId as Id<"sessionMaps">,
+          ipAddress,
+        });
+
+        let statusCode: number;
+        if (result.status === "ok") {
+          statusCode = 200;
+        } else if (result.error === "RATE_LIMITED") {
+          statusCode = 429;
+        } else {
+          statusCode = 403;
+        }
+
+        ev.set("httpStatus", statusCode);
+        if (result.status === "ok") {
+          ev.setOutcome("ok");
+        } else {
+          ev.returnError(result.error);
+        }
+
+        const headers: Record<string, string> = {
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        };
+        if (statusCode === 429 && "retryAfter" in result && result.retryAfter) {
+          headers["Retry-After"] = String(Math.ceil(result.retryAfter / 1000));
+        }
+
+        return new Response(JSON.stringify(result), {
+          status: statusCode,
+          headers,
+        });
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        // Invalid Convex ID format surfaces as an argument validation error
+        if (message.includes("is not a valid ID")) {
+          ev.returnError("INVALID_REQUEST");
+          ev.set("httpStatus", 400);
+          return new Response(
+            JSON.stringify({ status: "error", error: "INVALID_REQUEST" }),
+            { status: 400, headers: { "Content-Type": "application/json", ...corsHeaders } }
+          );
+        }
+        // Re-throw unexpected errors so Convex logs them properly
+        throw error;
+      }
+    } catch (err) {
+      ev.setError(err);
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
   });
 }
@@ -283,7 +357,7 @@ function createVotingHandler(
 http.route({
   path: "/api/player/submit-ban",
   method: "POST",
-  handler: createVotingHandler(internal.voting.submitBan),
+  handler: createVotingHandler(internal.voting.submitBan, "submitBan"),
 });
 
 /** Handle CORS preflight for submit-ban endpoint. */
@@ -300,7 +374,7 @@ http.route({
 http.route({
   path: "/api/player/submit-vote",
   method: "POST",
-  handler: createVotingHandler(internal.voting.submitVote),
+  handler: createVotingHandler(internal.voting.submitVote, "submitVote"),
 });
 
 /** Handle CORS preflight for submit-vote endpoint. */

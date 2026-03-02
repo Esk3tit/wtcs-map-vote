@@ -17,6 +17,7 @@ import { validateStorageFile } from "./lib/storageValidation";
 import { requireAdmin } from "./lib/auth";
 import { rateLimiter } from "./lib/rateLimits";
 import { resolveTeamLogoUrl } from "./lib/teamLogos";
+import { createWideEvent } from "./lib/wideEvent";
 
 // ============================================================================
 // Private Helpers
@@ -115,46 +116,64 @@ export const createTeam = mutation({
   },
   returns: v.object({ teamId: v.id("teams") }),
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
-    await rateLimiter.limit(ctx, "adminMutation", {
-      key: admin._id,
-      throws: true,
-    });
+    const ev = createWideEvent("teams", "createTeam", "mutation");
+    const startTime = Date.now();
+    try {
+      const admin = await requireAdmin(ctx);
+      ev.setAdmin(admin);
+      ev.set("teamName", args.name);
 
-    const trimmedName = validateTeamName(args.name);
+      await rateLimiter.limit(ctx, "adminMutation", {
+        key: admin._id,
+        throws: true,
+      });
 
-    // Validate mutual exclusivity: can't provide both logoUrl and logoStorageId
-    if (args.logoUrl && args.logoStorageId) {
-      throw new ConvexError(
-        "Cannot provide both logoUrl and logoStorageId. Choose one or neither."
-      );
+      const trimmedName = validateTeamName(args.name);
+
+      // Validate mutual exclusivity: can't provide both logoUrl and logoStorageId
+      if (args.logoUrl && args.logoStorageId) {
+        throw new ConvexError(
+          "Cannot provide both logoUrl and logoStorageId. Choose one or neither."
+        );
+      }
+
+      const trimmedLogoUrl = validateLogoUrl(args.logoUrl);
+
+      // Validate storage file if provided (size and content type)
+      if (args.logoStorageId) {
+        await validateStorageFile(ctx, args.logoStorageId);
+      }
+
+      ev.set("logoSource", args.logoStorageId ? "storage" : trimmedLogoUrl ? "url" : "none");
+
+      // Check uniqueness
+      const existing = await ctx.db
+        .query("teams")
+        .withIndex("by_name", (q) => q.eq("name", trimmedName))
+        .first();
+
+      ev.set("duplicateNameFound", !!existing);
+      if (existing) {
+        throw new ConvexError("A team with this name already exists");
+      }
+
+      const teamId = await ctx.db.insert("teams", {
+        name: trimmedName,
+        logoUrl: trimmedLogoUrl,
+        logoStorageId: args.logoStorageId,
+        updatedAt: Date.now(),
+      });
+
+      ev.set("teamId", teamId);
+      ev.setOutcome("ok");
+      return { teamId };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    const trimmedLogoUrl = validateLogoUrl(args.logoUrl);
-
-    // Validate storage file if provided (size and content type)
-    if (args.logoStorageId) {
-      await validateStorageFile(ctx, args.logoStorageId);
-    }
-
-    // Check uniqueness
-    const existing = await ctx.db
-      .query("teams")
-      .withIndex("by_name", (q) => q.eq("name", trimmedName))
-      .first();
-
-    if (existing) {
-      throw new ConvexError("A team with this name already exists");
-    }
-
-    const teamId = await ctx.db.insert("teams", {
-      name: trimmedName,
-      logoUrl: trimmedLogoUrl,
-      logoStorageId: args.logoStorageId,
-      updatedAt: Date.now(),
-    });
-
-    return { teamId };
   },
 });
 
@@ -174,139 +193,167 @@ export const updateTeam = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
-    await rateLimiter.limit(ctx, "adminMutation", {
-      key: admin._id,
-      throws: true,
-    });
+    const ev = createWideEvent("teams", "updateTeam", "mutation");
+    const startTime = Date.now();
+    try {
+      const admin = await requireAdmin(ctx);
+      ev.setAdmin(admin);
+      ev.set("teamId", args.teamId);
 
-    const existing = await ctx.db.get(args.teamId);
-    if (!existing) {
-      throw new ConvexError("Team not found");
-    }
+      await rateLimiter.limit(ctx, "adminMutation", {
+        key: admin._id,
+        throws: true,
+      });
 
-    // Validate mutual exclusivity: can't set both in same update call
-    const settingLogoUrl = args.logoUrl !== undefined && args.logoUrl !== null;
-    const settingLogoStorageId =
-      args.logoStorageId !== undefined && args.logoStorageId !== null;
-    if (settingLogoUrl && settingLogoStorageId) {
-      throw new ConvexError(
-        "Cannot set both logoUrl and logoStorageId. Choose one or neither."
-      );
-    }
+      const existing = await ctx.db.get(args.teamId);
+      if (!existing) {
+        throw new ConvexError("Team not found");
+      }
 
-    // Validate storage file if being set (size and content type)
-    if (settingLogoStorageId) {
-      await validateStorageFile(ctx, args.logoStorageId!);
-    }
+      ev.set("teamName", existing.name);
 
-    const updates: {
-      name?: string;
-      logoUrl?: string | undefined;
-      logoStorageId?: typeof existing.logoStorageId;
-      updatedAt: number;
-    } = {
-      updatedAt: Date.now(),
-    };
+      // Validate mutual exclusivity: can't set both in same update call
+      const settingLogoUrl = args.logoUrl !== undefined && args.logoUrl !== null;
+      const settingLogoStorageId =
+        args.logoStorageId !== undefined && args.logoStorageId !== null;
+      if (settingLogoUrl && settingLogoStorageId) {
+        throw new ConvexError(
+          "Cannot set both logoUrl and logoStorageId. Choose one or neither."
+        );
+      }
 
-    // Handle name update
-    if (args.name !== undefined) {
-      const trimmedName = validateTeamName(args.name);
+      // Validate storage file if being set (size and content type)
+      if (settingLogoStorageId) {
+        await validateStorageFile(ctx, args.logoStorageId!);
+      }
 
-      if (trimmedName !== existing.name) {
-        const duplicate = await ctx.db
-          .query("teams")
-          .withIndex("by_name", (q) => q.eq("name", trimmedName))
-          .first();
+      const updates: {
+        name?: string;
+        logoUrl?: string | undefined;
+        logoStorageId?: typeof existing.logoStorageId;
+        updatedAt: number;
+      } = {
+        updatedAt: Date.now(),
+      };
 
-        if (duplicate) {
-          throw new ConvexError("A team with this name already exists");
-        }
+      // Handle name update
+      if (args.name !== undefined) {
+        const trimmedName = validateTeamName(args.name);
 
-        // Block rename if team is used in active sessions
-        const playersInTeam = await ctx.db
-          .query("sessionPlayers")
-          .withIndex("by_teamName", (q) => q.eq("teamName", existing.name))
-          .collect();
+        if (trimmedName !== existing.name) {
+          const duplicate = await ctx.db
+            .query("teams")
+            .withIndex("by_name", (q) => q.eq("name", trimmedName))
+            .first();
 
-        if (playersInTeam.length > 0) {
-          const sessionIds = [
-            ...new Set(playersInTeam.map((p) => p.sessionId)),
-          ];
-          const sessions = await Promise.all(
-            sessionIds.map((id) => ctx.db.get(id))
-          );
-          const activeSession = sessions.find(
-            (session) => session && ACTIVE_SESSION_STATUSES.has(session.status)
-          );
-          if (activeSession) {
-            throw new ConvexError(
-              `Cannot rename team "${existing.name}": used in active session "${activeSession.matchName}"`
+          if (duplicate) {
+            throw new ConvexError("A team with this name already exists");
+          }
+
+          // Block rename if team is used in active sessions
+          const playersInTeam = await ctx.db
+            .query("sessionPlayers")
+            .withIndex("by_teamName", (q) => q.eq("teamName", existing.name))
+            .collect();
+
+          if (playersInTeam.length > 0) {
+            const sessionIds = [
+              ...new Set(playersInTeam.map((p) => p.sessionId)),
+            ];
+            const sessions = await Promise.all(
+              sessionIds.map((id) => ctx.db.get(id))
             );
+            const activeSession = sessions.find(
+              (session) => session && ACTIVE_SESSION_STATUSES.has(session.status)
+            );
+            if (activeSession) {
+              throw new ConvexError(
+                `Cannot rename team "${existing.name}": used in active session "${activeSession.matchName}"`
+              );
+            }
+          }
+
+          updates.name = trimmedName;
+          ev.set("newName", trimmedName);
+        }
+      }
+
+      // Track if we need to clean up old storage
+      let oldStorageIdToDelete: typeof existing.logoStorageId | undefined;
+
+      // Handle logoUrl update (null means unset)
+      if (args.logoUrl !== undefined) {
+        if (args.logoUrl === null) {
+          updates.logoUrl = undefined;
+          // If clearing URL and we have a storage file, clear that too (unless explicitly setting it)
+          if (existing.logoStorageId && args.logoStorageId === undefined) {
+            updates.logoStorageId = undefined;
+            oldStorageIdToDelete = existing.logoStorageId;
+          }
+        } else {
+          const validatedUrl = validateLogoUrl(args.logoUrl);
+          updates.logoUrl = validatedUrl;
+          // Only clear storage ID if we're actually setting a valid URL
+          // (whitespace-only input becomes undefined and shouldn't trigger storage cleanup)
+          if (validatedUrl && existing.logoStorageId) {
+            updates.logoStorageId = undefined;
+            oldStorageIdToDelete = existing.logoStorageId;
           }
         }
-
-        updates.name = trimmedName;
       }
-    }
 
-    // Track if we need to clean up old storage
-    let oldStorageIdToDelete: typeof existing.logoStorageId | undefined;
-
-    // Handle logoUrl update (null means unset)
-    if (args.logoUrl !== undefined) {
-      if (args.logoUrl === null) {
-        updates.logoUrl = undefined;
-        // If clearing URL and we have a storage file, clear that too (unless explicitly setting it)
-        if (existing.logoStorageId && args.logoStorageId === undefined) {
+      // Handle logoStorageId update (null means unset)
+      if (args.logoStorageId !== undefined) {
+        if (args.logoStorageId === null) {
           updates.logoStorageId = undefined;
-          oldStorageIdToDelete = existing.logoStorageId;
-        }
-      } else {
-        const validatedUrl = validateLogoUrl(args.logoUrl);
-        updates.logoUrl = validatedUrl;
-        // Only clear storage ID if we're actually setting a valid URL
-        // (whitespace-only input becomes undefined and shouldn't trigger storage cleanup)
-        if (validatedUrl && existing.logoStorageId) {
-          updates.logoStorageId = undefined;
-          oldStorageIdToDelete = existing.logoStorageId;
-        }
-      }
-    }
-
-    // Handle logoStorageId update (null means unset)
-    if (args.logoStorageId !== undefined) {
-      if (args.logoStorageId === null) {
-        updates.logoStorageId = undefined;
-        // Delete the old storage file if we're unsetting
-        if (existing.logoStorageId) {
-          oldStorageIdToDelete = existing.logoStorageId;
-        }
-      } else {
-        updates.logoStorageId = args.logoStorageId;
-        // Setting storage ID clears URL
-        if (existing.logoUrl) {
-          updates.logoUrl = undefined;
-        }
-        // Replace old storage file if different
-        if (
-          existing.logoStorageId &&
-          existing.logoStorageId !== args.logoStorageId
-        ) {
-          oldStorageIdToDelete = existing.logoStorageId;
+          // Delete the old storage file if we're unsetting
+          if (existing.logoStorageId) {
+            oldStorageIdToDelete = existing.logoStorageId;
+          }
+        } else {
+          updates.logoStorageId = args.logoStorageId;
+          // Setting storage ID clears URL
+          if (existing.logoUrl) {
+            updates.logoUrl = undefined;
+          }
+          // Replace old storage file if different
+          if (
+            existing.logoStorageId &&
+            existing.logoStorageId !== args.logoStorageId
+          ) {
+            oldStorageIdToDelete = existing.logoStorageId;
+          }
         }
       }
+
+      const nameChanged = updates.name !== undefined;
+      const logoChanged =
+        Object.hasOwn(updates, "logoUrl") || Object.hasOwn(updates, "logoStorageId");
+      ev.set("nameChanged", nameChanged);
+      ev.set("logoChanged", logoChanged);
+      ev.set("storageCleanup", !!oldStorageIdToDelete);
+
+      // Patch database first - ensures update succeeds before cleanup
+      await ctx.db.patch(args.teamId, updates);
+
+      // Then cleanup old storage (best-effort; do not fail mutation)
+      if (oldStorageIdToDelete) {
+        try {
+          await ctx.storage.delete(oldStorageIdToDelete);
+        } catch {
+          ev.set("storageCleanupFailed", true);
+        }
+      }
+
+      ev.setOutcome("ok");
+      return { success: true };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    // Patch database first - ensures update succeeds before cleanup
-    await ctx.db.patch(args.teamId, updates);
-
-    // Then cleanup old storage (safe to fail - just creates orphan)
-    if (oldStorageIdToDelete) {
-      await ctx.storage.delete(oldStorageIdToDelete);
-    }
-
-    return { success: true };
   },
 });
 
@@ -320,51 +367,73 @@ export const deleteTeam = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
-    await rateLimiter.limit(ctx, "adminMutation", {
-      key: admin._id,
-      throws: true,
-    });
+    const ev = createWideEvent("teams", "deleteTeam", "mutation");
+    const startTime = Date.now();
+    try {
+      const admin = await requireAdmin(ctx);
+      ev.setAdmin(admin);
+      ev.set("teamId", args.teamId);
 
-    const team = await ctx.db.get(args.teamId);
-    if (!team) {
-      throw new ConvexError("Team not found");
-    }
+      await rateLimiter.limit(ctx, "adminMutation", {
+        key: admin._id,
+        throws: true,
+      });
 
-    const playersInTeam = await ctx.db
-      .query("sessionPlayers")
-      .withIndex("by_teamName", (q) => q.eq("teamName", team.name))
-      .collect();
-
-    if (playersInTeam.length > 0) {
-      const sessionIds = [...new Set(playersInTeam.map((p) => p.sessionId))];
-      const sessions = await Promise.all(
-        sessionIds.map((id) => ctx.db.get(id))
-      );
-
-      const activeSession = sessions.find(
-        (session) => session && ACTIVE_SESSION_STATUSES.has(session.status)
-      );
-
-      if (activeSession) {
-        throw new ConvexError(
-          `Cannot delete team "${team.name}": used in active session "${activeSession.matchName}"`
-        );
+      const team = await ctx.db.get(args.teamId);
+      if (!team) {
+        throw new ConvexError("Team not found");
       }
+
+      ev.set("teamName", team.name);
+
+      const playersInTeam = await ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_teamName", (q) => q.eq("teamName", team.name))
+        .collect();
+      const sessionIds = [...new Set(playersInTeam.map((p) => p.sessionId))];
+      ev.set("sessionUsageCount", sessionIds.length);
+
+      if (playersInTeam.length > 0) {
+        const sessions = await Promise.all(
+          sessionIds.map((id) => ctx.db.get(id))
+        );
+
+        const activeSession = sessions.find(
+          (session) => session && ACTIVE_SESSION_STATUSES.has(session.status)
+        );
+
+        if (activeSession) {
+          throw new ConvexError(
+            `Cannot delete team "${team.name}": used in active session "${activeSession.matchName}"`
+          );
+        }
+      }
+
+      // Store reference before deleting team record
+      const logoStorageId = team.logoStorageId;
+
+      // Delete database record first - ensures delete succeeds before cleanup
+      await ctx.db.delete(args.teamId);
+
+      // Then clean up storage (best-effort; do not fail mutation)
+      if (logoStorageId) {
+        try {
+          await ctx.storage.delete(logoStorageId);
+        } catch {
+          ev.set("storageCleanupFailed", true);
+        }
+      }
+
+      ev.set("hadLogo", !!logoStorageId);
+      ev.setOutcome("ok");
+      return { success: true };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    // Store reference before deleting team record
-    const logoStorageId = team.logoStorageId;
-
-    // Delete database record first - ensures delete succeeds before cleanup
-    await ctx.db.delete(args.teamId);
-
-    // Then clean up storage (safe to fail - just creates orphan handled by cron)
-    if (logoStorageId) {
-      await ctx.storage.delete(logoStorageId);
-    }
-
-    return { success: true };
   },
 });
 
@@ -393,8 +462,22 @@ export const generateUploadUrl = mutation({
   args: {},
   returns: v.string(),
   handler: async (ctx) => {
-    await requireAdmin(ctx);
+    const ev = createWideEvent("teams", "generateUploadUrl", "mutation");
+    const startTime = Date.now();
+    try {
+      const admin = await requireAdmin(ctx);
+      ev.setAdmin(admin);
 
-    return await ctx.storage.generateUploadUrl();
+      const url = await ctx.storage.generateUploadUrl();
+
+      ev.setOutcome("ok");
+      return url;
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
+    }
   },
 });
