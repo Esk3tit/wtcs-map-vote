@@ -10,6 +10,8 @@ import type { Id } from "./_generated/dataModel";
 
 import { v } from "convex/values";
 
+import { createWideEvent } from "./lib/wideEvent";
+
 // ============================================================================
 // Internal Mutations
 // ============================================================================
@@ -30,61 +32,71 @@ export const cleanupOrphanedFiles = internalMutation({
     referencedCount: v.number(),
   }),
   handler: async (ctx) => {
-    const oneHourAgo = Date.now() - 60 * 60 * 1000;
+    const ev = createWideEvent("storage", "cleanupOrphanedFiles", "internalMutation");
+    const startTime = Date.now();
+    try {
+      const oneHourAgo = Date.now() - 60 * 60 * 1000;
 
-    // Get all teams' storage IDs
-    const teams = await ctx.db.query("teams").collect();
-    const teamStorageIds = teams
-      .map((t) => t.logoStorageId)
-      .filter((id): id is Id<"_storage"> => id !== undefined);
+      // Get all teams' storage IDs
+      const teams = await ctx.db.query("teams").collect();
+      const teamStorageIds = teams
+        .map((t) => t.logoStorageId)
+        .filter((id): id is Id<"_storage"> => id !== undefined);
 
-    // Get all maps' storage IDs
-    const maps = await ctx.db.query("maps").collect();
-    const mapStorageIds = maps
-      .map((m) => m.imageStorageId)
-      .filter((id): id is Id<"_storage"> => id !== undefined);
+      // Get all maps' storage IDs
+      const maps = await ctx.db.query("maps").collect();
+      const mapStorageIds = maps
+        .map((m) => m.imageStorageId)
+        .filter((id): id is Id<"_storage"> => id !== undefined);
 
-    // Combine all referenced storage IDs
-    const referencedStorageIds = new Set<string>([
-      ...teamStorageIds,
-      ...mapStorageIds,
-    ]);
+      // Combine all referenced storage IDs
+      const referencedStorageIds = new Set<string>([
+        ...teamStorageIds,
+        ...mapStorageIds,
+      ]);
 
-    // Query all files in storage system table
-    // Note: We query with a reasonable limit and process in batches to avoid memory issues
-    const allStorageFiles = await ctx.db.system.query("_storage").collect();
+      // Query all files in storage system table
+      // Note: We query with a reasonable limit and process in batches to avoid memory issues
+      const allStorageFiles = await ctx.db.system.query("_storage").collect();
 
-    let deletedCount = 0;
-    let checkedCount = 0;
+      let deletedCount = 0;
+      let checkedCount = 0;
 
-    for (const file of allStorageFiles) {
-      checkedCount++;
+      for (const file of allStorageFiles) {
+        checkedCount++;
 
-      // Skip files that are still referenced
-      if (referencedStorageIds.has(file._id)) {
-        continue;
+        // Skip files that are still referenced
+        if (referencedStorageIds.has(file._id)) {
+          continue;
+        }
+
+        // Skip files that are too new (less than 1 hour old)
+        // This prevents deleting files that are in the process of being uploaded
+        if (file._creationTime > oneHourAgo) {
+          continue;
+        }
+
+        // Delete the orphaned file
+        await ctx.storage.delete(file._id);
+        deletedCount++;
       }
 
-      // Skip files that are too new (less than 1 hour old)
-      // This prevents deleting files that are in the process of being uploaded
-      if (file._creationTime > oneHourAgo) {
-        continue;
-      }
+      ev.set("checkedCount", checkedCount);
+      ev.set("referencedCount", referencedStorageIds.size);
+      ev.set("deletedCount", deletedCount);
+      ev.setOutcome(deletedCount > 0 ? "ok" : "noop");
 
-      // Delete the orphaned file
-      await ctx.storage.delete(file._id);
-      deletedCount++;
+      return {
+        deletedCount,
+        checkedCount,
+        referencedCount: referencedStorageIds.size,
+      };
+    } catch (err) {
+      ev.setError(err);
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    console.log(
-      `Storage cleanup complete: checked ${checkedCount} files, ` +
-        `${referencedStorageIds.size} referenced, ${deletedCount} deleted`
-    );
-
-    return {
-      deletedCount,
-      checkedCount,
-      referencedCount: referencedStorageIds.size,
-    };
   },
 });

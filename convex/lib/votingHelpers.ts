@@ -397,9 +397,6 @@ export async function resolveRound(
   );
 
   if (currentRoundPool.length === 0) {
-    console.error(
-      `Data integrity error: double deadlock with no maps in revote pool for session ${session._id}`
-    );
     throw new Error("Data integrity error: empty revote pool");
   }
 
@@ -507,9 +504,6 @@ export async function executeBan(
       .collect();
 
     if (remainingMaps.length !== 1) {
-      console.error(
-        `Data integrity error: expected 1 available map after ${bansNeeded} bans, found ${remainingMaps.length}`
-      );
       throw new Error(
         "Data integrity error: unexpected map count after voting"
       );

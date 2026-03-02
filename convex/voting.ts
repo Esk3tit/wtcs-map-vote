@@ -27,6 +27,7 @@ import {
   validateTargetMap,
   roundResolutionValidator,
 } from "./lib/votingHelpers";
+import { createWideEvent } from "./lib/wideEvent";
 
 // ============================================================================
 // Private Helpers
@@ -128,78 +129,106 @@ export const submitBan = internalMutation({
     })
   ),
   handler: async (ctx, args) => {
-    const { token, mapId } = args;
-    const ipAddress = args.ipAddress.trim();
+    const ev = createWideEvent("voting", "submitBan", "internalMutation");
+    const startTime = Date.now();
+    try {
+      const { token, mapId } = args;
+      const ipAddress = args.ipAddress.trim();
+      ev.setIp(ipAddress);
 
-    // Rate limit by player token (shared with submitVote — bans and votes use the same action budget)
-    const { ok, retryAfter } = await rateLimiter.limit(ctx, "submitVote", {
-      key: token,
-    });
-    if (!ok) {
+      // Rate limit by player token (shared with submitVote — bans and votes use the same action budget)
+      const { ok, retryAfter } = await rateLimiter.limit(ctx, "submitVote", {
+        key: token,
+      });
+      if (!ok) {
+        ev.setOutcome("error");
+        ev.setError("RATE_LIMITED", "business");
+        ev.set("rateLimited", true);
+        return {
+          status: "error" as const,
+          error: "RATE_LIMITED" as const,
+          retryAfter,
+        };
+      }
+
+      const authResult = await validatePlayerForVoting(ctx, token, ipAddress);
+      if (authResult.status === "error") {
+        ev.setOutcome("error");
+        ev.setError(authResult.error, "business");
+        return authResult;
+      }
+      const { player, session } = authResult;
+      ev.setPlayer(token, player);
+      ev.setSession(session);
+
+      if (session.status !== "IN_PROGRESS") {
+        ev.setOutcome("error");
+        ev.setError("SESSION_NOT_IN_PROGRESS", "business");
+        return { status: "error" as const, error: "SESSION_NOT_IN_PROGRESS" as const };
+      }
+
+      if (session.format !== "ABBA") {
+        ev.setOutcome("error");
+        ev.setError("FORMAT_NOT_ABBA", "business");
+        return { status: "error" as const, error: "FORMAT_NOT_ABBA" as const };
+      }
+
+      const allPlayers = await ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+        .collect();
+
+      const sortedPlayers = sortPlayersByJoinOrder(allPlayers);
+
+      const playerIndex = sortedPlayers.findIndex((p) => p._id === player._id);
+      if (playerIndex === -1) {
+        throw new Error("Data integrity error: player not in session");
+      }
+
+      const activePlayerIndex = getActivePlayerIndex(session.currentTurn);
+
+      if (playerIndex !== activePlayerIndex) {
+        ev.setOutcome("error");
+        ev.setError("NOT_YOUR_TURN", "business");
+        return { status: "error" as const, error: "NOT_YOUR_TURN" as const };
+      }
+
+      const targetMap = await validateTargetMap(ctx, mapId, player.sessionId);
+      if (!targetMap) {
+        ev.setOutcome("error");
+        ev.setError("MAP_UNAVAILABLE", "business");
+        return { status: "error" as const, error: "MAP_UNAVAILABLE" as const };
+      }
+
+      ev.setMap(targetMap);
+
+      // === Execute ban via shared helper ===
+
+      const result = await executeBan(ctx, {
+        session,
+        player,
+        targetMap,
+        submittedByAdmin: false,
+        actorType: "PLAYER",
+        actorId: player._id,
+      });
+
+      ev.setOutcome("ok");
+      ev.set("isComplete", result.isComplete);
       return {
-        status: "error" as const,
-        error: "RATE_LIMITED" as const,
-        retryAfter,
+        status: "ok" as const,
+        banned: { mapId, mapName: result.mapName, turn: result.turn },
+        isComplete: result.isComplete,
+        winnerMapId: result.winnerMapId,
       };
+    } catch (err) {
+      ev.setOutcome("error");
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    const authResult = await validatePlayerForVoting(ctx, token, ipAddress);
-    if (authResult.status === "error") {
-      return authResult;
-    }
-    const { player, session } = authResult;
-
-    if (session.status !== "IN_PROGRESS") {
-      return { status: "error" as const, error: "SESSION_NOT_IN_PROGRESS" as const };
-    }
-
-    if (session.format !== "ABBA") {
-      return { status: "error" as const, error: "FORMAT_NOT_ABBA" as const };
-    }
-
-    const allPlayers = await ctx.db
-      .query("sessionPlayers")
-      .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
-      .collect();
-
-    const sortedPlayers = sortPlayersByJoinOrder(allPlayers);
-
-    const playerIndex = sortedPlayers.findIndex((p) => p._id === player._id);
-    if (playerIndex === -1) {
-      console.error(
-        `Data integrity error: player ${player._id} not found in session ${session._id} player list`
-      );
-      throw new Error("Data integrity error: player not in session");
-    }
-
-    const activePlayerIndex = getActivePlayerIndex(session.currentTurn);
-
-    if (playerIndex !== activePlayerIndex) {
-      return { status: "error" as const, error: "NOT_YOUR_TURN" as const };
-    }
-
-    const targetMap = await validateTargetMap(ctx, mapId, player.sessionId);
-    if (!targetMap) {
-      return { status: "error" as const, error: "MAP_UNAVAILABLE" as const };
-    }
-
-    // === Execute ban via shared helper ===
-
-    const result = await executeBan(ctx, {
-      session,
-      player,
-      targetMap,
-      submittedByAdmin: false,
-      actorType: "PLAYER",
-      actorId: player._id,
-    });
-
-    return {
-      status: "ok" as const,
-      banned: { mapId, mapName: result.mapName, turn: result.turn },
-      isComplete: result.isComplete,
-      winnerMapId: result.winnerMapId,
-    };
   },
 });
 
@@ -252,72 +281,105 @@ export const submitVote = internalMutation({
     })
   ),
   handler: async (ctx, args) => {
-    const { token, mapId } = args;
-    const ipAddress = args.ipAddress.trim();
+    const ev = createWideEvent("voting", "submitVote", "internalMutation");
+    const startTime = Date.now();
+    try {
+      const { token, mapId } = args;
+      const ipAddress = args.ipAddress.trim();
+      ev.setIp(ipAddress);
 
-    // Rate limit by player token (shared with submitBan — bans and votes use the same action budget)
-    const { ok, retryAfter } = await rateLimiter.limit(ctx, "submitVote", {
-      key: token,
-    });
-    if (!ok) {
+      // Rate limit by player token (shared with submitBan — bans and votes use the same action budget)
+      const { ok, retryAfter } = await rateLimiter.limit(ctx, "submitVote", {
+        key: token,
+      });
+      if (!ok) {
+        ev.setOutcome("error");
+        ev.setError("RATE_LIMITED", "business");
+        ev.set("rateLimited", true);
+        return {
+          status: "error" as const,
+          error: "RATE_LIMITED" as const,
+          retryAfter,
+        };
+      }
+
+      const authResult = await validatePlayerForVoting(ctx, token, ipAddress);
+      if (authResult.status === "error") {
+        ev.setOutcome("error");
+        ev.setError(authResult.error, "business");
+        return authResult;
+      }
+      const { player, session } = authResult;
+      ev.setPlayer(token, player);
+      ev.setSession(session);
+
+      if (session.status !== "IN_PROGRESS") {
+        ev.setOutcome("error");
+        ev.setError("SESSION_NOT_IN_PROGRESS", "business");
+        return { status: "error" as const, error: "SESSION_NOT_IN_PROGRESS" as const };
+      }
+
+      if (session.format !== "MULTIPLAYER") {
+        ev.setOutcome("error");
+        ev.setError("FORMAT_NOT_MULTIPLAYER", "business");
+        return { status: "error" as const, error: "FORMAT_NOT_MULTIPLAYER" as const };
+      }
+
+      if (player.hasVotedThisRound) {
+        ev.setOutcome("error");
+        ev.setError("ALREADY_VOTED", "business");
+        return { status: "error" as const, error: "ALREADY_VOTED" as const };
+      }
+
+      const targetMap = await validateTargetMap(ctx, mapId, player.sessionId);
+      if (!targetMap) {
+        ev.setOutcome("error");
+        ev.setError("MAP_UNAVAILABLE", "business");
+        return { status: "error" as const, error: "MAP_UNAVAILABLE" as const };
+      }
+
+      ev.setMap(targetMap);
+
+      // Defense-in-depth: check DB for existing vote (supplements hasVotedThisRound flag)
+      const existingVote = await ctx.db
+        .query("votes")
+        .withIndex("by_playerId_and_round", (q) =>
+          q.eq("playerId", player._id).eq("round", session.currentRound)
+        )
+        .first();
+      if (existingVote) {
+        ev.setOutcome("error");
+        ev.setError("ALREADY_VOTED", "business");
+        return { status: "error" as const, error: "ALREADY_VOTED" as const };
+      }
+
+      // === Execute vote via shared helper ===
+
+      const result = await executeVote(ctx, {
+        session,
+        player,
+        targetMap,
+        submittedByAdmin: false,
+        actorType: "PLAYER",
+        actorId: player._id,
+      });
+
+      ev.setOutcome("ok");
+      ev.set("allVotesSubmitted", result.allVotesSubmitted);
       return {
-        status: "error" as const,
-        error: "RATE_LIMITED" as const,
-        retryAfter,
+        status: "ok" as const,
+        vote: { mapId, mapName: result.mapName, round: result.round },
+        allVotesSubmitted: result.allVotesSubmitted,
+        resolution: result.resolution,
       };
+    } catch (err) {
+      ev.setOutcome("error");
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    const authResult = await validatePlayerForVoting(ctx, token, ipAddress);
-    if (authResult.status === "error") {
-      return authResult;
-    }
-    const { player, session } = authResult;
-
-    if (session.status !== "IN_PROGRESS") {
-      return { status: "error" as const, error: "SESSION_NOT_IN_PROGRESS" as const };
-    }
-
-    if (session.format !== "MULTIPLAYER") {
-      return { status: "error" as const, error: "FORMAT_NOT_MULTIPLAYER" as const };
-    }
-
-    if (player.hasVotedThisRound) {
-      return { status: "error" as const, error: "ALREADY_VOTED" as const };
-    }
-
-    const targetMap = await validateTargetMap(ctx, mapId, player.sessionId);
-    if (!targetMap) {
-      return { status: "error" as const, error: "MAP_UNAVAILABLE" as const };
-    }
-
-    // Defense-in-depth: check DB for existing vote (supplements hasVotedThisRound flag)
-    const existingVote = await ctx.db
-      .query("votes")
-      .withIndex("by_playerId_and_round", (q) =>
-        q.eq("playerId", player._id).eq("round", session.currentRound)
-      )
-      .first();
-    if (existingVote) {
-      return { status: "error" as const, error: "ALREADY_VOTED" as const };
-    }
-
-    // === Execute vote via shared helper ===
-
-    const result = await executeVote(ctx, {
-      session,
-      player,
-      targetMap,
-      submittedByAdmin: false,
-      actorType: "PLAYER",
-      actorId: player._id,
-    });
-
-    return {
-      status: "ok" as const,
-      vote: { mapId, mapName: result.mapName, round: result.round },
-      allVotesSubmitted: result.allVotesSubmitted,
-      resolution: result.resolution,
-    };
   },
 });
 
@@ -349,55 +411,97 @@ export const adminVoteOnBehalf = mutation({
     winnerMapName: v.optional(v.string()),
   }),
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
+    const ev = createWideEvent("voting", "adminVoteOnBehalf", "mutation");
+    const startTime = Date.now();
+    try {
+      const admin = await requireAdmin(ctx);
+      ev.setAdmin(admin);
 
-    // Rate limit admin mutations (100/min per admin)
-    await rateLimiter.limit(ctx, "adminMutation", {
-      key: admin._id,
-      throws: true,
-    });
+      // Rate limit admin mutations (100/min per admin)
+      await rateLimiter.limit(ctx, "adminMutation", {
+        key: admin._id,
+        throws: true,
+      });
 
-    // --- Shared validation ---
+      // --- Shared validation ---
 
-    const session = await ctx.db.get(args.sessionId);
-    if (!session) throw new ConvexError("Session not found");
-    if (session.status !== "IN_PROGRESS") {
-      throw new ConvexError("Session is not in progress");
-    }
-    if (session.expiresAt < Date.now()) {
-      throw new ConvexError("Session has expired");
-    }
+      const session = await ctx.db.get(args.sessionId);
+      if (!session) throw new ConvexError("Session not found");
+      ev.setSession(session);
 
-    const player = await ctx.db.get(args.playerId);
-    if (!player || player.sessionId !== session._id) {
-      throw new ConvexError("Player not found in session");
-    }
-
-    const targetMap = await validateTargetMap(ctx, args.mapId, session._id);
-    if (!targetMap) throw new ConvexError("Map not available");
-
-    // --- Format-specific logic ---
-
-    if (session.format === "ABBA") {
-      // Validate it's this player's turn
-      const allPlayers = await ctx.db
-        .query("sessionPlayers")
-        .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
-        .collect();
-
-      const sortedPlayers = sortPlayersByJoinOrder(allPlayers);
-
-      const playerIndex = sortedPlayers.findIndex((p) => p._id === player._id);
-      if (playerIndex === -1) {
-        throw new ConvexError("Player not found in session player list");
+      if (session.status !== "IN_PROGRESS") {
+        throw new ConvexError("Session is not in progress");
+      }
+      if (session.expiresAt < Date.now()) {
+        throw new ConvexError("Session has expired");
       }
 
-      const activePlayerIndex = getActivePlayerIndex(session.currentTurn);
-      if (playerIndex !== activePlayerIndex) {
-        throw new ConvexError("Not this player's turn");
+      const player = await ctx.db.get(args.playerId);
+      if (!player || player.sessionId !== session._id) {
+        throw new ConvexError("Player not found in session");
+      }
+      ev.setPlayer(player.token, player);
+
+      const targetMap = await validateTargetMap(ctx, args.mapId, session._id);
+      if (!targetMap) throw new ConvexError("Map not available");
+      ev.setMap(targetMap);
+
+      // --- Format-specific logic ---
+
+      if (session.format === "ABBA") {
+        // Validate it's this player's turn
+        const allPlayers = await ctx.db
+          .query("sessionPlayers")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+          .collect();
+
+        const sortedPlayers = sortPlayersByJoinOrder(allPlayers);
+
+        const playerIndex = sortedPlayers.findIndex((p) => p._id === player._id);
+        if (playerIndex === -1) {
+          throw new ConvexError("Player not found in session player list");
+        }
+
+        const activePlayerIndex = getActivePlayerIndex(session.currentTurn);
+        if (playerIndex !== activePlayerIndex) {
+          throw new ConvexError("Not this player's turn");
+        }
+
+        const result = await executeBan(ctx, {
+          session,
+          player,
+          targetMap,
+          submittedByAdmin: true,
+          actorType: "ADMIN",
+          actorId: admin._id,
+        });
+
+        ev.setOutcome("ok");
+        ev.set("isComplete", result.isComplete);
+        return {
+          mapName: result.mapName,
+          isComplete: result.isComplete,
+          winnerMapName: result.winnerMapName,
+        };
       }
 
-      const result = await executeBan(ctx, {
+      // MULTIPLAYER format
+      if (player.hasVotedThisRound) {
+        throw new ConvexError("Player has already voted this round");
+      }
+
+      // Defense-in-depth: check DB for existing vote
+      const existingVote = await ctx.db
+        .query("votes")
+        .withIndex("by_playerId_and_round", (q) =>
+          q.eq("playerId", player._id).eq("round", session.currentRound)
+        )
+        .first();
+      if (existingVote) {
+        throw new ConvexError("Player has already voted this round");
+      }
+
+      const result = await executeVote(ctx, {
         session,
         player,
         targetMap,
@@ -406,42 +510,20 @@ export const adminVoteOnBehalf = mutation({
         actorId: admin._id,
       });
 
+      ev.setOutcome("ok");
+      ev.set("isComplete", result.isComplete);
       return {
         mapName: result.mapName,
         isComplete: result.isComplete,
         winnerMapName: result.winnerMapName,
       };
+    } catch (err) {
+      ev.setOutcome("error");
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    // MULTIPLAYER format
-    if (player.hasVotedThisRound) {
-      throw new ConvexError("Player has already voted this round");
-    }
-
-    // Defense-in-depth: check DB for existing vote
-    const existingVote = await ctx.db
-      .query("votes")
-      .withIndex("by_playerId_and_round", (q) =>
-        q.eq("playerId", player._id).eq("round", session.currentRound)
-      )
-      .first();
-    if (existingVote) {
-      throw new ConvexError("Player has already voted this round");
-    }
-
-    const result = await executeVote(ctx, {
-      session,
-      player,
-      targetMap,
-      submittedByAdmin: true,
-      actorType: "ADMIN",
-      actorId: admin._id,
-    });
-
-    return {
-      mapName: result.mapName,
-      isComplete: result.isComplete,
-      winnerMapName: result.winnerMapName,
-    };
   },
 });

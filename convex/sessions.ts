@@ -58,6 +58,7 @@ import { pickRandom } from "./lib/random";
 import { generateUniqueToken } from "./lib/tokenGeneration";
 import { scheduleTimerExpiry } from "./lib/timerScheduling";
 import { cascadeDeleteSessionRecords } from "./lib/cascadeDelete";
+import { createWideEvent } from "./lib/wideEvent";
 
 import { logAction } from "./audit";
 
@@ -526,73 +527,88 @@ export const createSession = mutation({
   },
   returns: v.object({ sessionId: v.id("sessions") }),
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
+    const ev = createWideEvent("sessions", "createSession", "mutation");
+    const startTime = Date.now();
+    try {
+      const admin = await requireAdmin(ctx);
+      ev.setAdmin(admin);
+      ev.set("format", args.format);
+      ev.set("playerCount", args.playerCount);
 
-    // Rate limit session creation (50/hour per admin)
-    await rateLimiter.limit(ctx, "createSession", {
-      key: admin._id,
-      throws: true,
-    });
+      // Rate limit session creation (50/hour per admin)
+      await rateLimiter.limit(ctx, "createSession", {
+        key: admin._id,
+        throws: true,
+      });
 
-    // Validate match name
-    const trimmedName = validateMatchName(args.matchName);
+      // Validate match name
+      const trimmedName = validateMatchName(args.matchName);
 
-    // Validate player count
-    validateRange(
-      args.playerCount,
-      MIN_PLAYER_COUNT,
-      MAX_PLAYER_COUNT,
-      "Player count"
-    );
+      // Validate player count
+      validateRange(
+        args.playerCount,
+        MIN_PLAYER_COUNT,
+        MAX_PLAYER_COUNT,
+        "Player count"
+      );
 
-    // Enforce format-specific player count
-    if (args.format === "ABBA" && args.playerCount !== 2) {
-      throw new ConvexError("ABBA format requires exactly 2 players");
+      // Enforce format-specific player count
+      if (args.format === "ABBA" && args.playerCount !== 2) {
+        throw new ConvexError("ABBA format requires exactly 2 players");
+      }
+
+      // Validate turn timer
+      const turnTimerSeconds = args.turnTimerSeconds ?? DEFAULT_TURN_TIMER_SECONDS;
+      validateRange(
+        turnTimerSeconds,
+        MIN_TURN_TIMER_SECONDS,
+        MAX_TURN_TIMER_SECONDS,
+        "Turn timer",
+        "seconds"
+      );
+
+      // Validate map pool size
+      const mapPoolSize = args.mapPoolSize ?? DEFAULT_MAP_POOL_SIZE;
+      validateRange(
+        mapPoolSize,
+        MIN_MAP_POOL_SIZE,
+        MAX_MAP_POOL_SIZE,
+        "Map pool size"
+      );
+
+      const now = Date.now();
+      const sessionId = await ctx.db.insert("sessions", {
+        matchName: trimmedName,
+        format: args.format,
+        status: "DRAFT",
+        turnTimerSeconds,
+        mapPoolSize,
+        playerCount: args.playerCount,
+        currentTurn: 0,
+        currentRound: 1,
+        createdBy: admin._id,
+        updatedAt: now,
+        expiresAt: now + SESSION_EXPIRY_MS,
+      });
+
+      // Create audit log
+      await logAction(ctx, {
+        sessionId,
+        action: "SESSION_CREATED",
+        actorType: "ADMIN",
+        actorId: admin._id,
+      });
+
+      ev.set("sessionId", sessionId);
+      ev.setOutcome("ok");
+      return { sessionId };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    // Validate turn timer
-    const turnTimerSeconds = args.turnTimerSeconds ?? DEFAULT_TURN_TIMER_SECONDS;
-    validateRange(
-      turnTimerSeconds,
-      MIN_TURN_TIMER_SECONDS,
-      MAX_TURN_TIMER_SECONDS,
-      "Turn timer",
-      "seconds"
-    );
-
-    // Validate map pool size
-    const mapPoolSize = args.mapPoolSize ?? DEFAULT_MAP_POOL_SIZE;
-    validateRange(
-      mapPoolSize,
-      MIN_MAP_POOL_SIZE,
-      MAX_MAP_POOL_SIZE,
-      "Map pool size"
-    );
-
-    const now = Date.now();
-    const sessionId = await ctx.db.insert("sessions", {
-      matchName: trimmedName,
-      format: args.format,
-      status: "DRAFT",
-      turnTimerSeconds,
-      mapPoolSize,
-      playerCount: args.playerCount,
-      currentTurn: 0,
-      currentRound: 1,
-      createdBy: admin._id,
-      updatedAt: now,
-      expiresAt: now + SESSION_EXPIRY_MS,
-    });
-
-    // Create audit log
-    await logAction(ctx, {
-      sessionId,
-      action: "SESSION_CREATED",
-      actorType: "ADMIN",
-      actorId: admin._id,
-    });
-
-    return { sessionId };
   },
 });
 
@@ -612,53 +628,66 @@ export const updateSession = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
+    const ev = createWideEvent("sessions", "updateSession", "mutation");
+    const startTime = Date.now();
+    try {
+      const admin = await requireAdmin(ctx);
+      ev.setAdmin(admin);
 
-    const session = await ctx.db.get(args.sessionId);
-    if (!session) {
-      throw new ConvexError("Session not found");
-    }
+      const session = await ctx.db.get(args.sessionId);
+      if (!session) {
+        throw new ConvexError("Session not found");
+      }
+      ev.setSession(session);
 
-    // Only allow updates in DRAFT or WAITING states
-    requireSessionStatus(session, EDITABLE_STATUSES, "update session");
+      // Only allow updates in DRAFT or WAITING states
+      requireSessionStatus(session, EDITABLE_STATUSES, "update session");
 
-    const updates: Partial<Doc<"sessions">> = {
-      updatedAt: Date.now(),
-    };
+      const updates: Partial<Doc<"sessions">> = {
+        updatedAt: Date.now(),
+      };
 
-    // Validate and apply match name update
-    if (args.matchName !== undefined) {
-      updates.matchName = validateMatchName(args.matchName);
-    }
+      // Validate and apply match name update
+      if (args.matchName !== undefined) {
+        updates.matchName = validateMatchName(args.matchName);
+      }
 
-    // Validate and apply turn timer update
-    if (args.turnTimerSeconds !== undefined) {
-      validateRange(
-        args.turnTimerSeconds,
-        MIN_TURN_TIMER_SECONDS,
-        MAX_TURN_TIMER_SECONDS,
-        "Turn timer",
-        "seconds"
+      // Validate and apply turn timer update
+      if (args.turnTimerSeconds !== undefined) {
+        validateRange(
+          args.turnTimerSeconds,
+          MIN_TURN_TIMER_SECONDS,
+          MAX_TURN_TIMER_SECONDS,
+          "Turn timer",
+          "seconds"
+        );
+        updates.turnTimerSeconds = args.turnTimerSeconds;
+      }
+
+      await ctx.db.patch(args.sessionId, updates);
+
+      // Create audit log for session update
+      // Derive changedFields from updates object for maintainability
+      const changedFields = Object.keys(updates).filter(
+        (key) => key !== "updatedAt"
       );
-      updates.turnTimerSeconds = args.turnTimerSeconds;
+      await logAction(ctx, {
+        sessionId: args.sessionId,
+        action: "SESSION_UPDATED",
+        actorType: "ADMIN",
+        actorId: admin._id,
+        details: { reason: `Updated: ${changedFields.join(", ")}` },
+      });
+
+      ev.setOutcome("ok");
+      return { success: true };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    await ctx.db.patch(args.sessionId, updates);
-
-    // Create audit log for session update
-    // Derive changedFields from updates object for maintainability
-    const changedFields = Object.keys(updates).filter(
-      (key) => key !== "updatedAt"
-    );
-    await logAction(ctx, {
-      sessionId: args.sessionId,
-      action: "SESSION_UPDATED",
-      actorType: "ADMIN",
-      actorId: admin._id,
-      details: { reason: `Updated: ${changedFields.join(", ")}` },
-    });
-
-    return { success: true };
   },
 });
 
@@ -676,36 +705,49 @@ export const deleteSession = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
+    const ev = createWideEvent("sessions", "deleteSession", "mutation");
+    const startTime = Date.now();
+    try {
+      const admin = await requireAdmin(ctx);
+      ev.setAdmin(admin);
 
-    const session = await ctx.db.get(args.sessionId);
-    if (!session) {
-      throw new ConvexError("Session not found");
+      const session = await ctx.db.get(args.sessionId);
+      if (!session) {
+        throw new ConvexError("Session not found");
+      }
+      ev.setSession(session);
+
+      // Block deletion of non-deletable sessions — must pause or end first
+      requireSessionStatus(
+        session,
+        DELETABLE_STATUSES,
+        "delete session (pause or end it first)",
+      );
+
+      // Cascade delete related records (players, maps, votes)
+      await cascadeDeleteSessionRecords(ctx, args.sessionId);
+
+      // Delete the session
+      await ctx.db.delete(args.sessionId);
+
+      // Create audit log (preserve for history - note: sessionId will be orphaned reference)
+      await logAction(ctx, {
+        sessionId: args.sessionId,
+        action: "SESSION_DELETED",
+        actorType: "ADMIN",
+        actorId: admin._id,
+        details: { reason: `Deleted from ${session.status} state` },
+      });
+
+      ev.setOutcome("ok");
+      return { success: true };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    // Block deletion of non-deletable sessions — must pause or end first
-    requireSessionStatus(
-      session,
-      DELETABLE_STATUSES,
-      "delete session (pause or end it first)",
-    );
-
-    // Cascade delete related records (players, maps, votes)
-    await cascadeDeleteSessionRecords(ctx, args.sessionId);
-
-    // Delete the session
-    await ctx.db.delete(args.sessionId);
-
-    // Create audit log (preserve for history - note: sessionId will be orphaned reference)
-    await logAction(ctx, {
-      sessionId: args.sessionId,
-      action: "SESSION_DELETED",
-      actorType: "ADMIN",
-      actorId: admin._id,
-      details: { reason: `Deleted from ${session.status} state` },
-    });
-
-    return { success: true };
   },
 });
 
@@ -730,73 +772,87 @@ export const assignPlayer = mutation({
     token: v.string(),
   }),
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
+    const ev = createWideEvent("sessions", "assignPlayer", "mutation");
+    const startTime = Date.now();
+    try {
+      const admin = await requireAdmin(ctx);
+      ev.setAdmin(admin);
 
-    const session = await ctx.db.get(args.sessionId);
-    if (!session) {
-      throw new ConvexError("Session not found");
+      const session = await ctx.db.get(args.sessionId);
+      if (!session) {
+        throw new ConvexError("Session not found");
+      }
+      ev.setSession(session);
+      ev.set("teamName", args.teamName);
+
+      // Only allow in DRAFT or WAITING states
+      requireSessionStatus(session, EDITABLE_STATUSES, "assign players");
+
+      // Check player count limit
+      const existingPlayers = await ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
+        .collect();
+
+      if (existingPlayers.length >= session.playerCount) {
+        throw new ConvexError(
+          `Session already has the maximum ${session.playerCount} players`
+        );
+      }
+
+      // Validate role input (trimming, length limit) - do this early for duplicate check
+      const validatedRole = validateName(args.role, "Role");
+
+      // Check for duplicate role in session (use validated role for accurate comparison)
+      const duplicateRole = existingPlayers.find((p) => p.role === validatedRole);
+      if (duplicateRole) {
+        throw new ConvexError(
+          `Role "${validatedRole}" is already assigned in this session`
+        );
+      }
+
+      // Validate team exists
+      const team = await ctx.db
+        .query("teams")
+        .withIndex("by_name", (q) => q.eq("name", args.teamName))
+        .first();
+      if (!team) {
+        throw new ConvexError(`Team "${args.teamName}" not found`);
+      }
+
+      // Generate unique token
+      const singleTokenSet = new Set<string>();
+      const token = await generateUniqueToken(ctx, singleTokenSet);
+
+      const now = Date.now();
+      const playerId = await ctx.db.insert("sessionPlayers", {
+        sessionId: args.sessionId,
+        role: validatedRole,
+        teamName: args.teamName,
+        token,
+        tokenExpiresAt: now + TOKEN_EXPIRY_MS,
+        isConnected: false,
+        hasVotedThisRound: false,
+      });
+
+      // Create audit log
+      await logAction(ctx, {
+        sessionId: args.sessionId,
+        action: "PLAYER_ASSIGNED",
+        actorType: "ADMIN",
+        actorId: admin._id,
+        details: { teamName: args.teamName },
+      });
+
+      ev.setOutcome("ok");
+      return { playerId, token };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    // Only allow in DRAFT or WAITING states
-    requireSessionStatus(session, EDITABLE_STATUSES, "assign players");
-
-    // Check player count limit
-    const existingPlayers = await ctx.db
-      .query("sessionPlayers")
-      .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
-      .collect();
-
-    if (existingPlayers.length >= session.playerCount) {
-      throw new ConvexError(
-        `Session already has the maximum ${session.playerCount} players`
-      );
-    }
-
-    // Validate role input (trimming, length limit) - do this early for duplicate check
-    const validatedRole = validateName(args.role, "Role");
-
-    // Check for duplicate role in session (use validated role for accurate comparison)
-    const duplicateRole = existingPlayers.find((p) => p.role === validatedRole);
-    if (duplicateRole) {
-      throw new ConvexError(
-        `Role "${validatedRole}" is already assigned in this session`
-      );
-    }
-
-    // Validate team exists
-    const team = await ctx.db
-      .query("teams")
-      .withIndex("by_name", (q) => q.eq("name", args.teamName))
-      .first();
-    if (!team) {
-      throw new ConvexError(`Team "${args.teamName}" not found`);
-    }
-
-    // Generate unique token
-    const singleTokenSet = new Set<string>();
-    const token = await generateUniqueToken(ctx, singleTokenSet);
-
-    const now = Date.now();
-    const playerId = await ctx.db.insert("sessionPlayers", {
-      sessionId: args.sessionId,
-      role: validatedRole,
-      teamName: args.teamName,
-      token,
-      tokenExpiresAt: now + TOKEN_EXPIRY_MS,
-      isConnected: false,
-      hasVotedThisRound: false,
-    });
-
-    // Create audit log
-    await logAction(ctx, {
-      sessionId: args.sessionId,
-      action: "PLAYER_ASSIGNED",
-      actorType: "ADMIN",
-      actorId: admin._id,
-      details: { teamName: args.teamName },
-    });
-
-    return { playerId, token };
   },
 });
 
@@ -814,42 +870,56 @@ export const regeneratePlayerToken = mutation({
   },
   returns: v.object({ token: v.string() }),
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
+    const ev = createWideEvent("sessions", "regeneratePlayerToken", "mutation");
+    const startTime = Date.now();
+    try {
+      const admin = await requireAdmin(ctx);
+      ev.setAdmin(admin);
 
-    const player = await ctx.db.get(args.playerId);
-    if (!player) {
-      throw new ConvexError("Player not found");
+      const player = await ctx.db.get(args.playerId);
+      if (!player) {
+        throw new ConvexError("Player not found");
+      }
+      ev.set("teamName", player.teamName);
+
+      const session = await ctx.db.get(player.sessionId);
+      if (!session) {
+        throw new ConvexError("Session not found");
+      }
+      ev.setSession(session);
+
+      requireSessionStatus(session, TOKEN_REGEN_STATUSES, "regenerate player token");
+
+      // Generate new unique token
+      const singleTokenSet = new Set<string>();
+      const token = await generateUniqueToken(ctx, singleTokenSet);
+
+      const now = Date.now();
+      await ctx.db.patch(args.playerId, {
+        token,
+        tokenExpiresAt: now + TOKEN_EXPIRY_MS,
+        ipAddress: undefined,
+        isConnected: false,
+        readyAt: undefined,
+      });
+
+      await logAction(ctx, {
+        sessionId: player.sessionId,
+        action: "TOKEN_REGENERATED",
+        actorType: "ADMIN",
+        actorId: admin._id,
+        details: { teamName: player.teamName },
+      });
+
+      ev.setOutcome("ok");
+      return { token };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    const session = await ctx.db.get(player.sessionId);
-    if (!session) {
-      throw new ConvexError("Session not found");
-    }
-
-    requireSessionStatus(session, TOKEN_REGEN_STATUSES, "regenerate player token");
-
-    // Generate new unique token
-    const singleTokenSet = new Set<string>();
-    const token = await generateUniqueToken(ctx, singleTokenSet);
-
-    const now = Date.now();
-    await ctx.db.patch(args.playerId, {
-      token,
-      tokenExpiresAt: now + TOKEN_EXPIRY_MS,
-      ipAddress: undefined,
-      isConnected: false,
-      readyAt: undefined,
-    });
-
-    await logAction(ctx, {
-      sessionId: player.sessionId,
-      action: "TOKEN_REGENERATED",
-      actorType: "ADMIN",
-      actorId: admin._id,
-      details: { teamName: player.teamName },
-    });
-
-    return { token };
   },
 });
 
@@ -870,85 +940,99 @@ export const setSessionMaps = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
+    const ev = createWideEvent("sessions", "setSessionMaps", "mutation");
+    const startTime = Date.now();
+    try {
+      const admin = await requireAdmin(ctx);
+      ev.setAdmin(admin);
 
-    const session = await ctx.db.get(args.sessionId);
-    if (!session) {
-      throw new ConvexError("Session not found");
-    }
-
-    // Only allow in DRAFT state
-    requireSessionStatus(session, MAP_POOL_STATUSES, "set maps");
-
-    // Validate map count matches session config
-    if (args.mapIds.length !== session.mapPoolSize) {
-      throw new ConvexError(
-        `Expected ${session.mapPoolSize} maps, received ${args.mapIds.length}`
-      );
-    }
-
-    // Check for duplicates in input
-    const uniqueMapIds = new Set(args.mapIds);
-    if (uniqueMapIds.size !== args.mapIds.length) {
-      throw new ConvexError("Duplicate maps not allowed in the same session");
-    }
-
-    // Validate all maps exist and are active (batch fetch for performance)
-    const maps = await Promise.all(args.mapIds.map((id) => ctx.db.get(id)));
-    for (let i = 0; i < maps.length; i++) {
-      const map = maps[i];
-      if (!map) {
-        throw new ConvexError(`Map not found: ${args.mapIds[i]}`);
+      const session = await ctx.db.get(args.sessionId);
+      if (!session) {
+        throw new ConvexError("Session not found");
       }
-      if (!map.isActive) {
-        throw new ConvexError(`Map "${map.name}" is not active`);
+      ev.setSession(session);
+      ev.set("mapCount", args.mapIds.length);
+
+      // Only allow in DRAFT state
+      requireSessionStatus(session, MAP_POOL_STATUSES, "set maps");
+
+      // Validate map count matches session config
+      if (args.mapIds.length !== session.mapPoolSize) {
+        throw new ConvexError(
+          `Expected ${session.mapPoolSize} maps, received ${args.mapIds.length}`
+        );
       }
-    }
 
-    // Delete existing session maps (replace behavior)
-    const existingMaps = await ctx.db
-      .query("sessionMaps")
-      .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
-      .collect();
+      // Check for duplicates in input
+      const uniqueMapIds = new Set(args.mapIds);
+      if (uniqueMapIds.size !== args.mapIds.length) {
+        throw new ConvexError("Duplicate maps not allowed in the same session");
+      }
 
-    await Promise.all(existingMaps.map((m) => ctx.db.delete(m._id)));
-
-    // Create snapshots from master maps (parallelized for performance)
-    await Promise.all(
-      maps.map(async (map) => {
-        // Resolve image URL (storage takes precedence over external URL)
-        let imageUrl = map!.imageUrl ?? "";
-        if (map!.imageStorageId) {
-          const storageUrl = await ctx.storage.getUrl(map!.imageStorageId);
-          if (storageUrl) {
-            imageUrl = storageUrl;
-          }
+      // Validate all maps exist and are active (batch fetch for performance)
+      const maps = await Promise.all(args.mapIds.map((id) => ctx.db.get(id)));
+      for (let i = 0; i < maps.length; i++) {
+        const map = maps[i];
+        if (!map) {
+          throw new ConvexError(`Map not found: ${args.mapIds[i]}`);
         }
+        if (!map.isActive) {
+          throw new ConvexError(`Map "${map.name}" is not active`);
+        }
+      }
 
-        return ctx.db.insert("sessionMaps", {
-          sessionId: args.sessionId,
-          mapId: map!._id,
-          name: map!.name,
-          imageUrl,
-          state: "AVAILABLE",
-        });
-      })
-    );
+      // Delete existing session maps (replace behavior)
+      const existingMaps = await ctx.db
+        .query("sessionMaps")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
+        .collect();
 
-    // Update session timestamp
-    await ctx.db.patch(args.sessionId, {
-      updatedAt: Date.now(),
-    });
+      await Promise.all(existingMaps.map((m) => ctx.db.delete(m._id)));
 
-    // Create audit log
-    await logAction(ctx, {
-      sessionId: args.sessionId,
-      action: "MAPS_ASSIGNED",
-      actorType: "ADMIN",
-      actorId: admin._id,
-    });
+      // Create snapshots from master maps (parallelized for performance)
+      await Promise.all(
+        maps.map(async (map) => {
+          // Resolve image URL (storage takes precedence over external URL)
+          let imageUrl = map!.imageUrl ?? "";
+          if (map!.imageStorageId) {
+            const storageUrl = await ctx.storage.getUrl(map!.imageStorageId);
+            if (storageUrl) {
+              imageUrl = storageUrl;
+            }
+          }
 
-    return { success: true };
+          return ctx.db.insert("sessionMaps", {
+            sessionId: args.sessionId,
+            mapId: map!._id,
+            name: map!.name,
+            imageUrl,
+            state: "AVAILABLE",
+          });
+        })
+      );
+
+      // Update session timestamp
+      await ctx.db.patch(args.sessionId, {
+        updatedAt: Date.now(),
+      });
+
+      // Create audit log
+      await logAction(ctx, {
+        sessionId: args.sessionId,
+        action: "MAPS_ASSIGNED",
+        actorType: "ADMIN",
+        actorId: admin._id,
+      });
+
+      ev.setOutcome("ok");
+      return { success: true };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
+    }
   },
 });
 
@@ -990,113 +1074,120 @@ export const createSessionFull = mutation({
     ),
   }),
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
+    const ev = createWideEvent("sessions", "createSessionFull", "mutation");
+    const startTime = Date.now();
+    try {
+      const admin = await requireAdmin(ctx);
+      ev.setAdmin(admin);
+      ev.set("format", args.format);
+      ev.set("playerCount", args.players.length);
+      ev.set("mapCount", args.mapIds.length);
 
-    // Rate limit session creation (same budget as createSession)
-    await rateLimiter.limit(ctx, "createSession", {
-      key: admin._id,
-      throws: true,
-    });
+      // Rate limit session creation (same budget as createSession)
+      await rateLimiter.limit(ctx, "createSession", {
+        key: admin._id,
+        throws: true,
+      });
 
-    // ========================================================================
-    // 1. Validate all inputs upfront before any DB writes
-    // ========================================================================
+      // ========================================================================
+      // 1. Validate all inputs upfront before any DB writes
+      // ========================================================================
 
-    // Validate match name
-    const trimmedName = validateMatchName(args.matchName);
+      // Validate match name
+      const trimmedName = validateMatchName(args.matchName);
 
-    // Validate turn timer
-    const turnTimerSeconds = args.turnTimerSeconds ?? DEFAULT_TURN_TIMER_SECONDS;
-    validateRange(
-      turnTimerSeconds,
-      MIN_TURN_TIMER_SECONDS,
-      MAX_TURN_TIMER_SECONDS,
-      "Turn timer",
-      "seconds"
-    );
-
-    // Validate map pool size
-    const mapPoolSize = args.mapPoolSize ?? DEFAULT_MAP_POOL_SIZE;
-    validateRange(
-      mapPoolSize,
-      MIN_MAP_POOL_SIZE,
-      MAX_MAP_POOL_SIZE,
-      "Map pool size"
-    );
-
-    // Validate player count matches format expectations
-    const expectedPlayerCount = args.format === "ABBA" ? 2 : 4;
-    if (args.players.length !== expectedPlayerCount) {
-      throw new ConvexError(
-        `${args.format} format requires exactly ${expectedPlayerCount} players, received ${args.players.length}`
+      // Validate turn timer
+      const turnTimerSeconds = args.turnTimerSeconds ?? DEFAULT_TURN_TIMER_SECONDS;
+      validateRange(
+        turnTimerSeconds,
+        MIN_TURN_TIMER_SECONDS,
+        MAX_TURN_TIMER_SECONDS,
+        "Turn timer",
+        "seconds"
       );
-    }
 
-    // Validate player count range
-    validateRange(
-      args.players.length,
-      MIN_PLAYER_COUNT,
-      MAX_PLAYER_COUNT,
-      "Player count"
-    );
+      // Validate map pool size
+      const mapPoolSize = args.mapPoolSize ?? DEFAULT_MAP_POOL_SIZE;
+      validateRange(
+        mapPoolSize,
+        MIN_MAP_POOL_SIZE,
+        MAX_MAP_POOL_SIZE,
+        "Map pool size"
+      );
 
-    // Validate and collect player roles (check for duplicates)
-    const validatedPlayers: Array<{ role: string; teamName: string }> = [];
-    const seenRoles = new Set<string>();
-    for (const player of args.players) {
-      const validatedRole = validateName(player.role, "Role");
-      if (seenRoles.has(validatedRole)) {
+      // Validate player count matches format expectations
+      const expectedPlayerCount = args.format === "ABBA" ? 2 : 4;
+      if (args.players.length !== expectedPlayerCount) {
         throw new ConvexError(
-          `Duplicate role "${validatedRole}" in player list`
+          `${args.format} format requires exactly ${expectedPlayerCount} players, received ${args.players.length}`
         );
       }
-      seenRoles.add(validatedRole);
-      validatedPlayers.push({ role: validatedRole, teamName: player.teamName });
-    }
 
-    // Validate all teams exist
-    const teamNames = [...new Set(args.players.map((p) => p.teamName))];
-    for (const teamName of teamNames) {
-      const team = await ctx.db
-        .query("teams")
-        .withIndex("by_name", (q) => q.eq("name", teamName))
-        .first();
-      if (!team) {
-        throw new ConvexError(`Team "${teamName}" not found`);
-      }
-    }
-
-    // Validate map count matches pool size
-    if (args.mapIds.length !== mapPoolSize) {
-      throw new ConvexError(
-        `Expected ${mapPoolSize} maps, received ${args.mapIds.length}`
+      // Validate player count range
+      validateRange(
+        args.players.length,
+        MIN_PLAYER_COUNT,
+        MAX_PLAYER_COUNT,
+        "Player count"
       );
-    }
 
-    // Check for duplicate maps
-    const uniqueMapIds = new Set(args.mapIds);
-    if (uniqueMapIds.size !== args.mapIds.length) {
-      throw new ConvexError("Duplicate maps not allowed in the same session");
-    }
-
-    // Validate all maps exist and are active
-    const maps = await Promise.all(args.mapIds.map((id) => ctx.db.get(id)));
-    for (let i = 0; i < maps.length; i++) {
-      const map = maps[i];
-      if (!map) {
-        throw new ConvexError(`Map not found: ${args.mapIds[i]}`);
+      // Validate and collect player roles (check for duplicates)
+      const validatedPlayers: Array<{ role: string; teamName: string }> = [];
+      const seenRoles = new Set<string>();
+      for (const player of args.players) {
+        const validatedRole = validateName(player.role, "Role");
+        if (seenRoles.has(validatedRole)) {
+          throw new ConvexError(
+            `Duplicate role "${validatedRole}" in player list`
+          );
+        }
+        seenRoles.add(validatedRole);
+        validatedPlayers.push({ role: validatedRole, teamName: player.teamName });
       }
-      if (!map.isActive) {
-        throw new ConvexError(`Map "${map.name}" is not active`);
+
+      // Validate all teams exist
+      const teamNames = [...new Set(args.players.map((p) => p.teamName))];
+      for (const teamName of teamNames) {
+        const team = await ctx.db
+          .query("teams")
+          .withIndex("by_name", (q) => q.eq("name", teamName))
+          .first();
+        if (!team) {
+          throw new ConvexError(`Team "${teamName}" not found`);
+        }
       }
-    }
 
-    // ========================================================================
-    // 2. Create session
-    // ========================================================================
+      // Validate map count matches pool size
+      if (args.mapIds.length !== mapPoolSize) {
+        throw new ConvexError(
+          `Expected ${mapPoolSize} maps, received ${args.mapIds.length}`
+        );
+      }
 
-    const now = Date.now();
-    const sessionId = await ctx.db.insert("sessions", {
+      // Check for duplicate maps
+      const uniqueMapIds = new Set(args.mapIds);
+      if (uniqueMapIds.size !== args.mapIds.length) {
+        throw new ConvexError("Duplicate maps not allowed in the same session");
+      }
+
+      // Validate all maps exist and are active
+      const maps = await Promise.all(args.mapIds.map((id) => ctx.db.get(id)));
+      for (let i = 0; i < maps.length; i++) {
+        const map = maps[i];
+        if (!map) {
+          throw new ConvexError(`Map not found: ${args.mapIds[i]}`);
+        }
+        if (!map.isActive) {
+          throw new ConvexError(`Map "${map.name}" is not active`);
+        }
+      }
+
+      // ========================================================================
+      // 2. Create session
+      // ========================================================================
+
+      const now = Date.now();
+      const sessionId = await ctx.db.insert("sessions", {
       matchName: trimmedName,
       format: args.format,
       status: "DRAFT",
@@ -1172,7 +1263,16 @@ export const createSessionFull = mutation({
       },
     });
 
-    return { sessionId, playerTokens };
+      ev.set("sessionId", sessionId);
+      ev.setOutcome("ok");
+      return { sessionId, playerTokens };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
+    }
   },
 });
 
@@ -1191,20 +1291,33 @@ export const finalizeSession = mutation({
   args: { sessionId: v.id("sessions") },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
-    const session = await ctx.db.get(args.sessionId);
-    if (!session) throw new ConvexError("Session not found");
+    const ev = createWideEvent("sessions", "finalizeSession", "mutation");
+    const startTime = Date.now();
+    try {
+      const admin = await requireAdmin(ctx);
+      ev.setAdmin(admin);
+      const session = await ctx.db.get(args.sessionId);
+      if (!session) throw new ConvexError("Session not found");
+      ev.setSession(session);
 
-    // Fail-fast before expensive guard queries
-    validateTransition(session.status, "WAITING");
-    await guardFinalize(ctx, session);
-    await transitionSession(ctx, session, "WAITING", {
-      auditAction: "SESSION_FINALIZED",
-      actorType: "ADMIN",
-      actorId: admin._id,
-    });
+      // Fail-fast before expensive guard queries
+      validateTransition(session.status, "WAITING");
+      await guardFinalize(ctx, session);
+      await transitionSession(ctx, session, "WAITING", {
+        auditAction: "SESSION_FINALIZED",
+        actorType: "ADMIN",
+        actorId: admin._id,
+      });
 
-    return { success: true };
+      ev.setOutcome("ok");
+      return { success: true };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
+    }
   },
 });
 
@@ -1219,46 +1332,59 @@ export const startSession = mutation({
   args: { sessionId: v.id("sessions") },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
-    const session = await ctx.db.get(args.sessionId);
-    if (!session) throw new ConvexError("Session not found");
+    const ev = createWideEvent("sessions", "startSession", "mutation");
+    const startTime = Date.now();
+    try {
+      const admin = await requireAdmin(ctx);
+      ev.setAdmin(admin);
+      const session = await ctx.db.get(args.sessionId);
+      if (!session) throw new ConvexError("Session not found");
+      ev.setSession(session);
 
-    // Fail-fast before expensive guard queries
-    validateTransition(session.status, "IN_PROGRESS");
-    await guardStart(ctx, session);
+      // Fail-fast before expensive guard queries
+      validateTransition(session.status, "IN_PROGRESS");
+      await guardStart(ctx, session);
 
-    const now = Date.now();
-    await transitionSession(ctx, session, "IN_PROGRESS", {
-      auditAction: "SESSION_STARTED",
-      actorType: "ADMIN",
-      actorId: admin._id,
-      patches: {
-        startedAt: now,
-        timerStartedAt: now,
-        currentTurn: 0,
-        currentRound: 1,
-      },
-    });
+      const now = Date.now();
+      await transitionSession(ctx, session, "IN_PROGRESS", {
+        auditAction: "SESSION_STARTED",
+        actorType: "ADMIN",
+        actorId: admin._id,
+        patches: {
+          startedAt: now,
+          timerStartedAt: now,
+          currentTurn: 0,
+          currentRound: 1,
+        },
+      });
 
-    // Clear readyAt on all players for data hygiene (WAR-51)
-    const players = await ctx.db
-      .query("sessionPlayers")
-      .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
-      .collect();
-    await Promise.all(
-      players.map((player) => ctx.db.patch(player._id, { readyAt: undefined }))
-    );
+      // Clear readyAt on all players for data hygiene (WAR-51)
+      const players = await ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+        .collect();
+      await Promise.all(
+        players.map((player) => ctx.db.patch(player._id, { readyAt: undefined }))
+      );
 
-    // Schedule timer expiry for first turn/round (WAR-47)
-    await scheduleTimerExpiry(
-      ctx,
-      session._id,
-      now,
-      session.turnTimerSeconds,
-      session.format as "ABBA" | "MULTIPLAYER"
-    );
+      // Schedule timer expiry for first turn/round (WAR-47)
+      await scheduleTimerExpiry(
+        ctx,
+        session._id,
+        now,
+        session.turnTimerSeconds,
+        session.format as "ABBA" | "MULTIPLAYER"
+      );
 
-    return { success: true };
+      ev.setOutcome("ok");
+      return { success: true };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
+    }
   },
 });
 
@@ -1277,23 +1403,36 @@ export const pauseSession = mutation({
   },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
-    const session = await ctx.db.get(args.sessionId);
-    if (!session) throw new ConvexError("Session not found");
+    const ev = createWideEvent("sessions", "pauseSession", "mutation");
+    const startTime = Date.now();
+    try {
+      const admin = await requireAdmin(ctx);
+      ev.setAdmin(admin);
+      const session = await ctx.db.get(args.sessionId);
+      if (!session) throw new ConvexError("Session not found");
+      ev.setSession(session);
 
-    if (args.reason && args.reason.length > MAX_REASON_LENGTH) {
-      throw new ConvexError("Reason must be 500 characters or fewer");
+      if (args.reason && args.reason.length > MAX_REASON_LENGTH) {
+        throw new ConvexError("Reason must be 500 characters or fewer");
+      }
+
+      await transitionSession(ctx, session, "PAUSED", {
+        auditAction: "SESSION_PAUSED",
+        actorType: "ADMIN",
+        actorId: admin._id,
+        patches: { timerPausedAt: Date.now() },
+        auditDetails: args.reason ? { reason: args.reason } : undefined,
+      });
+
+      ev.setOutcome("ok");
+      return { success: true };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    await transitionSession(ctx, session, "PAUSED", {
-      auditAction: "SESSION_PAUSED",
-      actorType: "ADMIN",
-      actorId: admin._id,
-      patches: { timerPausedAt: Date.now() },
-      auditDetails: args.reason ? { reason: args.reason } : undefined,
-    });
-
-    return { success: true };
   },
 });
 
@@ -1309,52 +1448,65 @@ export const resumeSession = mutation({
   args: { sessionId: v.id("sessions") },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
-    const session = await ctx.db.get(args.sessionId);
-    if (!session) throw new ConvexError("Session not found");
+    const ev = createWideEvent("sessions", "resumeSession", "mutation");
+    const startTime = Date.now();
+    try {
+      const admin = await requireAdmin(ctx);
+      ev.setAdmin(admin);
+      const session = await ctx.db.get(args.sessionId);
+      if (!session) throw new ConvexError("Session not found");
+      ev.setSession(session);
 
-    // Calculate elapsed time to preserve remaining timer
-    const now = Date.now();
-    const elapsed =
-      (session.timerPausedAt ?? now) - (session.timerStartedAt ?? now);
-    const adjustedTimerStart = now - elapsed;
+      // Calculate elapsed time to preserve remaining timer
+      const now = Date.now();
+      const elapsed =
+        (session.timerPausedAt ?? now) - (session.timerStartedAt ?? now);
+      const adjustedTimerStart = now - elapsed;
 
-    await transitionSession(ctx, session, "IN_PROGRESS", {
-      auditAction: "SESSION_RESUMED",
-      actorType: "ADMIN",
-      actorId: admin._id,
-      patches: {
-        timerStartedAt: adjustedTimerStart,
-        timerPausedAt: undefined,
-      },
-    });
+      await transitionSession(ctx, session, "IN_PROGRESS", {
+        auditAction: "SESSION_RESUMED",
+        actorType: "ADMIN",
+        actorId: admin._id,
+        patches: {
+          timerStartedAt: adjustedTimerStart,
+          timerPausedAt: undefined,
+        },
+      });
 
-    // Reset disconnected players' connection state so the heartbeat cron
-    // doesn't immediately re-pause. Players get a full timeout window to
-    // re-establish their heartbeat after resume (WAR-49).
-    const players = await ctx.db
-      .query("sessionPlayers")
-      .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
-      .collect();
-    for (const player of players) {
-      if (!player.isConnected) {
-        await ctx.db.patch(player._id, {
-          isConnected: true,
-          lastHeartbeat: undefined,
-        });
+      // Reset disconnected players' connection state so the heartbeat cron
+      // doesn't immediately re-pause. Players get a full timeout window to
+      // re-establish their heartbeat after resume (WAR-49).
+      const players = await ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+        .collect();
+      for (const player of players) {
+        if (!player.isConnected) {
+          await ctx.db.patch(player._id, {
+            isConnected: true,
+            lastHeartbeat: undefined,
+          });
+        }
       }
+
+      // Schedule timer expiry with adjusted start time (WAR-47)
+      await scheduleTimerExpiry(
+        ctx,
+        session._id,
+        adjustedTimerStart,
+        session.turnTimerSeconds,
+        session.format as "ABBA" | "MULTIPLAYER"
+      );
+
+      ev.setOutcome("ok");
+      return { success: true };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    // Schedule timer expiry with adjusted start time (WAR-47)
-    await scheduleTimerExpiry(
-      ctx,
-      session._id,
-      adjustedTimerStart,
-      session.turnTimerSeconds,
-      session.format as "ABBA" | "MULTIPLAYER"
-    );
-
-    return { success: true };
   },
 });
 
@@ -1369,27 +1521,40 @@ export const endSession = mutation({
   args: { sessionId: v.id("sessions") },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
-    const session = await ctx.db.get(args.sessionId);
-    if (!session) throw new ConvexError("Session not found");
+    const ev = createWideEvent("sessions", "endSession", "mutation");
+    const startTime = Date.now();
+    try {
+      const admin = await requireAdmin(ctx);
+      ev.setAdmin(admin);
+      const session = await ctx.db.get(args.sessionId);
+      if (!session) throw new ConvexError("Session not found");
+      ev.setSession(session);
 
-    await transitionSession(ctx, session, "COMPLETE", {
-      auditAction: "SESSION_ENDED",
-      actorType: "ADMIN",
-      actorId: admin._id,
-      patches: {
-        completedAt: Date.now(),
-        timerStartedAt: undefined,
-        timerPausedAt: undefined,
-        isRevoteRound: false,
-      },
-      auditDetails: { reason: "ADMIN_FORCE_END" },
-    });
+      await transitionSession(ctx, session, "COMPLETE", {
+        auditAction: "SESSION_ENDED",
+        actorType: "ADMIN",
+        actorId: admin._id,
+        patches: {
+          completedAt: Date.now(),
+          timerStartedAt: undefined,
+          timerPausedAt: undefined,
+          isRevoteRound: false,
+        },
+        auditDetails: { reason: "ADMIN_FORCE_END" },
+      });
 
-    // IP cleanup handled by hourly cron clearCompletedSessionIps (convex/crons.ts)
-    // TODO: Add immediate IP cleanup scheduling via ctx.scheduler.runAfter (Phase 2)
+      // IP cleanup handled by hourly cron clearCompletedSessionIps (convex/crons.ts)
+      // TODO: Add immediate IP cleanup scheduling via ctx.scheduler.runAfter (Phase 2)
 
-    return { success: true };
+      ev.setOutcome("ok");
+      return { success: true };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
+    }
   },
 });
 
@@ -1405,69 +1570,82 @@ export const resetSession = mutation({
   args: { sessionId: v.id("sessions") },
   returns: v.object({ success: v.boolean() }),
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
-    const session = await ctx.db.get(args.sessionId);
-    if (!session) throw new ConvexError("Session not found");
+    const ev = createWideEvent("sessions", "resetSession", "mutation");
+    const startTime = Date.now();
+    try {
+      const admin = await requireAdmin(ctx);
+      ev.setAdmin(admin);
+      const session = await ctx.db.get(args.sessionId);
+      if (!session) throw new ConvexError("Session not found");
+      ev.setSession(session);
 
-    // Only COMPLETE sessions can be reset
-    requireSessionStatus(session, RESETTABLE_STATUSES, "reset session");
+      // Only COMPLETE sessions can be reset
+      requireSessionStatus(session, RESETTABLE_STATUSES, "reset session");
 
-    // 1. Fetch all related data in parallel
-    const [votes, sessionMaps, players] = await Promise.all([
-      ctx.db
-        .query("votes")
-        .withIndex("by_sessionId_and_round", (q) =>
-          q.eq("sessionId", args.sessionId)
-        )
-        .collect(),
-      ctx.db
-        .query("sessionMaps")
-        .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
-        .collect(),
-      ctx.db
-        .query("sessionPlayers")
-        .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
-        .collect(),
-    ]);
+      // 1. Fetch all related data in parallel
+      const [votes, sessionMaps, players] = await Promise.all([
+        ctx.db
+          .query("votes")
+          .withIndex("by_sessionId_and_round", (q) =>
+            q.eq("sessionId", args.sessionId)
+          )
+          .collect(),
+        ctx.db
+          .query("sessionMaps")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
+          .collect(),
+        ctx.db
+          .query("sessionPlayers")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
+          .collect(),
+      ]);
 
-    // 2. Delete votes, reset maps, and reset players in parallel
-    const now = Date.now();
-    await Promise.all([
-      ...votes.map((vote) => ctx.db.delete(vote._id)),
-      ...sessionMaps.map((m) =>
-        ctx.db.patch(m._id, {
-          state: "AVAILABLE",
-          bannedByPlayerId: undefined,
-          bannedByTeamNames: undefined,
-          bannedAtTurn: undefined,
-          bannedAtRound: undefined,
-          voteCount: undefined,
-          submittedByAdmin: undefined,
-        })
-      ),
-      ...players.map((p) =>
-        ctx.db.patch(p._id, {
-          hasVotedThisRound: false,
-          readyAt: undefined,
-          tokenExpiresAt: now + TOKEN_EXPIRY_MS,
-        })
-      ),
-    ]);
+      // 2. Delete votes, reset maps, and reset players in parallel
+      const now = Date.now();
+      await Promise.all([
+        ...votes.map((vote) => ctx.db.delete(vote._id)),
+        ...sessionMaps.map((m) =>
+          ctx.db.patch(m._id, {
+            state: "AVAILABLE",
+            bannedByPlayerId: undefined,
+            bannedByTeamNames: undefined,
+            bannedAtTurn: undefined,
+            bannedAtRound: undefined,
+            voteCount: undefined,
+            submittedByAdmin: undefined,
+          })
+        ),
+        ...players.map((p) =>
+          ctx.db.patch(p._id, {
+            hasVotedThisRound: false,
+            readyAt: undefined,
+            tokenExpiresAt: now + TOKEN_EXPIRY_MS,
+          })
+        ),
+      ]);
 
-    // 3. Transition session: COMPLETE → WAITING with standard reset patches
-    await transitionSession(ctx, session, "WAITING", {
-      auditAction: "SESSION_RESET",
-      actorType: "ADMIN",
-      actorId: admin._id,
-      patches: SESSION_RESET_PATCHES,
-    });
+      // 3. Transition session: COMPLETE → WAITING with standard reset patches
+      await transitionSession(ctx, session, "WAITING", {
+        auditAction: "SESSION_RESET",
+        actorType: "ADMIN",
+        actorId: admin._id,
+        patches: SESSION_RESET_PATCHES,
+      });
 
-    // 4. Extend expiresAt by 2 weeks (not in SessionStatePatches type)
-    await ctx.db.patch(args.sessionId, {
-      expiresAt: now + SESSION_EXPIRY_MS,
-    });
+      // 4. Extend expiresAt by 2 weeks (not in SessionStatePatches type)
+      await ctx.db.patch(args.sessionId, {
+        expiresAt: now + SESSION_EXPIRY_MS,
+      });
 
-    return { success: true };
+      ev.setOutcome("ok");
+      return { success: true };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
+    }
   },
 });
 
@@ -1485,104 +1663,118 @@ export const cloneSession = mutation({
   },
   returns: v.object({ newSessionId: v.id("sessions") }),
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
+    const ev = createWideEvent("sessions", "cloneSession", "mutation");
+    const startTime = Date.now();
+    try {
+      const admin = await requireAdmin(ctx);
+      ev.setAdmin(admin);
 
-    // Rate limit session creation (shared with createSession/createSessionFull — 50/hour per admin)
-    await rateLimiter.limit(ctx, "createSession", {
-      key: admin._id,
-      throws: true,
-    });
-
-    // 1. Read source session
-    const source = await ctx.db.get(args.sessionId);
-    if (!source) throw new ConvexError("Session not found");
-
-    // 2. Read related data in parallel
-    const [sourcePlayers, sourceMaps] = await Promise.all([
-      ctx.db
-        .query("sessionPlayers")
-        .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
-        .collect(),
-      ctx.db
-        .query("sessionMaps")
-        .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
-        .collect(),
-    ]);
-
-    // 3. Build cloned matchName (truncate if needed to fit MAX_NAME_LENGTH)
-    const maxBase = MAX_NAME_LENGTH - CLONE_NAME_SUFFIX.length;
-    const baseName =
-      source.matchName.length > maxBase
-        ? source.matchName.slice(0, maxBase)
-        : source.matchName;
-    const clonedName = baseName + CLONE_NAME_SUFFIX;
-
-    // 4. Create new session
-    const now = Date.now();
-    const newSessionId = await ctx.db.insert("sessions", {
-      matchName: clonedName,
-      format: source.format,
-      status: "DRAFT",
-      turnTimerSeconds: source.turnTimerSeconds,
-      mapPoolSize: source.mapPoolSize,
-      playerCount: source.playerCount,
-      currentTurn: 0,
-      currentRound: 1,
-      createdBy: admin._id,
-      updatedAt: now,
-      expiresAt: now + SESSION_EXPIRY_MS,
-    });
-
-    // 5. Clone players with fresh tokens
-    const generatedTokens = new Set<string>();
-    for (const player of sourcePlayers) {
-      const token = await generateUniqueToken(ctx, generatedTokens);
-
-      await ctx.db.insert("sessionPlayers", {
-        sessionId: newSessionId,
-        role: player.role,
-        teamName: player.teamName,
-        token,
-        tokenExpiresAt: now + TOKEN_EXPIRY_MS,
-        isConnected: false,
-        hasVotedThisRound: false,
+      // Rate limit session creation (shared with createSession/createSessionFull — 50/hour per admin)
+      await rateLimiter.limit(ctx, "createSession", {
+        key: admin._id,
+        throws: true,
       });
-    }
 
-    // 6. Clone maps from source snapshots (all reset to AVAILABLE)
-    // Intentionally copies name/imageUrl from source sessionMaps rather than
-    // re-fetching from master maps table to preserve historical state.
-    await Promise.all(
-      sourceMaps.map((map) =>
-        ctx.db.insert("sessionMaps", {
+      // 1. Read source session
+      const source = await ctx.db.get(args.sessionId);
+      if (!source) throw new ConvexError("Session not found");
+      ev.setSession(source);
+
+      // 2. Read related data in parallel
+      const [sourcePlayers, sourceMaps] = await Promise.all([
+        ctx.db
+          .query("sessionPlayers")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
+          .collect(),
+        ctx.db
+          .query("sessionMaps")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
+          .collect(),
+      ]);
+
+      // 3. Build cloned matchName (truncate if needed to fit MAX_NAME_LENGTH)
+      const maxBase = MAX_NAME_LENGTH - CLONE_NAME_SUFFIX.length;
+      const baseName =
+        source.matchName.length > maxBase
+          ? source.matchName.slice(0, maxBase)
+          : source.matchName;
+      const clonedName = baseName + CLONE_NAME_SUFFIX;
+
+      // 4. Create new session
+      const now = Date.now();
+      const newSessionId = await ctx.db.insert("sessions", {
+        matchName: clonedName,
+        format: source.format,
+        status: "DRAFT",
+        turnTimerSeconds: source.turnTimerSeconds,
+        mapPoolSize: source.mapPoolSize,
+        playerCount: source.playerCount,
+        currentTurn: 0,
+        currentRound: 1,
+        createdBy: admin._id,
+        updatedAt: now,
+        expiresAt: now + SESSION_EXPIRY_MS,
+      });
+
+      // 5. Clone players with fresh tokens
+      const generatedTokens = new Set<string>();
+      for (const player of sourcePlayers) {
+        const token = await generateUniqueToken(ctx, generatedTokens);
+
+        await ctx.db.insert("sessionPlayers", {
           sessionId: newSessionId,
-          mapId: map.mapId,
-          name: map.name,
-          imageUrl: map.imageUrl,
-          state: "AVAILABLE",
-        })
-      )
-    );
+          role: player.role,
+          teamName: player.teamName,
+          token,
+          tokenExpiresAt: now + TOKEN_EXPIRY_MS,
+          isConnected: false,
+          hasVotedThisRound: false,
+        });
+      }
 
-    // 7. Audit log on BOTH sessions
-    await Promise.all([
-      logAction(ctx, {
-        sessionId: args.sessionId,
-        action: "SESSION_CLONED",
-        actorType: "ADMIN",
-        actorId: admin._id,
-        details: { reason: `Cloned to ${newSessionId}` },
-      }),
-      logAction(ctx, {
-        sessionId: newSessionId,
-        action: "SESSION_CLONED",
-        actorType: "ADMIN",
-        actorId: admin._id,
-        details: { reason: `Cloned from ${args.sessionId}` },
-      }),
-    ]);
+      // 6. Clone maps from source snapshots (all reset to AVAILABLE)
+      // Intentionally copies name/imageUrl from source sessionMaps rather than
+      // re-fetching from master maps table to preserve historical state.
+      await Promise.all(
+        sourceMaps.map((map) =>
+          ctx.db.insert("sessionMaps", {
+            sessionId: newSessionId,
+            mapId: map.mapId,
+            name: map.name,
+            imageUrl: map.imageUrl,
+            state: "AVAILABLE",
+          })
+        )
+      );
 
-    return { newSessionId };
+      // 7. Audit log on BOTH sessions
+      await Promise.all([
+        logAction(ctx, {
+          sessionId: args.sessionId,
+          action: "SESSION_CLONED",
+          actorType: "ADMIN",
+          actorId: admin._id,
+          details: { reason: `Cloned to ${newSessionId}` },
+        }),
+        logAction(ctx, {
+          sessionId: newSessionId,
+          action: "SESSION_CLONED",
+          actorType: "ADMIN",
+          actorId: admin._id,
+          details: { reason: `Cloned from ${args.sessionId}` },
+        }),
+      ]);
+
+      ev.set("newSessionId", newSessionId);
+      ev.setOutcome("ok");
+      return { newSessionId };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
+    }
   },
 });
 
@@ -1597,54 +1789,68 @@ export const forceRandomSelection = mutation({
   args: { sessionId: v.id("sessions") },
   returns: v.object({ success: v.boolean(), winnerMapName: v.string() }),
   handler: async (ctx, args) => {
-    const admin = await requireAdmin(ctx);
+    const ev = createWideEvent("sessions", "forceRandomSelection", "mutation");
+    const startTime = Date.now();
+    try {
+      const admin = await requireAdmin(ctx);
+      ev.setAdmin(admin);
 
-    const session = await ctx.db.get(args.sessionId);
-    if (!session) throw new ConvexError("Session not found");
+      const session = await ctx.db.get(args.sessionId);
+      if (!session) throw new ConvexError("Session not found");
+      ev.setSession(session);
 
-    // Validate IN_PROGRESS or PAUSED → COMPLETE is allowed
-    validateTransition(session.status, "COMPLETE");
+      // Validate IN_PROGRESS or PAUSED → COMPLETE is allowed
+      validateTransition(session.status, "COMPLETE");
 
-    // Get all available maps
-    const availableMaps = await ctx.db
-      .query("sessionMaps")
-      .withIndex("by_sessionId_and_state", (q) =>
-        q.eq("sessionId", session._id).eq("state", "AVAILABLE")
-      )
-      .collect();
+      // Get all available maps
+      const availableMaps = await ctx.db
+        .query("sessionMaps")
+        .withIndex("by_sessionId_and_state", (q) =>
+          q.eq("sessionId", session._id).eq("state", "AVAILABLE")
+        )
+        .collect();
 
-    if (availableMaps.length === 0) {
-      throw new ConvexError("No available maps to select from");
+      if (availableMaps.length === 0) {
+        throw new ConvexError("No available maps to select from");
+      }
+
+      // CSPRNG selection (matching resolveRound pattern)
+      const winnerMap = pickRandom(availableMaps);
+      ev.setMap(winnerMap);
+
+      // Ban all other available maps (with metadata so buildRoundHistory sorts correctly)
+      const otherMaps = availableMaps.filter((m) => m._id !== winnerMap._id);
+      const banPatch =
+        session.format === "ABBA"
+          ? { state: "BANNED" as const, bannedAtTurn: session.currentTurn }
+          : { state: "BANNED" as const, bannedAtRound: session.currentRound };
+      await Promise.all(otherMaps.map((m) => ctx.db.patch(m._id, banPatch)));
+
+      // Log RANDOM_SELECTION audit event
+      await logAction(ctx, {
+        sessionId: session._id,
+        action: "RANDOM_SELECTION",
+        actorType: "ADMIN",
+        actorId: admin._id,
+        details: {
+          mapId: winnerMap._id,
+          mapName: winnerMap.name,
+          reason: "ADMIN_FORCE",
+        },
+      });
+
+      // Complete session (marks winner, patches status, logs WINNER_DECLARED)
+      await completeSession(ctx, session, winnerMap, { reason: "ADMIN_FORCE" });
+
+      ev.setOutcome("ok");
+      return { success: true, winnerMapName: winnerMap.name };
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    // CSPRNG selection (matching resolveRound pattern)
-    const winnerMap = pickRandom(availableMaps);
-
-    // Ban all other available maps (with metadata so buildRoundHistory sorts correctly)
-    const otherMaps = availableMaps.filter((m) => m._id !== winnerMap._id);
-    const banPatch =
-      session.format === "ABBA"
-        ? { state: "BANNED" as const, bannedAtTurn: session.currentTurn }
-        : { state: "BANNED" as const, bannedAtRound: session.currentRound };
-    await Promise.all(otherMaps.map((m) => ctx.db.patch(m._id, banPatch)));
-
-    // Log RANDOM_SELECTION audit event
-    await logAction(ctx, {
-      sessionId: session._id,
-      action: "RANDOM_SELECTION",
-      actorType: "ADMIN",
-      actorId: admin._id,
-      details: {
-        mapId: winnerMap._id,
-        mapName: winnerMap.name,
-        reason: "ADMIN_FORCE",
-      },
-    });
-
-    // Complete session (marks winner, patches status, logs WINNER_DECLARED)
-    await completeSession(ctx, session, winnerMap, { reason: "ADMIN_FORCE" });
-
-    return { success: true, winnerMapName: winnerMap.name };
   },
 });
 

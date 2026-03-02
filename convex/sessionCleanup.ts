@@ -18,6 +18,7 @@ import { completeSession, transitionSession } from "./lib/sessionLifecycle";
 import { pickRandom } from "./lib/random";
 
 import { logAction } from "./audit";
+import { createWideEvent } from "./lib/wideEvent";
 
 // ============================================================================
 // Internal Mutations
@@ -40,37 +41,44 @@ export const clearSessionIpAddresses = internalMutation({
     clearedCount: v.number(),
   }),
   handler: async (ctx, args) => {
-    const { sessionId } = args;
+    const ev = createWideEvent("sessionCleanup", "clearSessionIpAddresses", "internalMutation");
+    const startTime = Date.now();
+    try {
+      const { sessionId } = args;
+      ev.set("sessionId", sessionId);
 
-    // Get all players in the session
-    const players = await ctx.db
-      .query("sessionPlayers")
-      .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
-      .collect();
+      // Get all players in the session
+      const players = await ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+        .collect();
 
-    let clearedCount = 0;
-    const now = Date.now();
+      let clearedCount = 0;
+      const now = Date.now();
 
-    // Clear IP addresses and invalidate tokens for players
-    for (const player of players) {
-      if (player.ipAddress || player.tokenExpiresAt > now) {
-        await ctx.db.patch(player._id, {
-          ipAddress: undefined,
-          tokenExpiresAt: Math.min(player.tokenExpiresAt, now),
-        });
-        if (player.ipAddress) {
-          clearedCount++;
+      // Clear IP addresses and invalidate tokens for players
+      for (const player of players) {
+        if (player.ipAddress || player.tokenExpiresAt > now) {
+          await ctx.db.patch(player._id, {
+            ipAddress: undefined,
+            tokenExpiresAt: Math.min(player.tokenExpiresAt, now),
+          });
+          if (player.ipAddress) {
+            clearedCount++;
+          }
         }
       }
-    }
 
-    if (clearedCount > 0) {
-      console.log(
-        `Cleared ${clearedCount} IP address(es) from session ${sessionId}`
-      );
+      ev.set("clearedCount", clearedCount);
+      ev.setOutcome("ok");
+      return { clearedCount };
+    } catch (err) {
+      ev.setError(err);
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    return { clearedCount };
   },
 });
 
@@ -93,70 +101,77 @@ export const expireStaleSessions = internalMutation({
     ipsClearedCount: v.number(),
   }),
   handler: async (ctx) => {
-    const now = Date.now();
+    const ev = createWideEvent("sessionCleanup", "expireStaleSessions", "internalMutation");
+    const startTime = Date.now();
+    try {
+      const now = Date.now();
 
-    // Find sessions that have passed their expiration time
-    // Only expire sessions in DRAFT or WAITING status
-    const staleSessions = await ctx.db
-      .query("sessions")
-      .withIndex("by_expiresAt", (q) => q.lt("expiresAt", now))
-      .collect();
-
-    // Filter to only DRAFT and WAITING sessions (others shouldn't auto-expire)
-    const sessionsToExpire = staleSessions.filter(
-      (s) => s.status === "DRAFT" || s.status === "WAITING"
-    );
-
-    let expiredCount = 0;
-    let totalIpsCleared = 0;
-
-    for (const session of sessionsToExpire) {
-      // Update session status to EXPIRED
-      await ctx.db.patch(session._id, {
-        status: "EXPIRED" as const,
-        updatedAt: now,
-      });
-
-      // Clear IP addresses for privacy compliance
-      const players = await ctx.db
-        .query("sessionPlayers")
-        .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+      // Find sessions that have passed their expiration time
+      // Only expire sessions in DRAFT or WAITING status
+      const staleSessions = await ctx.db
+        .query("sessions")
+        .withIndex("by_expiresAt", (q) => q.lt("expiresAt", now))
         .collect();
 
-      for (const player of players) {
-        if (player.ipAddress || player.tokenExpiresAt > now) {
-          await ctx.db.patch(player._id, {
-            ipAddress: undefined,
-            tokenExpiresAt: Math.min(player.tokenExpiresAt, now),
-          });
-          if (player.ipAddress) {
-            totalIpsCleared++;
+      // Filter to only DRAFT and WAITING sessions (others shouldn't auto-expire)
+      const sessionsToExpire = staleSessions.filter(
+        (s) => s.status === "DRAFT" || s.status === "WAITING"
+      );
+
+      let expiredCount = 0;
+      let totalIpsCleared = 0;
+
+      for (const session of sessionsToExpire) {
+        // Update session status to EXPIRED
+        await ctx.db.patch(session._id, {
+          status: "EXPIRED" as const,
+          updatedAt: now,
+        });
+
+        // Clear IP addresses for privacy compliance
+        const players = await ctx.db
+          .query("sessionPlayers")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+          .collect();
+
+        for (const player of players) {
+          if (player.ipAddress || player.tokenExpiresAt > now) {
+            await ctx.db.patch(player._id, {
+              ipAddress: undefined,
+              tokenExpiresAt: Math.min(player.tokenExpiresAt, now),
+            });
+            if (player.ipAddress) {
+              totalIpsCleared++;
+            }
           }
         }
+
+        // Create audit log entry for expiration
+        await ctx.db.insert("auditLogs", {
+          sessionId: session._id,
+          action: "SESSION_EXPIRED",
+          actorType: "SYSTEM",
+          details: {},
+          timestamp: now,
+        });
+
+        expiredCount++;
       }
 
-      // Create audit log entry for expiration
-      await ctx.db.insert("auditLogs", {
-        sessionId: session._id,
-        action: "SESSION_EXPIRED",
-        actorType: "SYSTEM",
-        details: {},
-        timestamp: now,
-      });
-
-      expiredCount++;
+      ev.set("expiredCount", expiredCount);
+      ev.set("ipsClearedCount", totalIpsCleared);
+      ev.setOutcome(expiredCount > 0 ? "ok" : "noop");
+      return {
+        expiredCount,
+        ipsClearedCount: totalIpsCleared,
+      };
+    } catch (err) {
+      ev.setError(err);
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    if (expiredCount > 0) {
-      console.log(
-        `Expired ${expiredCount} stale session(s), cleared ${totalIpsCleared} IP address(es)`
-      );
-    }
-
-    return {
-      expiredCount,
-      ipsClearedCount: totalIpsCleared,
-    };
   },
 });
 
@@ -176,58 +191,65 @@ export const clearCompletedSessionIps = internalMutation({
     ipsClearedCount: v.number(),
   }),
   handler: async (ctx) => {
-    // Find completed sessions that may still have IP addresses stored
-    const completedSessions = await ctx.db
-      .query("sessions")
-      .withIndex("by_status", (q) => q.eq("status", "COMPLETE"))
-      .collect();
-
-    let sessionsProcessed = 0;
-    let totalIpsCleared = 0;
-
-    for (const session of completedSessions) {
-      const players = await ctx.db
-        .query("sessionPlayers")
-        .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+    const ev = createWideEvent("sessionCleanup", "clearCompletedSessionIps", "internalMutation");
+    const startTime = Date.now();
+    try {
+      // Find completed sessions that may still have IP addresses stored
+      const completedSessions = await ctx.db
+        .query("sessions")
+        .withIndex("by_status", (q) => q.eq("status", "COMPLETE"))
         .collect();
 
-      const now = Date.now();
+      let sessionsProcessed = 0;
+      let totalIpsCleared = 0;
 
-      // Skip sessions where all players are already cleaned
-      const hasDataToClean = players.some(
-        (p) => p.ipAddress || p.tokenExpiresAt > now
-      );
-      if (!hasDataToClean) continue;
+      for (const session of completedSessions) {
+        const players = await ctx.db
+          .query("sessionPlayers")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+          .collect();
 
-      let sessionHadIps = false;
-      for (const player of players) {
-        if (player.ipAddress || player.tokenExpiresAt > now) {
-          await ctx.db.patch(player._id, {
-            ipAddress: undefined,
-            tokenExpiresAt: Math.min(player.tokenExpiresAt, now),
-          });
-          if (player.ipAddress) {
-            totalIpsCleared++;
-            sessionHadIps = true;
+        const now = Date.now();
+
+        // Skip sessions where all players are already cleaned
+        const hasDataToClean = players.some(
+          (p) => p.ipAddress || p.tokenExpiresAt > now
+        );
+        if (!hasDataToClean) continue;
+
+        let sessionHadIps = false;
+        for (const player of players) {
+          if (player.ipAddress || player.tokenExpiresAt > now) {
+            await ctx.db.patch(player._id, {
+              ipAddress: undefined,
+              tokenExpiresAt: Math.min(player.tokenExpiresAt, now),
+            });
+            if (player.ipAddress) {
+              totalIpsCleared++;
+              sessionHadIps = true;
+            }
           }
+        }
+
+        if (sessionHadIps) {
+          sessionsProcessed++;
         }
       }
 
-      if (sessionHadIps) {
-        sessionsProcessed++;
-      }
+      ev.set("sessionsProcessed", sessionsProcessed);
+      ev.set("ipsClearedCount", totalIpsCleared);
+      ev.setOutcome(totalIpsCleared > 0 ? "ok" : "noop");
+      return {
+        sessionsProcessed,
+        ipsClearedCount: totalIpsCleared,
+      };
+    } catch (err) {
+      ev.setError(err);
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    if (totalIpsCleared > 0) {
-      console.log(
-        `Cleared ${totalIpsCleared} IP address(es) from ${sessionsProcessed} completed session(s)`
-      );
-    }
-
-    return {
-      sessionsProcessed,
-      ipsClearedCount: totalIpsCleared,
-    };
   },
 });
 
@@ -258,198 +280,197 @@ export const handleTimerExpiry = internalMutation({
   },
   returns: v.object({ processed: v.boolean() }),
   handler: async (ctx, args) => {
-    // Guard: re-read session and verify timer is still expired
-    const session = await ctx.db.get(args.sessionId);
-    if (!session) {
-      console.log(`Timer expiry no-op: session ${args.sessionId} not found`);
-      return { processed: false };
-    }
-    if (session.status !== "IN_PROGRESS") {
-      console.log(`Timer expiry no-op: session ${args.sessionId} status is ${session.status}`);
-      return { processed: false };
-    }
-    if (session.timerStartedAt !== args.expectedTimerStartedAt) {
-      console.log(`Timer expiry no-op: session ${args.sessionId} timerStartedAt changed (expected ${args.expectedTimerStartedAt}, got ${session.timerStartedAt})`);
-      return { processed: false };
-    }
-    if (session.timerPausedAt !== undefined) {
-      console.log(`Timer expiry no-op: session ${args.sessionId} timer is paused`);
-      return { processed: false };
-    }
+    const ev = createWideEvent("sessionCleanup", "handleTimerExpiry", "internalMutation");
+    const startTime = Date.now();
+    try {
+      ev.set("sessionId", args.sessionId);
+      ev.set("format", args.format);
 
-    if (args.format === "ABBA") {
-      // --- ABBA: auto-ban a random map for the active player ---
-      // TIMER_EXPIRED audit: uses turn + teamName (turn-based format)
-      // See MULTIPLAYER path below for its variant (uses round + unvoted count)
+      // Guard: re-read session and verify timer is still expired
+      const session = await ctx.db.get(args.sessionId);
+      if (!session) {
+        ev.set("noopReason", "session_not_found");
+        ev.setOutcome("noop");
+        return { processed: false };
+      }
+      ev.setSession(session);
+      if (session.status !== "IN_PROGRESS") {
+        ev.set("noopReason", `status_${session.status}`);
+        ev.setOutcome("noop");
+        return { processed: false };
+      }
+      if (session.timerStartedAt !== args.expectedTimerStartedAt) {
+        ev.set("noopReason", "timer_changed");
+        ev.setOutcome("noop");
+        return { processed: false };
+      }
+      if (session.timerPausedAt !== undefined) {
+        ev.set("noopReason", "timer_paused");
+        ev.setOutcome("noop");
+        return { processed: false };
+      }
 
-      // Get players sorted by join order to determine active player
+      if (args.format === "ABBA") {
+        // --- ABBA: auto-ban a random map for the active player ---
+        const allPlayers = await ctx.db
+          .query("sessionPlayers")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+          .collect();
+        const sortedPlayers = sortPlayersByJoinOrder(allPlayers);
+        const activePlayerIndex = getActivePlayerIndex(session.currentTurn);
+        const activePlayer = sortedPlayers[activePlayerIndex];
+
+        if (!activePlayer) {
+          ev.setError(`No active player at index ${activePlayerIndex}`);
+          return { processed: false };
+        }
+
+        const availableMaps = await ctx.db
+          .query("sessionMaps")
+          .withIndex("by_sessionId_and_state", (q) =>
+            q.eq("sessionId", session._id).eq("state", "AVAILABLE")
+          )
+          .collect();
+
+        if (availableMaps.length === 0) {
+          ev.setError("No available maps");
+          return { processed: false };
+        }
+
+        await logAction(ctx, {
+          sessionId: session._id,
+          action: "TIMER_EXPIRED",
+          actorType: "SYSTEM",
+          details: {
+            turn: session.currentTurn,
+            teamName: activePlayer.teamName,
+            reason: "AUTO_EXPIRED",
+          },
+        });
+
+        if (availableMaps.length === 1) {
+          await completeSession(ctx, session, availableMaps[0], {
+            turn: session.currentTurn,
+            reason: "Last map standing (timer expired, auto-completed)",
+          });
+          ev.setOutcome("ok");
+          return { processed: true };
+        }
+
+        const targetMap = pickRandom(availableMaps);
+        ev.setMap(targetMap);
+        await executeBan(ctx, {
+          session,
+          player: activePlayer,
+          targetMap,
+          submittedByAdmin: false,
+          actorType: "SYSTEM",
+        });
+
+        ev.setOutcome("ok");
+        return { processed: true };
+      }
+
+      // --- MULTIPLAYER: resolve with submitted votes only ---
       const allPlayers = await ctx.db
         .query("sessionPlayers")
         .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
         .collect();
-      const sortedPlayers = sortPlayersByJoinOrder(allPlayers);
-      const activePlayerIndex = getActivePlayerIndex(session.currentTurn);
-      const activePlayer = sortedPlayers[activePlayerIndex];
 
-      if (!activePlayer) {
-        console.error(
-          `Timer expiry: no active player at index ${activePlayerIndex} for session ${session._id}`
-        );
+      const unvotedPlayers = allPlayers.filter((p) => !p.hasVotedThisRound);
+
+      if (unvotedPlayers.length === 0) {
+        ev.set("noopReason", "all_voted");
+        ev.setOutcome("noop");
         return { processed: false };
       }
 
-      // Get available maps
-      const availableMaps = await ctx.db
-        .query("sessionMaps")
-        .withIndex("by_sessionId_and_state", (q) =>
-          q.eq("sessionId", session._id).eq("state", "AVAILABLE")
-        )
-        .collect();
+      const votedCount = allPlayers.length - unvotedPlayers.length;
+      ev.set("votedCount", votedCount);
+      ev.set("unvotedCount", unvotedPlayers.length);
 
-      if (availableMaps.length === 0) {
-        console.error(
-          `Timer expiry: no available maps for session ${session._id}`
-        );
-        return { processed: false };
-      }
-
-      // Log timer expiry audit event (common to both paths below)
       await logAction(ctx, {
         sessionId: session._id,
         action: "TIMER_EXPIRED",
         actorType: "SYSTEM",
         details: {
-          turn: session.currentTurn,
-          teamName: activePlayer.teamName,
-          reason: "AUTO_EXPIRED",
+          round: session.currentRound,
+          reason: `AUTO_EXPIRED (${unvotedPlayers.length} unvoted)`,
         },
       });
 
-      // If only one map remains, declare it the winner immediately
-      // (don't ban the last map — that would leave zero available maps)
-      if (availableMaps.length === 1) {
-        await completeSession(ctx, session, availableMaps[0], {
-          turn: session.currentTurn,
-          reason: "Last map standing (timer expired, auto-completed)",
+      if (votedCount === 0) {
+        const availableMaps = await ctx.db
+          .query("sessionMaps")
+          .withIndex("by_sessionId_and_state", (q) =>
+            q.eq("sessionId", session._id).eq("state", "AVAILABLE")
+          )
+          .collect();
+
+        if (availableMaps.length === 0) {
+          ev.setError("No available maps");
+          return { processed: false };
+        }
+
+        if (availableMaps.length === 1) {
+          await completeSession(ctx, session, availableMaps[0], {
+            round: session.currentRound,
+            reason: "Last map standing (no votes, auto-completed)",
+          });
+          ev.setOutcome("ok");
+          return { processed: true };
+        }
+
+        const targetMap = pickRandom(availableMaps);
+        ev.setMap(targetMap);
+        await ctx.db.patch(targetMap._id, {
+          state: "BANNED",
+          voteCount: 0,
+          bannedAtRound: session.currentRound,
+          bannedByTeamNames: [],
         });
-        return { processed: true };
-      }
 
-      // Pick random map and execute ban
-      // executeBan handles scheduling the next timer internally
-      const targetMap = pickRandom(availableMaps);
-      await executeBan(ctx, {
-        session,
-        player: activePlayer,
-        targetMap,
-        submittedByAdmin: false,
-        actorType: "SYSTEM",
-      });
+        await logAction(ctx, {
+          sessionId: session._id,
+          action: "MAP_BANNED",
+          actorType: "SYSTEM",
+          details: {
+            mapId: targetMap._id,
+            mapName: targetMap.name,
+            round: session.currentRound,
+            reason: "NO_VOTES_RANDOM",
+          },
+        });
 
-      return { processed: true };
-    }
-
-    // --- MULTIPLAYER: resolve with submitted votes only (ignore non-voters) ---
-    // TIMER_EXPIRED audit: uses round + unvoted count (round-based format)
-    // See ABBA path above for its variant (uses turn + teamName)
-
-    const allPlayers = await ctx.db
-      .query("sessionPlayers")
-      .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
-      .collect();
-
-    const unvotedPlayers = allPlayers.filter((p) => !p.hasVotedThisRound);
-
-    if (unvotedPlayers.length === 0) {
-      // All players already voted — round should have resolved
-      return { processed: false };
-    }
-
-    const votedCount = allPlayers.length - unvotedPlayers.length;
-
-    // Log timer expiry audit event
-    await logAction(ctx, {
-      sessionId: session._id,
-      action: "TIMER_EXPIRED",
-      actorType: "SYSTEM",
-      details: {
-        round: session.currentRound,
-        reason: `AUTO_EXPIRED (${unvotedPlayers.length} unvoted)`,
-      },
-    });
-
-    if (votedCount === 0) {
-      // Zero votes submitted — pick a random map to eliminate
-      const availableMaps = await ctx.db
-        .query("sessionMaps")
-        .withIndex("by_sessionId_and_state", (q) =>
-          q.eq("sessionId", session._id).eq("state", "AVAILABLE")
-        )
-        .collect();
-
-      if (availableMaps.length === 0) {
-        console.error(
-          `Timer expiry: no available maps for session ${session._id}`
+        const remainingMaps = availableMaps.filter(
+          (m) => m._id !== targetMap._id
         );
-        return { processed: false };
-      }
 
-      // If only one map remains, declare it the winner immediately
-      if (availableMaps.length === 1) {
-        await completeSession(ctx, session, availableMaps[0], {
-          round: session.currentRound,
-          reason: "Last map standing (no votes, auto-completed)",
-        });
-        return { processed: true };
-      }
-
-      const targetMap = pickRandom(availableMaps);
-      await ctx.db.patch(targetMap._id, {
-        state: "BANNED",
-        voteCount: 0,
-        bannedAtRound: session.currentRound,
-        bannedByTeamNames: [],
-      });
-
-      await logAction(ctx, {
-        sessionId: session._id,
-        action: "MAP_BANNED",
-        actorType: "SYSTEM",
-        details: {
-          mapId: targetMap._id,
-          mapName: targetMap.name,
-          round: session.currentRound,
-          reason: "NO_VOTES_RANDOM",
-        },
-      });
-
-      // Check remaining maps after random elimination
-      const remainingMaps = availableMaps.filter(
-        (m) => m._id !== targetMap._id
-      );
-
-      if (remainingMaps.length === 1) {
-        // Winner found
-        await completeSession(ctx, session, remainingMaps[0], {
-          round: session.currentRound,
-          reason: "Last map standing after no-vote random elimination",
-        });
+        if (remainingMaps.length === 1) {
+          await completeSession(ctx, session, remainingMaps[0], {
+            round: session.currentRound,
+            reason: "Last map standing after no-vote random elimination",
+          });
+        } else {
+          await advanceRound(
+            ctx,
+            session,
+            `1 map randomly eliminated (no votes), ${remainingMaps.length} remain`
+          );
+        }
       } else {
-        // Advance to next round (remainingMaps.length > 1 guaranteed by early return above)
-        await advanceRound(
-          ctx,
-          session,
-          `1 map randomly eliminated (no votes), ${remainingMaps.length} remain`
-        );
+        await resolveRound(ctx, session);
       }
-    } else {
-      // Partial votes submitted — resolve round with only submitted votes.
-      // resolveRound reads from the votes table (only submitted votes) and
-      // handles resetVoteFlags, scheduling, and round advancement internally.
-      await resolveRound(ctx, session);
-    }
 
-    return { processed: true };
+      ev.setOutcome("ok");
+      return { processed: true };
+    } catch (err) {
+      ev.setError(err);
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
+    }
   },
 });
 
@@ -478,94 +499,95 @@ export const checkHeartbeatTimeouts = internalMutation({
     pausedSessionCount: v.number(),
   }),
   handler: async (ctx) => {
-    const now = Date.now();
-    let disconnectedPlayerCount = 0;
-    let pausedSessionCount = 0;
+    const ev = createWideEvent("sessionCleanup", "checkHeartbeatTimeouts", "internalMutation");
+    const startTime = Date.now();
+    try {
+      const now = Date.now();
+      let disconnectedPlayerCount = 0;
+      let pausedSessionCount = 0;
 
-    // Collect IN_PROGRESS and WAITING sessions.
-    // Safe for current scale (~10 concurrent sessions). If the system grows
-    // beyond ~100 concurrent sessions, consider paginating with .take(N)
-    // and scheduling follow-up cron runs for remaining sessions.
-    const [inProgressSessions, waitingSessions] = await Promise.all([
-      ctx.db
-        .query("sessions")
-        .withIndex("by_status", (q) => q.eq("status", "IN_PROGRESS"))
-        .collect(),
-      ctx.db
-        .query("sessions")
-        .withIndex("by_status", (q) => q.eq("status", "WAITING"))
-        .collect(),
-    ]);
-    const sessions = [...inProgressSessions, ...waitingSessions];
+      // Collect IN_PROGRESS and WAITING sessions.
+      const [inProgressSessions, waitingSessions] = await Promise.all([
+        ctx.db
+          .query("sessions")
+          .withIndex("by_status", (q) => q.eq("status", "IN_PROGRESS"))
+          .collect(),
+        ctx.db
+          .query("sessions")
+          .withIndex("by_status", (q) => q.eq("status", "WAITING"))
+          .collect(),
+      ]);
+      const sessions = [...inProgressSessions, ...waitingSessions];
 
-    for (const session of sessions) {
-      const players = await ctx.db
-        .query("sessionPlayers")
-        .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
-        .collect();
+      for (const session of sessions) {
+        const players = await ctx.db
+          .query("sessionPlayers")
+          .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+          .collect();
 
-      let sessionNeedsPause = false;
-      const isInProgress = session.status === "IN_PROGRESS";
+        let sessionNeedsPause = false;
+        const isInProgress = session.status === "IN_PROGRESS";
 
-      // Mark stale connected players as disconnected
-      for (const player of players) {
-        if (!player.isConnected) continue;
+        // Mark stale connected players as disconnected
+        for (const player of players) {
+          if (!player.isConnected) continue;
 
-        // Skip players that haven't completed a heartbeat cycle yet
-        if (player.lastHeartbeat === undefined) continue;
-        if (player.lastHeartbeat >= now - HEARTBEAT_TIMEOUT_MS) continue;
+          // Skip players that haven't completed a heartbeat cycle yet
+          if (player.lastHeartbeat === undefined) continue;
+          if (player.lastHeartbeat >= now - HEARTBEAT_TIMEOUT_MS) continue;
 
-        await ctx.db.patch(player._id, { isConnected: false });
-        disconnectedPlayerCount++;
+          await ctx.db.patch(player._id, { isConnected: false });
+          disconnectedPlayerCount++;
 
-        // Only log audit events and auto-pause for IN_PROGRESS sessions
-        if (isInProgress) {
-          // Log per-player (not batched) to match existing audit patterns and enable
-          // per-player filtering. Acceptable write volume at current scale.
-          await logAction(ctx, {
-            sessionId: session._id,
-            action: "PLAYER_DISCONNECTED",
-            actorType: "SYSTEM",
-            details: { teamName: player.teamName },
-          });
+          // Only log audit events and auto-pause for IN_PROGRESS sessions
+          if (isInProgress) {
+            await logAction(ctx, {
+              sessionId: session._id,
+              action: "PLAYER_DISCONNECTED",
+              actorType: "SYSTEM",
+              details: { teamName: player.teamName },
+            });
 
-          // ABBA: pause for any disconnect (both players must be present)
-          // MULTIPLAYER: pause only if disconnected player hasn't voted this round
-          if (session.format === "ABBA") {
-            sessionNeedsPause = true;
-          } else if (session.format === "MULTIPLAYER" && !player.hasVotedThisRound) {
-            sessionNeedsPause = true;
+            // ABBA: pause for any disconnect (both players must be present)
+            // MULTIPLAYER: pause only if disconnected player hasn't voted this round
+            if (session.format === "ABBA") {
+              sessionNeedsPause = true;
+            } else if (session.format === "MULTIPLAYER" && !player.hasVotedThisRound) {
+              sessionNeedsPause = true;
+            }
+          }
+        }
+
+        // Re-read session to see this mutation's own writes
+        if (sessionNeedsPause) {
+          const freshSession = await ctx.db.get(session._id);
+          if (freshSession && freshSession.status === "IN_PROGRESS") {
+            await transitionSession(ctx, freshSession, "PAUSED", {
+              auditAction: "SESSION_PAUSED",
+              actorType: "SYSTEM",
+              patches: { timerPausedAt: now },
+              auditDetails: { reason: "PLAYER_DISCONNECT" },
+            });
+            pausedSessionCount++;
           }
         }
       }
 
-      // Re-read session to see this mutation's own writes (player disconnects above)
-      // and as a defensive habit for future-proofing. Convex OCC already prevents
-      // true concurrent conflicts by retrying the entire transaction on conflict.
-      if (sessionNeedsPause) {
-        const freshSession = await ctx.db.get(session._id);
-        if (freshSession && freshSession.status === "IN_PROGRESS") {
-          await transitionSession(ctx, freshSession, "PAUSED", {
-            auditAction: "SESSION_PAUSED",
-            actorType: "SYSTEM",
-            patches: { timerPausedAt: now },
-            auditDetails: { reason: "PLAYER_DISCONNECT" },
-          });
-          pausedSessionCount++;
-        }
-      }
+      ev.set("checkedSessionCount", sessions.length);
+      ev.set("disconnectedPlayerCount", disconnectedPlayerCount);
+      ev.set("pausedSessionCount", pausedSessionCount);
+      ev.setOutcome(disconnectedPlayerCount > 0 ? "ok" : "noop");
+      return {
+        checkedSessionCount: sessions.length,
+        disconnectedPlayerCount,
+        pausedSessionCount,
+      };
+    } catch (err) {
+      ev.setError(err);
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
     }
-
-    if (disconnectedPlayerCount > 0) {
-      console.log(
-        `Heartbeat check: ${disconnectedPlayerCount} player(s) disconnected, ${pausedSessionCount} session(s) paused`
-      );
-    }
-
-    return {
-      checkedSessionCount: sessions.length,
-      disconnectedPlayerCount,
-      pausedSessionCount,
-    };
   },
 });
