@@ -15,7 +15,7 @@ import { isReadyActive } from "@/lib/ready";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { audioManager } from "@/lib/audio";
-import { Lock, Loader2, CheckCircle2, Volume2, VolumeX } from "lucide-react";
+import { Lock, Loader2, CheckCircle2, Volume2, VolumeX, LogIn } from "lucide-react";
 import { TeamAvatar } from "@/components/session/team-avatar";
 import { useEffect, useState, useCallback, useRef } from "react";
 import { MAP_STAGGER_DELAY_MS } from "@/lib/animation";
@@ -43,11 +43,15 @@ function PlayerLobbyPage() {
     auth.isSubscriptionActive ? { token } : "skip"
   );
 
+  // Audio unlock gate — requires a user gesture before lobby sounds can play.
+  // Without this, a player who pastes the link and never interacts won't hear
+  // the player-ready sound when others ready up.
+  const [hasEntered, setHasEntered] = useState(false);
+
   // Ready button state
   const [readyLoading, setReadyLoading] = useState(false);
 
-  // Audio: importing audioManager attaches browser autoplay unlock listeners.
-  // The Ready Up click (or any interaction) triggers unlock before the vote page.
+  // Audio: the "Enter Lobby" gate above guarantees a user gesture before this point.
   const [muted, setMuted] = useState(() => audioManager.muted);
   const toggleMute = useCallback(() => {
     const newMuted = audioManager.toggleMute();
@@ -145,6 +149,90 @@ function PlayerLobbyPage() {
     return <SessionEndedPage reason="EXPIRED" />;
   }
 
+  // Audio consent gate — requires a user gesture to unlock browser autoplay.
+  // The player chooses sound on/off before entering the lobby, so the
+  // player-ready sound works reliably even if this is their first interaction.
+  if (!hasEntered) {
+    return (
+      <div className="min-h-screen bg-background p-6 flex items-center justify-center">
+        <div className="w-full max-w-md text-center space-y-8">
+          <div className="space-y-3">
+            <h1 className="text-3xl font-bold text-foreground">
+              {data.session.matchName}
+            </h1>
+            <Badge variant="outline" className="text-base px-4 py-1">
+              {data.session.format === "ABBA" ? "ABBA Ban" : "Multiplayer Vote"}
+            </Badge>
+          </div>
+
+          <Card className="p-6 border-primary/20">
+            <div className="flex items-center justify-center gap-4">
+              <TeamAvatar
+                name={data.player.teamName}
+                logoUrl={data.player.teamLogoUrl}
+                size="lg"
+              />
+              <div className="text-left min-w-0">
+                <p className="text-sm text-muted-foreground">Joining as</p>
+                <h2 className="text-2xl font-bold text-foreground truncate">
+                  {data.player.teamName}
+                </h2>
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-5 space-y-4">
+            <div className="flex items-center gap-3">
+              <Volume2 className="w-5 h-5 text-primary shrink-0" />
+              <p className="text-sm text-foreground text-left">
+                This session uses sound effects for ready alerts and voting cues.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={toggleMute}
+              className={cn(
+                "w-full flex items-center justify-between rounded-lg border px-4 py-3 transition-colors cursor-pointer",
+                muted
+                  ? "border-border bg-muted/50"
+                  : "border-primary/30 bg-primary/5"
+              )}
+            >
+              <span className="text-sm font-medium text-foreground">
+                Sound effects
+              </span>
+              <span
+                className={cn(
+                  "text-xs font-semibold px-2 py-0.5 rounded-full",
+                  muted
+                    ? "bg-muted text-muted-foreground"
+                    : "bg-green-500/15 text-green-500"
+                )}
+              >
+                {muted ? "OFF" : "ON"}
+              </span>
+            </button>
+
+            <p className="text-xs text-muted-foreground">
+              You can change this anytime in the lobby.
+            </p>
+          </Card>
+
+          <Button
+            size="lg"
+            className="gap-2 px-8 text-lg"
+            onClick={() => setHasEntered(true)}
+            autoFocus
+          >
+            <LogIn className="w-5 h-5" />
+            Enter Lobby
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   const { player, session, maps, otherPlayers } = data;
 
   const playerIsReady = isReadyActive(player.readyAt);
@@ -239,10 +327,8 @@ function PlayerLobbyPage() {
                 )}
                 {playerIsReady ? "Cancel Ready" : "Ready Up"}
               </Button>
-              {playerIsReady ? (
+              {playerIsReady && (
                 <p className="text-sm font-medium text-green-500">Ready!</p>
-              ) : (
-                <p className="text-xs text-muted-foreground">Enables sound effects</p>
               )}
             </div>
           )}
