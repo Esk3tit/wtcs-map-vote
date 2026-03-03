@@ -61,9 +61,14 @@ try {
 
 createRoot(document.getElementById('root')!, {
   onUncaughtError: Sentry.reactErrorHandler((error, errorInfo) => {
-    // ConvexError is intentional business logic — suppress console noise.
-    // Sentry suppression is handled separately via beforeSend in sentry.ts.
-    if (error instanceof Error && error.name === "ConvexError") return;
+    // ConvexError is intentional business logic, filtered from Sentry via beforeSend.
+    // Log in dev so unhandled throws are still visible during development.
+    if (error instanceof Error && error.name === "ConvexError") {
+      if (import.meta.env.DEV) {
+        console.warn("Uncaught ConvexError (suppressed in prod):", error, errorInfo.componentStack);
+      }
+      return;
+    }
     console.error("Uncaught error:", error, errorInfo.componentStack);
   }),
   onCaughtError: Sentry.reactErrorHandler(),
