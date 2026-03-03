@@ -420,9 +420,7 @@ export const playerReady = internalMutation({
         .collect();
 
       const allAssigned = allPlayers.length === session.playerCount;
-      const allReady = allPlayers.every(
-        (p) => p._id === player._id ? true : p.readyAt != null
-      );
+      const allReady = allPlayers.every((p) => p.readyAt != null);
       const allConnected = allPlayers.every((p) => p.isConnected);
       ev.set("allAssigned", allAssigned);
       ev.set("allReady", allReady);

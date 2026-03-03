@@ -335,7 +335,7 @@ function PlayerLobbyPage() {
 
           {/* Footer */}
           <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <p>The admin will start the session when all players are ready.</p>
+            <p>The session will start automatically when all players are ready.</p>
             <button
               type="button"
               onClick={toggleMute}

@@ -8,7 +8,9 @@ import { describe, it, expect } from "vitest";
 import { createTestContext } from "./test.setup";
 import {
   adminFactory,
+  mapFactory,
   sessionFactory,
+  sessionMapFactory,
   sessionPlayerFactory,
 } from "./test.factories";
 import { internal } from "./_generated/api";
@@ -830,6 +832,87 @@ describe("playerAuth.playerReady", () => {
 
       const player = await t.run(async (ctx) => ctx.db.get(playerId));
       expect(player?.readyAt).toBeGreaterThanOrEqual(before);
+    });
+  });
+
+  describe("auto-start", () => {
+    it("starts session when all players are ready and connected", async () => {
+      const t = createTestContext();
+
+      // Arrange: WAITING session with 2 players, both connected, with maps
+      const { sessionId, tokenA, tokenB, playerIdA, playerIdB } =
+        await t.run(async (ctx) => {
+          const adminId = await ctx.db.insert("admins", adminFactory());
+          const sid = await ctx.db.insert(
+            "sessions",
+            sessionFactory(adminId, {
+              status: "WAITING",
+              playerCount: 2,
+              mapPoolSize: 3,
+            })
+          );
+
+          const tA = crypto.randomUUID();
+          const pA = await ctx.db.insert(
+            "sessionPlayers",
+            sessionPlayerFactory(sid, {
+              token: tA,
+              teamName: "Team A",
+              ipAddress: "10.0.0.1",
+              isConnected: true,
+            })
+          );
+
+          const tB = crypto.randomUUID();
+          const pB = await ctx.db.insert(
+            "sessionPlayers",
+            sessionPlayerFactory(sid, {
+              token: tB,
+              teamName: "Team B",
+              ipAddress: "10.0.0.2",
+              isConnected: true,
+            })
+          );
+
+          // Add required maps
+          for (let i = 0; i < 3; i++) {
+            const mapId = await ctx.db.insert("maps", mapFactory({ name: `Map ${i + 1}` }));
+            await ctx.db.insert("sessionMaps", sessionMapFactory(sid, mapId, { name: `Map ${i + 1}` }));
+          }
+
+          return { sessionId: sid, tokenA: tA, tokenB: tB, playerIdA: pA, playerIdB: pB };
+        });
+
+      // Player A readies up
+      const r1 = await t.mutation(internal.playerAuth.playerReady, {
+        token: tokenA,
+        ipAddress: "10.0.0.1",
+      });
+      expect(r1).toEqual({ status: "ok", ready: true });
+
+      // Session should still be WAITING (only 1 of 2 ready)
+      const midSession = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(midSession?.status).toBe("WAITING");
+
+      // Player B readies up — should trigger auto-start
+      const before = Date.now();
+      const r2 = await t.mutation(internal.playerAuth.playerReady, {
+        token: tokenB,
+        ipAddress: "10.0.0.2",
+      });
+      expect(r2).toEqual({ status: "ok", ready: true });
+
+      // Session should now be IN_PROGRESS
+      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(session?.status).toBe("IN_PROGRESS");
+      expect(session?.startedAt).toBeGreaterThanOrEqual(before);
+      expect(session?.timerStartedAt).toBeGreaterThanOrEqual(before);
+
+      // All players should have readyAt cleared
+      const pA = await t.run(async (ctx) => ctx.db.get(playerIdA));
+      const pB = await t.run(async (ctx) => ctx.db.get(playerIdB));
+      expect(pA?.readyAt).toBeUndefined();
+      expect(pB?.readyAt).toBeUndefined();
     });
   });
 

@@ -184,12 +184,12 @@ function AdminConnectionBadge({
 }
 
 // ============================================================================
-// Player Ready Badge (self-contained timer to avoid full-page re-renders)
+// Player Ready Badge
 // ============================================================================
 
 /**
- * Displays a ready/not-ready badge for a player in the WAITING state.
- * Ready is a persistent toggle — no expiry timer needed.
+ * Displays a persistent ready/not-ready badge for a player in the WAITING state.
+ * Ready is a toggle with no expiry — stays active until manually cancelled.
  */
 function PlayerReadyBadge({ readyAt }: { readyAt?: number }) {
   const isPlayerReady = isReadyActive(readyAt);
