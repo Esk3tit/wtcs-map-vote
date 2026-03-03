@@ -18,7 +18,7 @@ function reportToPostHog(client: PostHogClient, metric: Metric) {
     vital_rating: metric.rating,
     vital_delta: metric.delta,
     vital_id: metric.id,
-    vital_navigationType: metric.navigationType,
+    vital_navigation_type: metric.navigationType,
   });
 }
 
@@ -35,16 +35,21 @@ function reportToConsole(metric: Metric) {
  * @param posthogClient - PostHog instance (null if not configured)
  */
 export function initWebVitals(posthogClient: PostHogClient | null) {
-  import("web-vitals").then(({ onCLS, onINP, onLCP, onFCP, onTTFB }) => {
-    const report = (metric: Metric) => {
-      if (import.meta.env.DEV) reportToConsole(metric);
-      if (posthogClient) reportToPostHog(posthogClient, metric);
-    };
+  import("web-vitals")
+    .then(({ onCLS, onINP, onLCP, onFCP, onTTFB }) => {
+      const report = (metric: Metric) => {
+        if (import.meta.env.DEV) reportToConsole(metric);
+        if (posthogClient) reportToPostHog(posthogClient, metric);
+      };
 
-    onCLS(report);
-    onINP(report);
-    onLCP(report);
-    onFCP(report);
-    onTTFB(report);
-  });
+      onCLS(report);
+      onINP(report);
+      onLCP(report);
+      onFCP(report);
+      onTTFB(report);
+    })
+    .catch(() => {
+      // Web Vitals is non-critical monitoring — silently swallow load failures
+      // to avoid triggering the "App update available" toast in main.tsx.
+    });
 }
