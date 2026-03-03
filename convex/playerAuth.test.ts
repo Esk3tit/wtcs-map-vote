@@ -955,17 +955,17 @@ describe("playerAuth.playerReady", () => {
           })
         );
 
-        // Player B: disconnected but ready
+        // Player B: disconnected but ready — only allConnected should block
         const tB = crypto.randomUUID();
-        await ctx.db.insert(
-          "sessionPlayers",
-          sessionPlayerFactory(sid, {
+        await ctx.db.insert("sessionPlayers", {
+          ...sessionPlayerFactory(sid, {
             token: tB,
             teamName: "Team B",
             ipAddress: "10.0.0.2",
             isConnected: false, // disconnected
-          })
-        );
+          }),
+          readyAt: Date.now(), // ready, so allReady won't block
+        });
 
         // Add required maps
         for (let i = 0; i < 3; i++) {

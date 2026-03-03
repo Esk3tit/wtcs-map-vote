@@ -51,6 +51,14 @@ if (import.meta.hot) {
 
 const convex = new ConvexReactClient(convexUrl);
 
+// Initialize Sentry synchronously so error handlers work from the first render.
+// Sentry.init() itself doesn't issue outbound requests during initialization.
+try {
+  initSentry(router);
+} catch {
+  // Sentry unavailable — app continues without error tracking
+}
+
 createRoot(document.getElementById('root')!, {
   onUncaughtError: Sentry.reactErrorHandler((error, errorInfo) => {
     // ConvexError is intentional business logic — suppress console noise.
@@ -74,15 +82,10 @@ createRoot(document.getElementById('root')!, {
   </StrictMode>,
 );
 
-// Defer analytics initialization so the page renders immediately.
-// If sentry.io or posthog.com are geo-blocked (e.g. Russia), this prevents
-// synchronous network requests from blocking React rendering.
+// Defer PostHog/Vitals initialization so the page renders immediately.
+// If posthog.com is geo-blocked (e.g. Russia), this prevents synchronous
+// network requests from blocking React rendering.
 setTimeout(() => {
-  try {
-    initSentry(router);
-  } catch {
-    // Sentry unavailable — app continues without error tracking
-  }
   try {
     const posthogClient = initPostHog();
     initWebVitals(posthogClient);
