@@ -1058,16 +1058,17 @@ describe("sessionCleanup.checkHeartbeatTimeouts", () => {
   // --------------------------------------------------------------------------
 
   describe("detection", () => {
-    it("marks stale connected player as disconnected", async () => {
+    it("marks stale connected player as disconnected and clears readyAt", async () => {
       const t = createTestContext();
       const staleTime = Date.now() - HEARTBEAT_TIMEOUT_MS - 1000;
       const { playerAId } = await createABBATimerSession(t);
 
-      // Set player A as connected with a stale heartbeat
+      // Set player A as connected, ready, with a stale heartbeat
       await t.run(async (ctx) => {
         await ctx.db.patch(playerAId, {
           isConnected: true,
           lastHeartbeat: staleTime,
+          readyAt: Date.now(),
         });
       });
 
@@ -1078,9 +1079,10 @@ describe("sessionCleanup.checkHeartbeatTimeouts", () => {
 
       expect(result.disconnectedPlayerCount).toBe(1);
 
-      // Verify player is now disconnected
+      // Verify player is now disconnected and readyAt is cleared
       const player = await t.run(async (ctx) => ctx.db.get(playerAId));
       expect(player?.isConnected).toBe(false);
+      expect(player?.readyAt).toBeUndefined();
     });
 
     it("skips players with fresh heartbeats", async () => {
