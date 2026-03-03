@@ -85,6 +85,9 @@ function PlayerLobbyPage() {
   }, [data, hasEntered]);
 
   const handleReady = useCallback(async () => {
+    // Capture toggle direction at click-time (before async/re-render)
+    const wasReady = data?.status === "valid" && isReadyActive(data.player.readyAt);
+    const action = wasReady ? "cancel ready" : "ready up";
     setReadyLoading(true);
     try {
       const res = await fetch(`${SITE_URL}/api/player/ready`, {
@@ -94,14 +97,14 @@ function PlayerLobbyPage() {
         signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) {
-        toast.error("Failed to ready up. Please try again.");
+        toast.error(`Failed to ${action}. Please try again.`);
       }
     } catch {
       toast.error("Network error. Please try again.");
     } finally {
       setReadyLoading(false);
     }
-  }, [token]);
+  }, [token, data]);
 
   // Auto-redirect based on session status (hook must be before early returns)
   const isRedirecting = useSessionStatusRedirect(data, token, "lobby");
