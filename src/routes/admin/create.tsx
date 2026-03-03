@@ -1,6 +1,7 @@
 import type React from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { usePaginatedQuery, useQuery, useMutation } from 'convex/react'
+import { usePostHog } from '@posthog/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import {
@@ -19,7 +20,6 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ArrowLeft, Users, UserCircle2, Check, ChevronsUpDown, Loader2 } from 'lucide-react'
 import { useState, useMemo } from 'react'
 import { cn } from '@/lib/utils'
-import { usePostHog } from '@posthog/react'
 import { toast } from 'sonner'
 import { getMutationErrorMessage } from '@/lib/errors'
 

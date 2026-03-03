@@ -11,6 +11,36 @@ const POSTHOG_KEY = import.meta.env.VITE_PUBLIC_POSTHOG_KEY;
 const POSTHOG_HOST =
   import.meta.env.VITE_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com";
 
+/** Redact player tokens from URL paths: /vote/{token} → /vote/[REDACTED] */
+const redactPath = (path: string) =>
+  path.replace(/\/(vote|lobby)\/[^/?#]+/g, "/$1/[REDACTED]");
+
+/** Redact tokens from a full URL (path segments + ?token= query param) */
+function redactUrl(url: string): string {
+  try {
+    const parsed = new URL(url);
+    parsed.pathname = redactPath(parsed.pathname);
+    if (parsed.searchParams.has("token")) {
+      parsed.searchParams.set("token", "[REDACTED]");
+    }
+    return parsed.toString();
+  } catch {
+    return redactPath(url);
+  }
+}
+
+/** All PostHog properties that contain full URLs */
+const URL_PROPERTIES = [
+  "$current_url",
+  "$referrer",
+  "$initial_referrer",
+  "$initial_current_url",
+  "$session_entry_url",
+] as const;
+
+/** All PostHog properties that contain path-only values */
+const PATH_PROPERTIES = ["$pathname", "$session_entry_pathname"] as const;
+
 /**
  * Initialize PostHog analytics.
  * Returns the PostHog instance if configured, null otherwise.
@@ -31,34 +61,22 @@ export function initPostHog(): typeof posthog | null {
 
     // Privacy
     persistence: "localStorage",
-    disable_session_recording: false,
     session_recording: {
       maskAllInputs: true,
     },
 
-    // Strip player tokens from URLs before capture
+    // Strip player tokens from all URL-bearing properties before capture
     sanitize_properties: (properties) => {
-      const redactPath = (path: string) =>
-        path.replace(/\/(vote|lobby)\/[^/?#]+/g, "/$1/[REDACTED]");
-
-      if (typeof properties.$pathname === "string") {
-        properties.$pathname = redactPath(properties.$pathname);
-      }
-
-      if (typeof properties.$current_url === "string") {
-        try {
-          const url = new URL(properties.$current_url);
-          url.pathname = redactPath(url.pathname);
-          if (url.searchParams.has("token")) {
-            url.searchParams.set("token", "[REDACTED]");
-          }
-          properties.$current_url = url.toString();
-        } catch {
-          // Fallback for non-parseable URLs
-          properties.$current_url = redactPath(properties.$current_url);
+      for (const key of URL_PROPERTIES) {
+        if (typeof properties[key] === "string") {
+          properties[key] = redactUrl(properties[key]);
         }
       }
-
+      for (const key of PATH_PROPERTIES) {
+        if (typeof properties[key] === "string") {
+          properties[key] = redactPath(properties[key]);
+        }
+      }
       return properties;
     },
 
@@ -68,5 +86,3 @@ export function initPostHog(): typeof posthog | null {
 
   return posthog;
 }
-
-export { posthog };

@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
+import { usePostHog } from "@posthog/react";
 import { api } from "../../convex/_generated/api";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -35,7 +36,6 @@ import { audioManager } from "@/lib/audio";
 import { useAudioAlerts } from "@/hooks/useAudioAlerts";
 import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
 import { SITE_URL } from "@/lib/convexHttp";
-import { usePostHog } from "@posthog/react";
 import { cn } from "@/lib/utils";
 import { PlayerRouteErrorComponent } from "@/components/error-boundary";
 import { Check, Lock, Loader2, Trophy, Volume2, VolumeX } from "lucide-react";
