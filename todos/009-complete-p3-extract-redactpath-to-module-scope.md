@@ -37,9 +37,9 @@ Move `redactPath` above the `initPostHog` function as a module-level helper.
 
 ## Acceptance Criteria
 
-- [ ] `redactPath` is at module scope
-- [ ] Sanitization still works correctly
-- [ ] Typecheck passes
+- [x] `redactPath` is at module scope
+- [x] Sanitization still works correctly
+- [x] Typecheck passes
 
 ## Work Log
 

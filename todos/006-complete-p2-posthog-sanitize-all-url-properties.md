@@ -42,13 +42,13 @@ Loop over all known URL-bearing property keys and apply `redactPath` + query par
 
 ## Acceptance Criteria
 
-- [ ] `$referrer` tokens are redacted
-- [ ] `$initial_referrer` tokens are redacted
-- [ ] `$initial_current_url` tokens are redacted
-- [ ] `$session_entry_url` tokens are redacted
-- [ ] `$session_entry_pathname` tokens are redacted (path only, no query)
-- [ ] Tests pass
-- [ ] Code reviewed
+- [x] `$referrer` tokens are redacted
+- [x] `$initial_referrer` tokens are redacted
+- [x] `$initial_current_url` tokens are redacted
+- [x] `$session_entry_url` tokens are redacted
+- [x] `$session_entry_pathname` tokens are redacted (path only, no query)
+- [x] Tests pass
+- [x] Code reviewed
 
 ## Work Log
 

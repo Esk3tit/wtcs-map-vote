@@ -37,8 +37,8 @@ Delete the `disable_session_recording: false` line from the init config.
 
 ## Acceptance Criteria
 
-- [ ] Line removed
-- [ ] Session recording still works (default behavior unchanged)
+- [x] Line removed
+- [x] Session recording still works (default behavior unchanged)
 
 ## Work Log
 

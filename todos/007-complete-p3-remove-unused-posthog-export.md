@@ -37,9 +37,9 @@ Delete `export { posthog };` from `src/lib/posthog.ts`.
 
 ## Acceptance Criteria
 
-- [ ] `export { posthog }` removed
-- [ ] No import breakage
-- [ ] Typecheck passes
+- [x] `export { posthog }` removed
+- [x] No import breakage
+- [x] Typecheck passes
 
 ## Work Log
 
