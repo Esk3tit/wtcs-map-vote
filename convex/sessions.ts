@@ -2399,6 +2399,17 @@ export async function autoStartSession(
   const freshSession = await ctx.db.get(session._id);
   if (!freshSession || freshSession.status !== "WAITING") return;
 
+  // Re-validate auto-start invariants (guard against state drift)
+  const players = await ctx.db
+    .query("sessionPlayers")
+    .withIndex("by_sessionId", (q) => q.eq("sessionId", freshSession._id))
+    .collect();
+  const allAssigned = players.length === freshSession.playerCount;
+  const allReadyAndConnected = players.every(
+    (p) => p.readyAt != null && p.isConnected
+  );
+  if (!allAssigned || !allReadyAndConnected) return;
+
   // Validate guards
   validateTransition(freshSession.status, "IN_PROGRESS");
   await guardStart(ctx, freshSession);
@@ -2417,10 +2428,6 @@ export async function autoStartSession(
   });
 
   // Clear readyAt on all players for data hygiene
-  const players = await ctx.db
-    .query("sessionPlayers")
-    .withIndex("by_sessionId", (q) => q.eq("sessionId", freshSession._id))
-    .collect();
   await Promise.all(
     players.map((p) => ctx.db.patch(p._id, { readyAt: undefined }))
   );

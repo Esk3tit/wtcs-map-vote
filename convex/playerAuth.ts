@@ -16,6 +16,7 @@ import { rateLimiter } from "./lib/rateLimits";
 import { createWideEvent } from "./lib/wideEvent";
 
 import { logAction } from "./audit";
+import { autoStartSession } from "./sessions";
 
 // ============================================================================
 // Internal Mutations
@@ -428,8 +429,6 @@ export const playerReady = internalMutation({
       ev.set("allConnected", allConnected);
 
       if (allAssigned && allReady && allConnected) {
-        // Auto-start the session
-        const { autoStartSession } = await import("./sessions");
         await autoStartSession(ctx, session);
         ev.set("autoStarted", true);
       }

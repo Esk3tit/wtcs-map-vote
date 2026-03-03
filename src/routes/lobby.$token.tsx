@@ -56,8 +56,19 @@ function PlayerLobbyPage() {
 
   // Play sound when another player becomes ready
   const prevReadyRef = useRef<Record<string, boolean>>({});
+  const isFirstRenderRef = useRef(true);
   useEffect(() => {
     if (data?.status !== "valid" || !data.otherPlayers) return;
+
+    // On first render, seed the ref with current states without playing sounds
+    if (isFirstRenderRef.current) {
+      isFirstRenderRef.current = false;
+      for (const other of data.otherPlayers) {
+        prevReadyRef.current[other._id] = isReadyActive(other.readyAt);
+      }
+      return;
+    }
+
     for (const other of data.otherPlayers) {
       const wasReady = prevReadyRef.current[other._id] ?? false;
       const nowReady = isReadyActive(other.readyAt);
