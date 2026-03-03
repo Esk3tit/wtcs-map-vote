@@ -53,7 +53,8 @@ const convex = new ConvexReactClient(convexUrl);
 
 createRoot(document.getElementById('root')!, {
   onUncaughtError: Sentry.reactErrorHandler((error, errorInfo) => {
-    // ConvexError is intentional business logic — don't log as crash
+    // ConvexError is intentional business logic — suppress console noise.
+    // Sentry suppression is handled separately via beforeSend in sentry.ts.
     if (error instanceof Error && error.name === "ConvexError") return;
     console.error("Uncaught error:", error, errorInfo.componentStack);
   }),
