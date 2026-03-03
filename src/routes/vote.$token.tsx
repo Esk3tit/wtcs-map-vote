@@ -420,7 +420,7 @@ function PlayerVotingPage() {
       }
 
       if (result.status === "ok") {
-        posthog?.capture("vote_submitted", {
+        posthog?.capture("map_action_submitted", {
           action_type: pendingAction.type,
           round: currentRound,
         });
