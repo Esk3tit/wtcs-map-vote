@@ -7,6 +7,7 @@
  */
 
 import { internalMutation } from "./_generated/server";
+import { internal } from "./_generated/api";
 
 import { v } from "convex/values";
 
@@ -16,7 +17,6 @@ import { rateLimiter } from "./lib/rateLimits";
 import { createWideEvent } from "./lib/wideEvent";
 
 import { logAction } from "./audit";
-import { autoStartSession } from "./sessions";
 
 // ============================================================================
 // Internal Mutations
@@ -427,8 +427,10 @@ export const playerReady = internalMutation({
       ev.set("allConnected", allConnected);
 
       if (allAssigned && allReady && allConnected) {
-        await autoStartSession(ctx, session);
-        ev.set("autoStarted", true);
+        await ctx.scheduler.runAfter(0, internal.sessions.tryAutoStart, {
+          sessionId: session._id,
+        });
+        ev.set("autoStartScheduled", true);
       }
 
       ev.setOutcome("ok");

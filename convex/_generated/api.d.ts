@@ -31,6 +31,7 @@ import type * as lib_urlValidation from "../lib/urlValidation.js";
 import type * as lib_validation from "../lib/validation.js";
 import type * as lib_validators from "../lib/validators.js";
 import type * as lib_votingHelpers from "../lib/votingHelpers.js";
+import type * as lib_wideEvent from "../lib/wideEvent.js";
 import type * as maps from "../maps.js";
 import type * as playerAuth from "../playerAuth.js";
 import type * as sessionCleanup from "../sessionCleanup.js";
@@ -69,6 +70,7 @@ declare const fullApi: ApiFromModules<{
   "lib/validation": typeof lib_validation;
   "lib/validators": typeof lib_validators;
   "lib/votingHelpers": typeof lib_votingHelpers;
+  "lib/wideEvent": typeof lib_wideEvent;
   maps: typeof maps;
   playerAuth: typeof playerAuth;
   sessionCleanup: typeof sessionCleanup;

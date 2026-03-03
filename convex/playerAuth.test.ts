@@ -4,7 +4,7 @@
  * Tests for token validation with IP locking and player heartbeat.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createTestContext } from "./test.setup";
 import {
   adminFactory,
@@ -836,6 +836,14 @@ describe("playerAuth.playerReady", () => {
   });
 
   describe("auto-start", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
     it("starts session when all players are ready and connected", async () => {
       const t = createTestContext();
 
@@ -894,13 +902,19 @@ describe("playerAuth.playerReady", () => {
       const midSession = await t.run(async (ctx) => ctx.db.get(sessionId));
       expect(midSession?.status).toBe("WAITING");
 
-      // Player B readies up — should trigger auto-start
+      // Player B readies up — should schedule auto-start
       const before = Date.now();
       const r2 = await t.mutation(internal.playerAuth.playerReady, {
         token: tokenB,
         ipAddress: "10.0.0.2",
       });
       expect(r2).toEqual({ status: "ok", ready: true });
+
+      // Auto-start is now a scheduled mutation; advance just enough to trigger it
+      // (not the turn timer which is 30+ seconds away)
+      await t.finishAllScheduledFunctions(() =>
+        vi.advanceTimersByTime(100)
+      );
 
       // Session should now be IN_PROGRESS
       const session = await t.run(async (ctx) => ctx.db.get(sessionId));
@@ -913,6 +927,187 @@ describe("playerAuth.playerReady", () => {
       const pB = await t.run(async (ctx) => ctx.db.get(playerIdB));
       expect(pA?.readyAt).toBeUndefined();
       expect(pB?.readyAt).toBeUndefined();
+    });
+
+    it("does not auto-start when a player is disconnected", async () => {
+      const t = createTestContext();
+
+      const { sessionId, tokenA } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sid = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            status: "WAITING",
+            playerCount: 2,
+            mapPoolSize: 3,
+          })
+        );
+
+        // Player A: connected
+        const tA = crypto.randomUUID();
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sid, {
+            token: tA,
+            teamName: "Team A",
+            ipAddress: "10.0.0.1",
+            isConnected: true,
+          })
+        );
+
+        // Player B: disconnected but ready
+        const tB = crypto.randomUUID();
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sid, {
+            token: tB,
+            teamName: "Team B",
+            ipAddress: "10.0.0.2",
+            isConnected: false, // disconnected
+          })
+        );
+
+        // Add required maps
+        for (let i = 0; i < 3; i++) {
+          const mapId = await ctx.db.insert(
+            "maps",
+            mapFactory({ name: `Map ${i + 1}` })
+          );
+          await ctx.db.insert(
+            "sessionMaps",
+            sessionMapFactory(sid, mapId, { name: `Map ${i + 1}` })
+          );
+        }
+
+        return { sessionId: sid, tokenA: tA };
+      });
+
+      // Player A readies up — but Player B is disconnected, so no auto-start
+      const result = await t.mutation(internal.playerAuth.playerReady, {
+        token: tokenA,
+        ipAddress: "10.0.0.1",
+      });
+      expect(result).toEqual({ status: "ok", ready: true });
+
+      await t.finishAllScheduledFunctions(() =>
+        vi.advanceTimersByTime(100)
+      );
+
+      // Session should remain WAITING because Player B is disconnected
+      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(session?.status).toBe("WAITING");
+    });
+
+    it("does not auto-start when not all players are assigned", async () => {
+      const t = createTestContext();
+
+      // Session expects 3 players but only 2 are created
+      const { sessionId, tokenA, tokenB } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sid = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            status: "WAITING",
+            playerCount: 3,
+            mapPoolSize: 3,
+          })
+        );
+
+        const tA = crypto.randomUUID();
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sid, {
+            token: tA,
+            teamName: "Team A",
+            ipAddress: "10.0.0.1",
+            isConnected: true,
+          })
+        );
+
+        const tB = crypto.randomUUID();
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sid, {
+            token: tB,
+            teamName: "Team B",
+            ipAddress: "10.0.0.2",
+            isConnected: true,
+          })
+        );
+
+        // Add required maps
+        for (let i = 0; i < 3; i++) {
+          const mapId = await ctx.db.insert(
+            "maps",
+            mapFactory({ name: `Map ${i + 1}` })
+          );
+          await ctx.db.insert(
+            "sessionMaps",
+            sessionMapFactory(sid, mapId, { name: `Map ${i + 1}` })
+          );
+        }
+
+        return { sessionId: sid, tokenA: tA, tokenB: tB };
+      });
+
+      // Both players ready up
+      await t.mutation(internal.playerAuth.playerReady, {
+        token: tokenA,
+        ipAddress: "10.0.0.1",
+      });
+      await t.mutation(internal.playerAuth.playerReady, {
+        token: tokenB,
+        ipAddress: "10.0.0.2",
+      });
+
+      await t.finishAllScheduledFunctions(() =>
+        vi.advanceTimersByTime(100)
+      );
+
+      // Session should remain WAITING (only 2 of 3 players assigned)
+      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(session?.status).toBe("WAITING");
+    });
+
+    it("does not auto-start when session is already IN_PROGRESS", async () => {
+      const t = createTestContext();
+
+      const { tokenA } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sid = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            status: "IN_PROGRESS",
+            playerCount: 2,
+            mapPoolSize: 3,
+            timerStartedAt: Date.now(),
+          })
+        );
+
+        const tA = crypto.randomUUID();
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sid, {
+            token: tA,
+            teamName: "Team A",
+            ipAddress: "10.0.0.1",
+            isConnected: true,
+          })
+        );
+
+        return { tokenA: tA };
+      });
+
+      // playerReady should reject with SESSION_NOT_WAITING
+      const result = await t.mutation(internal.playerAuth.playerReady, {
+        token: tokenA,
+        ipAddress: "10.0.0.1",
+      });
+
+      expect(result).toEqual({
+        status: "error",
+        error: "SESSION_NOT_WAITING",
+      });
     });
   });
 

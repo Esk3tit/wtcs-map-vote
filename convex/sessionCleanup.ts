@@ -545,7 +545,10 @@ export const checkHeartbeatTimeouts = internalMutation({
           if (player.lastHeartbeat === undefined) continue;
           if (player.lastHeartbeat >= now - HEARTBEAT_TIMEOUT_MS) continue;
 
-          await ctx.db.patch(player._id, { isConnected: false });
+          await ctx.db.patch(player._id, {
+            isConnected: false,
+            readyAt: undefined,
+          });
           disconnectedPlayerCount++;
 
           // Only log audit events and auto-pause for IN_PROGRESS sessions
