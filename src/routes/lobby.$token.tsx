@@ -250,7 +250,7 @@ function PlayerLobbyPage() {
       case "DRAFT":
         return "Waiting for admin to finalize session setup...";
       case "WAITING":
-        return "Waiting for admin to start the session...";
+        return "Waiting for all players to ready up...";
       case "PAUSED":
         return "Session is paused. Waiting for admin to resume...";
       case "EXPIRED":
