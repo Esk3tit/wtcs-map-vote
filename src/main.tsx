@@ -11,6 +11,7 @@ import { router } from '@/router'
 import App from '@/App'
 import { Sentry, initSentry } from '@/lib/sentry'
 import { initPostHog } from '@/lib/posthog'
+import { initWebVitals } from '@/lib/vitals'
 
 import './index.css'
 
@@ -27,6 +28,9 @@ initSentry(router);
 
 // Initialize PostHog analytics (no-op if key missing)
 const posthogClient = initPostHog();
+
+// Initialize Web Vitals reporting (metrics → PostHog + dev console)
+initWebVitals(posthogClient);
 
 // User-facing handler for unhandled promise rejections
 function handleUnhandledRejection(event: PromiseRejectionEvent) {
