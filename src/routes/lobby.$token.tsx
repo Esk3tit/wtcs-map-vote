@@ -6,20 +6,18 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TokenErrorPage } from "@/components/session/TokenErrorPage";
 import { SessionEndedPage } from "@/components/session/SessionEndedPage";
-import { ReadyCountdown } from "@/components/session/ReadyCountdown";
 import { ConnectionStatusBadge } from "@/components/session/ConnectionStatusBadge";
 import { DisconnectedOverlay } from "@/components/session/DisconnectedOverlay";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
 import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
 import { SITE_URL } from "@/lib/convexHttp";
-import { READY_EXPIRY_MS } from "../../convex/lib/constants";
 import { isReadyActive } from "@/lib/ready";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { audioManager } from "@/lib/audio";
 import { Lock, Loader2, CheckCircle2, Volume2, VolumeX } from "lucide-react";
 import { TeamAvatar } from "@/components/session/team-avatar";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { MAP_STAGGER_DELAY_MS } from "@/lib/animation";
 import { PlayerRouteErrorComponent } from "@/components/error-boundary";
 
@@ -45,15 +43,6 @@ function PlayerLobbyPage() {
     auth.isSubscriptionActive ? { token } : "skip"
   );
 
-  // Tick every second when WAITING so ready badges stay current
-  const isWaiting = data?.status === "valid" && data.session.status === "WAITING";
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!isWaiting) return;
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [isWaiting]);
-
   // Ready button state
   const [readyLoading, setReadyLoading] = useState(false);
 
@@ -64,6 +53,20 @@ function PlayerLobbyPage() {
     const newMuted = audioManager.toggleMute();
     setMuted(newMuted);
   }, []);
+
+  // Play sound when another player becomes ready
+  const prevReadyRef = useRef<Record<string, boolean>>({});
+  useEffect(() => {
+    if (data?.status !== "valid" || !data.otherPlayers) return;
+    for (const other of data.otherPlayers) {
+      const wasReady = prevReadyRef.current[other._id] ?? false;
+      const nowReady = isReadyActive(other.readyAt);
+      if (!wasReady && nowReady) {
+        audioManager.play("player-ready");
+      }
+      prevReadyRef.current[other._id] = nowReady;
+    }
+  }, [data]);
 
   const handleReady = useCallback(async () => {
     setReadyLoading(true);
@@ -133,7 +136,7 @@ function PlayerLobbyPage() {
 
   const { player, session, maps, otherPlayers } = data;
 
-  const playerIsReady = isReadyActive(player.readyAt, now);
+  const playerIsReady = isReadyActive(player.readyAt);
   const showReadyButton = session.status === "WAITING";
 
   // Get waiting message based on status
@@ -203,36 +206,32 @@ function PlayerLobbyPage() {
             </div>
           </Card>
 
-          {/* Ready Button (WAITING only) */}
+          {/* Ready Button (WAITING only) — toggles ready/un-ready */}
           {showReadyButton && (
             <div className="flex flex-col items-center gap-3">
-              {playerIsReady && player.readyAt ? (
-                <>
-                  <ReadyCountdown
-                    readyAt={player.readyAt}
-                    durationMs={READY_EXPIRY_MS}
-                    now={now}
-                  />
-                  <p className="text-sm font-medium text-green-500">Ready!</p>
-                </>
+              <Button
+                size="lg"
+                className={cn(
+                  "gap-2 px-8",
+                  playerIsReady
+                    ? "bg-muted hover:bg-muted/80 text-foreground"
+                    : "bg-green-600 hover:bg-green-700 text-white animate-pulse"
+                )}
+                disabled={readyLoading}
+                onClick={handleReady}
+                autoFocus={!playerIsReady}
+              >
+                {readyLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="w-5 h-5" />
+                )}
+                {playerIsReady ? "Cancel Ready" : "Ready Up"}
+              </Button>
+              {playerIsReady ? (
+                <p className="text-sm font-medium text-green-500">Ready!</p>
               ) : (
-                <>
-                  <Button
-                    size="lg"
-                    className="gap-2 bg-green-600 hover:bg-green-700 text-white px-8 animate-pulse"
-                    disabled={readyLoading}
-                    onClick={handleReady}
-                    autoFocus
-                  >
-                    {readyLoading ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="w-5 h-5" />
-                    )}
-                    Ready Up
-                  </Button>
-                  <p className="text-xs text-muted-foreground">Enables sound effects</p>
-                </>
+                <p className="text-xs text-muted-foreground">Enables sound effects</p>
               )}
             </div>
           )}
@@ -275,7 +274,7 @@ function PlayerLobbyPage() {
             <Card className="p-4 bg-card/50">
               <div className="space-y-3">
                 {otherPlayers.map((otherPlayer) => {
-                  const otherIsReady = isReadyActive(otherPlayer.readyAt, now);
+                  const otherIsReady = isReadyActive(otherPlayer.readyAt);
                   return (
                     <div
                       key={otherPlayer._id}

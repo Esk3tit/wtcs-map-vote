@@ -10,7 +10,7 @@ import { internalMutation } from "./_generated/server";
 
 import { v } from "convex/values";
 
-import { ACTIVE_SESSION_STATUSES, HEARTBEAT_SKIP_MS, READY_SKIP_MS } from "./lib/constants";
+import { ACTIVE_SESSION_STATUSES, HEARTBEAT_SKIP_MS } from "./lib/constants";
 import { lookupAndValidatePlayer } from "./lib/auth";
 import { rateLimiter } from "./lib/rateLimits";
 import { createWideEvent } from "./lib/wideEvent";
@@ -304,11 +304,11 @@ export const playerHeartbeat = internalMutation({
 });
 
 /**
- * Signal player readiness in the lobby.
+ * Toggle player readiness in the lobby.
  *
- * Sets `readyAt = Date.now()` on the player record. Readiness expires
- * client-side after READY_EXPIRY_MS (60s); players can re-press to refresh.
- * Only allowed in WAITING state (ready only matters before session starts).
+ * If not ready, sets `readyAt = Date.now()`. If already ready, clears it.
+ * Ready state is persistent until toggled — no automatic expiry.
+ * When all players are ready and connected, auto-starts the session.
  *
  * Called by the HTTP action POST /api/player/ready.
  *
@@ -321,7 +321,7 @@ export const playerReady = internalMutation({
     ipAddress: v.string(),
   },
   returns: v.union(
-    v.object({ status: v.literal("ok") }),
+    v.object({ status: v.literal("ok"), ready: v.boolean() }),
     v.object({
       status: v.literal("error"),
       error: v.union(
@@ -395,24 +395,47 @@ export const playerReady = internalMutation({
         return { status: "error" as const, error: "IP_MISMATCH" as const };
       }
 
-      // Skip write if readyAt is still fresh (reduces reactive query churn)
-      const now = Date.now();
-      if (player.readyAt && now - player.readyAt < READY_SKIP_MS) {
-        ev.set("noopReason", "ready_fresh");
-        ev.setOutcome("noop");
-        return { status: "ok" as const };
+      // Toggle ready state
+      const wasReady = player.readyAt != null;
+      ev.set("wasReady", wasReady);
+
+      if (wasReady) {
+        // Un-ready
+        await ctx.db.patch(player._id, { readyAt: undefined });
+        ev.set("action", "unready");
+        ev.setOutcome("ok");
+        return { status: "ok" as const, ready: false };
       }
 
-      // Set readyAt timestamp
-      const tokenActivated = !player.readyAt;
-      ev.set("tokenActivated", tokenActivated);
-      if (player.readyAt) {
-        ev.set("timeSinceLastReadyMs", now - player.readyAt);
-      }
+      // Ready
+      const now = Date.now();
       await ctx.db.patch(player._id, { readyAt: now });
+      ev.set("action", "ready");
+
+      // Check if all players are now ready and connected → auto-start
+      const allPlayers = await ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+        .collect();
+
+      const allAssigned = allPlayers.length === session.playerCount;
+      const allReady = allPlayers.every(
+        (p) => p._id === player._id ? true : p.readyAt != null
+      );
+      const allConnected = allPlayers.every((p) => p.isConnected);
+      ev.set("allAssigned", allAssigned);
+      ev.set("allReady", allReady);
+      ev.set("allConnected", allConnected);
+
+      if (allAssigned && allReady && allConnected) {
+        // Auto-start the session
+        const { autoStartSession } = await import("./sessions");
+        await autoStartSession(ctx, session);
+        ev.set("autoStarted", true);
+      }
 
       ev.setOutcome("ok");
-      return { status: "ok" as const };
+      return { status: "ok" as const, ready: true };
     } catch (err) {
       ev.setError(err);
       throw err;

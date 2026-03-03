@@ -6,7 +6,7 @@
  */
 
 import { query, mutation } from "./_generated/server";
-import type { QueryCtx } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 
 import { paginationOptsValidator } from "convex/server";
@@ -2378,3 +2378,59 @@ export const getSessionResults = query({
     };
   },
 });
+
+// ============================================================================
+// Auto-Start Helper (called from playerReady when all players are ready)
+// ============================================================================
+
+/**
+ * Auto-start a session when all players are ready and connected.
+ * Reuses the same transition logic as the admin startSession mutation.
+ * Logs with actorType: "SYSTEM" and reason: "ALL_PLAYERS_READY".
+ *
+ * @param ctx - Mutation context (from internalMutation)
+ * @param session - Current session document (must be in WAITING state)
+ */
+export async function autoStartSession(
+  ctx: MutationCtx,
+  session: Doc<"sessions">
+): Promise<void> {
+  // Re-read session to ensure freshness (guard against race conditions)
+  const freshSession = await ctx.db.get(session._id);
+  if (!freshSession || freshSession.status !== "WAITING") return;
+
+  // Validate guards
+  validateTransition(freshSession.status, "IN_PROGRESS");
+  await guardStart(ctx, freshSession);
+
+  const now = Date.now();
+  await transitionSession(ctx, freshSession, "IN_PROGRESS", {
+    auditAction: "SESSION_STARTED",
+    actorType: "SYSTEM",
+    auditDetails: { reason: "ALL_PLAYERS_READY" },
+    patches: {
+      startedAt: now,
+      timerStartedAt: now,
+      currentTurn: 0,
+      currentRound: 1,
+    },
+  });
+
+  // Clear readyAt on all players for data hygiene
+  const players = await ctx.db
+    .query("sessionPlayers")
+    .withIndex("by_sessionId", (q) => q.eq("sessionId", freshSession._id))
+    .collect();
+  await Promise.all(
+    players.map((p) => ctx.db.patch(p._id, { readyAt: undefined }))
+  );
+
+  // Schedule timer expiry for first turn/round
+  await scheduleTimerExpiry(
+    ctx,
+    freshSession._id,
+    now,
+    freshSession.turnTimerSeconds,
+    freshSession.format as "ABBA" | "MULTIPLAYER"
+  );
+}

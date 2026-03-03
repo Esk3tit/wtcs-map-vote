@@ -1,11 +1,7 @@
-import { READY_EXPIRY_MS } from "../../convex/lib/constants";
-
 /**
- * Whether a player's ready signal is still active (not expired).
+ * Whether a player's ready signal is active.
+ * Ready is a persistent toggle — no expiry.
  */
-export function isReadyActive(
-  readyAt: number | undefined,
-  now: number
-): boolean {
-  return readyAt != null && now - readyAt < READY_EXPIRY_MS;
+export function isReadyActive(readyAt: number | undefined): boolean {
+  return readyAt != null;
 }

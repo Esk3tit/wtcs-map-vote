@@ -10,7 +10,7 @@ import { PostHogProvider } from "@posthog/react";
 import { router } from '@/router'
 import App from '@/App'
 import { Sentry, initSentry } from '@/lib/sentry'
-import { initPostHog } from '@/lib/posthog'
+import { initPostHog, posthogInstance } from '@/lib/posthog'
 import { initWebVitals } from '@/lib/vitals'
 
 import './index.css'
@@ -22,15 +22,6 @@ if (!convexUrl) {
     "Please set it in your .env.local file or environment."
   );
 }
-
-// Initialize Sentry before render
-initSentry(router);
-
-// Initialize PostHog analytics (no-op if key missing)
-const posthogClient = initPostHog();
-
-// Initialize Web Vitals reporting (metrics → PostHog + dev console)
-initWebVitals(posthogClient);
 
 // User-facing handler for unhandled promise rejections
 function handleUnhandledRejection(event: PromiseRejectionEvent) {
@@ -62,6 +53,8 @@ const convex = new ConvexReactClient(convexUrl);
 
 createRoot(document.getElementById('root')!, {
   onUncaughtError: Sentry.reactErrorHandler((error, errorInfo) => {
+    // ConvexError is intentional business logic — don't log as crash
+    if (error instanceof Error && error.name === "ConvexError") return;
     console.error("Uncaught error:", error, errorInfo.componentStack);
   }),
   onCaughtError: Sentry.reactErrorHandler(),
@@ -69,8 +62,8 @@ createRoot(document.getElementById('root')!, {
 }).render(
   <StrictMode>
     <ConvexAuthProvider client={convex}>
-      {posthogClient ? (
-        <PostHogProvider client={posthogClient}>
+      {posthogInstance ? (
+        <PostHogProvider client={posthogInstance}>
           <App />
         </PostHogProvider>
       ) : (
@@ -78,4 +71,21 @@ createRoot(document.getElementById('root')!, {
       )}
     </ConvexAuthProvider>
   </StrictMode>,
-)
+);
+
+// Defer analytics initialization so the page renders immediately.
+// If sentry.io or posthog.com are geo-blocked (e.g. Russia), this prevents
+// synchronous network requests from blocking React rendering.
+setTimeout(() => {
+  try {
+    initSentry(router);
+  } catch {
+    // Sentry unavailable — app continues without error tracking
+  }
+  try {
+    const posthogClient = initPostHog();
+    initWebVitals(posthogClient);
+  } catch {
+    // PostHog unavailable — app continues without analytics
+  }
+}, 0);
