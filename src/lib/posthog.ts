@@ -2,14 +2,14 @@
  * PostHog Analytics
  *
  * Initializes PostHog product analytics and session replay.
- * Operates as a no-op when VITE_POSTHOG_KEY is not configured.
+ * Operates as a no-op when VITE_PUBLIC_POSTHOG_KEY is not configured.
  */
 
 import posthog from "posthog-js";
 
-const POSTHOG_KEY = import.meta.env.VITE_POSTHOG_KEY;
+const POSTHOG_KEY = import.meta.env.VITE_PUBLIC_POSTHOG_KEY;
 const POSTHOG_HOST =
-  import.meta.env.VITE_POSTHOG_HOST || "https://us.i.posthog.com";
+  import.meta.env.VITE_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com";
 
 /**
  * Initialize PostHog analytics.
