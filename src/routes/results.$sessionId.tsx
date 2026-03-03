@@ -1,5 +1,7 @@
+import { useEffect, useRef } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
+import { usePostHog } from "@posthog/react";
 import { api } from "../../convex/_generated/api";
 import type { Id } from "../../convex/_generated/dataModel";
 import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
@@ -40,6 +42,8 @@ function VotingResultsPage() {
   const { sessionId } = Route.useParams();
   const { token } = Route.useSearch();
   const typedSessionId = sessionId as Id<"sessions">;
+  const posthog = usePostHog();
+  const hasCapturedCompletion = useRef(false);
 
   const data = useQuery(api.sessions.getSessionResults, {
     sessionId: typedSessionId,
@@ -58,6 +62,19 @@ function VotingResultsPage() {
     token,
     "results"
   );
+
+  // Track session completion once per page load (must be before early returns)
+  useEffect(() => {
+    if (hasCapturedCompletion.current) return;
+    if (data?.status !== "valid") return;
+    hasCapturedCompletion.current = true;
+    posthog?.capture("session_completed", {
+      session_id: data.session._id,
+      format: data.session.format,
+      map_count: data.maps.length,
+      ban_count: data.banHistory.length,
+    });
+  }, [posthog, data]);
 
   // Render guard: show spinner while redirect is in flight
   if (isRedirecting) {

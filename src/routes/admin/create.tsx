@@ -19,6 +19,7 @@ import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover
 import { ArrowLeft, Users, UserCircle2, Check, ChevronsUpDown, Loader2 } from 'lucide-react'
 import { useState, useMemo } from 'react'
 import { cn } from '@/lib/utils'
+import { usePostHog } from '@posthog/react'
 import { toast } from 'sonner'
 import { getMutationErrorMessage } from '@/lib/errors'
 
@@ -102,6 +103,7 @@ export const Route = createFileRoute('/admin/create')({
 
 function CreateSessionPage() {
   const navigate = useNavigate()
+  const posthog = usePostHog()
 
   // Load real data from Convex
   const teamsQuery = usePaginatedQuery(api.teams.listTeams, {}, { initialNumItems: 100 })
@@ -197,6 +199,11 @@ function CreateSessionPage() {
       })
 
       toast.success('Session created successfully!')
+      posthog?.capture('session_created', {
+        session_id: sessionId,
+        format,
+        map_count: selectedMaps.length,
+      })
 
       // Navigate to session detail
       navigate({ to: `/admin/session/${sessionId}` })

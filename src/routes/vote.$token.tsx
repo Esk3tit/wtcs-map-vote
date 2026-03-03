@@ -35,6 +35,7 @@ import { audioManager } from "@/lib/audio";
 import { useAudioAlerts } from "@/hooks/useAudioAlerts";
 import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
 import { SITE_URL } from "@/lib/convexHttp";
+import { usePostHog } from "@posthog/react";
 import { cn } from "@/lib/utils";
 import { PlayerRouteErrorComponent } from "@/components/error-boundary";
 import { Check, Lock, Loader2, Trophy, Volume2, VolumeX } from "lucide-react";
@@ -105,6 +106,7 @@ function getVotingErrorMessage(error: VotingErrorCode): string {
 
 function PlayerVotingPage() {
   const { token } = Route.useParams();
+  const posthog = usePostHog();
 
   // Track terminal session state (EXPIRED) to stop heartbeat and subscription.
   // Latches to true once detected — EXPIRED is a terminal state.
@@ -418,6 +420,10 @@ function PlayerVotingPage() {
       }
 
       if (result.status === "ok") {
+        posthog?.capture("vote_submitted", {
+          action_type: pendingAction.type,
+          round: currentRound,
+        });
         if (pendingAction.type === "vote" && currentRound !== undefined) {
           setOptimisticVote({ mapId: pendingAction._id, forRound: currentRound });
         }
