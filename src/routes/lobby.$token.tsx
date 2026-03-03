@@ -62,6 +62,7 @@ function PlayerLobbyPage() {
   const prevReadyRef = useRef<Record<string, boolean>>({});
   const isFirstRenderRef = useRef(true);
   useEffect(() => {
+    if (!hasEntered) return;
     if (data?.status !== "valid" || !data.otherPlayers) return;
 
     // On first render, seed the ref with current states without playing sounds
@@ -81,7 +82,7 @@ function PlayerLobbyPage() {
       }
       prevReadyRef.current[other._id] = nowReady;
     }
-  }, [data]);
+  }, [data, hasEntered]);
 
   const handleReady = useCallback(async () => {
     setReadyLoading(true);
@@ -192,6 +193,8 @@ function PlayerLobbyPage() {
             <button
               type="button"
               onClick={toggleMute}
+              aria-pressed={!muted}
+              aria-label={`Sound effects ${muted ? "off" : "on"}`}
               className={cn(
                 "w-full flex items-center justify-between rounded-lg border px-4 py-3 transition-colors cursor-pointer",
                 muted
@@ -421,7 +424,7 @@ function PlayerLobbyPage() {
 
           {/* Footer */}
           <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <p>The session will start automatically when all players are ready.</p>
+            <p>When all players are ready and connected, the match begins automatically.</p>
             <button
               type="button"
               onClick={toggleMute}

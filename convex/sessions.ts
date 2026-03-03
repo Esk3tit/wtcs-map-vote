@@ -58,7 +58,7 @@ import { pickRandom } from "./lib/random";
 import { generateUniqueToken } from "./lib/tokenGeneration";
 import { scheduleTimerExpiry } from "./lib/timerScheduling";
 import { cascadeDeleteSessionRecords } from "./lib/cascadeDelete";
-import { createWideEvent } from "./lib/wideEvent";
+import { createWideEvent, type WideEvent } from "./lib/wideEvent";
 
 import { logAction } from "./audit";
 
@@ -221,6 +221,7 @@ function computeIsYourTurn(
  * @param actorType - Who initiated the start ("ADMIN" or "SYSTEM")
  * @param actorId - Admin ID if started by an admin
  * @param auditDetails - Optional audit details (e.g., auto-start reason)
+ * @param ev - Optional wide event to enrich with playerCount/timerScheduled
  */
 async function performSessionStart(
   ctx: MutationCtx,
@@ -228,6 +229,7 @@ async function performSessionStart(
   actorType: "ADMIN" | "SYSTEM",
   actorId?: Id<"admins">,
   auditDetails?: Record<string, string>,
+  ev?: WideEvent,
 ): Promise<void> {
   validateTransition(session.status, "IN_PROGRESS");
   await guardStart(ctx, session);
@@ -251,6 +253,7 @@ async function performSessionStart(
     .query("sessionPlayers")
     .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
     .collect();
+  ev?.set("playerCount", players.length);
   await Promise.all(
     players.map((p) => ctx.db.patch(p._id, { readyAt: undefined }))
   );
@@ -263,6 +266,7 @@ async function performSessionStart(
     session.turnTimerSeconds,
     session.format as "ABBA" | "MULTIPLAYER",
   );
+  ev?.set("timerScheduled", true);
 }
 
 // ============================================================================
@@ -1418,7 +1422,7 @@ export const startSession = mutation({
       if (!session) throw new ConvexError("Session not found");
       ev.setSession(session);
 
-      await performSessionStart(ctx, session, "ADMIN", admin._id);
+      await performSessionStart(ctx, session, "ADMIN", admin._id, undefined, ev);
 
       ev.setOutcome("ok");
       return { success: true };
@@ -2418,25 +2422,48 @@ export const tryAutoStart = internalMutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const session = await ctx.db.get(args.sessionId);
-    if (!session || session.status !== "WAITING") return null;
+    const ev = createWideEvent("sessions", "tryAutoStart", "internalMutation");
+    const startTime = Date.now();
+    try {
+      const session = await ctx.db.get(args.sessionId);
+      if (!session || session.status !== "WAITING") {
+        ev.set("sessionId", args.sessionId);
+        ev.set("skipReason", !session ? "session_not_found" : `status_${session?.status}`);
+        ev.setOutcome("noop");
+        return null;
+      }
+      ev.setSession(session);
 
-    // Re-validate all auto-start invariants
-    const players = await ctx.db
-      .query("sessionPlayers")
-      .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
-      .collect();
+      // Re-validate all auto-start invariants
+      const players = await ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+        .collect();
 
-    const allAssigned = players.length === session.playerCount;
-    const allReadyAndConnected = players.every(
-      (p) => p.readyAt != null && p.isConnected
-    );
-    if (!allAssigned || !allReadyAndConnected) return null;
+      const allAssigned = players.length === session.playerCount;
+      const allReadyAndConnected = players.every(
+        (p) => p.readyAt != null && p.isConnected
+      );
+      if (!allAssigned || !allReadyAndConnected) {
+        ev.set("skipReason", !allAssigned ? "not_all_assigned" : "not_all_ready_connected");
+        ev.set("assignedCount", players.length);
+        ev.set("expectedCount", session.playerCount);
+        ev.setOutcome("noop");
+        return null;
+      }
 
-    await performSessionStart(ctx, session, "SYSTEM", undefined, {
-      reason: "ALL_PLAYERS_READY",
-    });
+      await performSessionStart(ctx, session, "SYSTEM", undefined, {
+        reason: "ALL_PLAYERS_READY",
+      }, ev);
 
-    return null;
+      ev.setOutcome("ok");
+      return null;
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
+    }
   },
 });
