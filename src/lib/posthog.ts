@@ -38,18 +38,27 @@ export function initPostHog(): typeof posthog | null {
 
     // Strip player tokens from URLs before capture
     sanitize_properties: (properties) => {
-      if (properties.$current_url) {
-        properties.$current_url = properties.$current_url.replace(
-          /\/(vote|lobby)\/[a-zA-Z0-9-]+/,
-          "/$1/[REDACTED]",
-        );
+      const redactPath = (path: string) =>
+        path.replace(/\/(vote|lobby)\/[^/?#]+/g, "/$1/[REDACTED]");
+
+      if (typeof properties.$pathname === "string") {
+        properties.$pathname = redactPath(properties.$pathname);
       }
-      if (properties.$pathname) {
-        properties.$pathname = properties.$pathname.replace(
-          /\/(vote|lobby)\/[a-zA-Z0-9-]+/,
-          "/$1/[REDACTED]",
-        );
+
+      if (typeof properties.$current_url === "string") {
+        try {
+          const url = new URL(properties.$current_url);
+          url.pathname = redactPath(url.pathname);
+          if (url.searchParams.has("token")) {
+            url.searchParams.set("token", "[REDACTED]");
+          }
+          properties.$current_url = url.toString();
+        } catch {
+          // Fallback for non-parseable URLs
+          properties.$current_url = redactPath(properties.$current_url);
+        }
       }
+
       return properties;
     },
 

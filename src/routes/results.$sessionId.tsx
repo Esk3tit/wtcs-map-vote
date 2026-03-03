@@ -67,8 +67,9 @@ function VotingResultsPage() {
   useEffect(() => {
     if (hasCapturedCompletion.current) return;
     if (data?.status !== "valid") return;
+    if (!posthog) return;
     hasCapturedCompletion.current = true;
-    posthog?.capture("session_completed", {
+    posthog.capture("session_completed", {
       session_id: data.session._id,
       format: data.session.format,
       map_count: data.maps.length,

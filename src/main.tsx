@@ -64,16 +64,14 @@ createRoot(document.getElementById('root')!, {
   onRecoverableError: Sentry.reactErrorHandler(),
 }).render(
   <StrictMode>
-    {posthogClient ? (
-      <PostHogProvider client={posthogClient}>
-        <ConvexAuthProvider client={convex}>
+    <ConvexAuthProvider client={convex}>
+      {posthogClient ? (
+        <PostHogProvider client={posthogClient}>
           <App />
-        </ConvexAuthProvider>
-      </PostHogProvider>
-    ) : (
-      <ConvexAuthProvider client={convex}>
+        </PostHogProvider>
+      ) : (
         <App />
-      </ConvexAuthProvider>
-    )}
+      )}
+    </ConvexAuthProvider>
   </StrictMode>,
 )
