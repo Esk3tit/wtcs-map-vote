@@ -899,7 +899,7 @@ function SessionDetailPage() {
                         <Input
                           value={lobbyUrl}
                           readOnly
-                          className="min-w-0 flex-1 font-mono text-sm bg-muted border-border/50"
+                          className="ph-no-capture min-w-0 flex-1 font-mono text-sm bg-muted border-border/50"
                           onClick={(e) => e.currentTarget.select()}
                         />
                         <Button

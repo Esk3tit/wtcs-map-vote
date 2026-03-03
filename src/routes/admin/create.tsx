@@ -1,6 +1,7 @@
 import type React from 'react'
 import { createFileRoute, useNavigate } from '@tanstack/react-router'
 import { usePaginatedQuery, useQuery, useMutation } from 'convex/react'
+import { usePostHog } from '@posthog/react'
 import { api } from '../../../convex/_generated/api'
 import type { Id } from '../../../convex/_generated/dataModel'
 import {
@@ -102,6 +103,7 @@ export const Route = createFileRoute('/admin/create')({
 
 function CreateSessionPage() {
   const navigate = useNavigate()
+  const posthog = usePostHog()
 
   // Load real data from Convex
   const teamsQuery = usePaginatedQuery(api.teams.listTeams, {}, { initialNumItems: 100 })
@@ -197,6 +199,11 @@ function CreateSessionPage() {
       })
 
       toast.success('Session created successfully!')
+      posthog?.capture('session_created', {
+        session_id: sessionId,
+        format,
+        map_count: selectedMaps.length,
+      })
 
       // Navigate to session detail
       navigate({ to: `/admin/session/${sessionId}` })

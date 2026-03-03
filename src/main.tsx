@@ -5,9 +5,12 @@ import { ConvexReactClient } from "convex/react";
 import { ConvexAuthProvider } from "@convex-dev/auth/react";
 import { toast } from "sonner";
 
+import { PostHogProvider } from "@posthog/react";
+
 import { router } from '@/router'
 import App from '@/App'
 import { Sentry, initSentry } from '@/lib/sentry'
+import { initPostHog } from '@/lib/posthog'
 
 import './index.css'
 
@@ -21,6 +24,9 @@ if (!convexUrl) {
 
 // Initialize Sentry before render
 initSentry(router);
+
+// Initialize PostHog analytics (no-op if key missing)
+const posthogClient = initPostHog();
 
 // User-facing handler for unhandled promise rejections
 function handleUnhandledRejection(event: PromiseRejectionEvent) {
@@ -59,7 +65,13 @@ createRoot(document.getElementById('root')!, {
 }).render(
   <StrictMode>
     <ConvexAuthProvider client={convex}>
-      <App />
+      {posthogClient ? (
+        <PostHogProvider client={posthogClient}>
+          <App />
+        </PostHogProvider>
+      ) : (
+        <App />
+      )}
     </ConvexAuthProvider>
   </StrictMode>,
 )

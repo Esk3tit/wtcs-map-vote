@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { createFileRoute } from "@tanstack/react-router";
 import { useQuery } from "convex/react";
+import { usePostHog } from "@posthog/react";
 import { api } from "../../convex/_generated/api";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -105,6 +106,7 @@ function getVotingErrorMessage(error: VotingErrorCode): string {
 
 function PlayerVotingPage() {
   const { token } = Route.useParams();
+  const posthog = usePostHog();
 
   // Track terminal session state (EXPIRED) to stop heartbeat and subscription.
   // Latches to true once detected — EXPIRED is a terminal state.
@@ -418,6 +420,10 @@ function PlayerVotingPage() {
       }
 
       if (result.status === "ok") {
+        posthog?.capture("map_action_submitted", {
+          action_type: pendingAction.type,
+          round: currentRound,
+        });
         if (pendingAction.type === "vote" && currentRound !== undefined) {
           setOptimisticVote({ mapId: pendingAction._id, forRound: currentRound });
         }
