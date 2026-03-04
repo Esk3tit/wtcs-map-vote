@@ -5,8 +5,8 @@
  * map pool setup, and session state management.
  */
 
-import { query, mutation } from "./_generated/server";
-import type { QueryCtx } from "./_generated/server";
+import { query, mutation, internalMutation } from "./_generated/server";
+import type { MutationCtx, QueryCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 
 import { paginationOptsValidator } from "convex/server";
@@ -34,6 +34,7 @@ import {
   EDITABLE_STATUSES,
   RESETTABLE_STATUSES,
   TOKEN_REGEN_STATUSES,
+  HEARTBEAT_TIMEOUT_MS,
 } from "./lib/constants";
 import { validateName, validateRange } from "./lib/validation";
 import {
@@ -58,7 +59,7 @@ import { pickRandom } from "./lib/random";
 import { generateUniqueToken } from "./lib/tokenGeneration";
 import { scheduleTimerExpiry } from "./lib/timerScheduling";
 import { cascadeDeleteSessionRecords } from "./lib/cascadeDelete";
-import { createWideEvent } from "./lib/wideEvent";
+import { createWideEvent, type WideEvent } from "./lib/wideEvent";
 
 import { logAction } from "./audit";
 
@@ -208,6 +209,65 @@ function computeIsYourTurn(
     return playerIndex === getActivePlayerIndex(session.currentTurn);
   }
   return false;
+}
+
+/**
+ * Shared session start logic used by both admin start and auto-start.
+ *
+ * Validates transition, guards preconditions, transitions to IN_PROGRESS,
+ * clears player readyAt, and schedules timer expiry.
+ *
+ * @param ctx - Mutation context
+ * @param session - Session document to start
+ * @param actorType - Who initiated the start ("ADMIN" or "SYSTEM")
+ * @param actorId - Admin ID if started by an admin
+ * @param auditDetails - Optional audit details (e.g., auto-start reason)
+ * @param ev - Optional wide event to enrich with playerCount/timerScheduled
+ */
+async function performSessionStart(
+  ctx: MutationCtx,
+  session: Doc<"sessions">,
+  actorType: "ADMIN" | "SYSTEM",
+  actorId?: Id<"admins">,
+  auditDetails?: Record<string, string>,
+  ev?: WideEvent,
+): Promise<void> {
+  validateTransition(session.status, "IN_PROGRESS");
+  await guardStart(ctx, session);
+
+  const now = Date.now();
+  await transitionSession(ctx, session, "IN_PROGRESS", {
+    auditAction: "SESSION_STARTED",
+    actorType,
+    actorId,
+    auditDetails,
+    patches: {
+      startedAt: now,
+      timerStartedAt: now,
+      currentTurn: 0,
+      currentRound: 1,
+    },
+  });
+
+  // Clear readyAt on all players for data hygiene (WAR-51)
+  const players = await ctx.db
+    .query("sessionPlayers")
+    .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+    .collect();
+  ev?.set("playerCount", players.length);
+  await Promise.all(
+    players.map((p) => ctx.db.patch(p._id, { readyAt: undefined }))
+  );
+
+  // Schedule timer expiry for first turn/round (WAR-47)
+  await scheduleTimerExpiry(
+    ctx,
+    session._id,
+    now,
+    session.turnTimerSeconds,
+    session.format as "ABBA" | "MULTIPLAYER",
+  );
+  ev?.set("timerScheduled", true);
 }
 
 // ============================================================================
@@ -1363,42 +1423,7 @@ export const startSession = mutation({
       if (!session) throw new ConvexError("Session not found");
       ev.setSession(session);
 
-      // Fail-fast before expensive guard queries
-      validateTransition(session.status, "IN_PROGRESS");
-      await guardStart(ctx, session);
-
-      const now = Date.now();
-      await transitionSession(ctx, session, "IN_PROGRESS", {
-        auditAction: "SESSION_STARTED",
-        actorType: "ADMIN",
-        actorId: admin._id,
-        patches: {
-          startedAt: now,
-          timerStartedAt: now,
-          currentTurn: 0,
-          currentRound: 1,
-        },
-      });
-
-      // Clear readyAt on all players for data hygiene (WAR-51)
-      const players = await ctx.db
-        .query("sessionPlayers")
-        .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
-        .collect();
-      ev.set("playerCount", players.length);
-      await Promise.all(
-        players.map((player) => ctx.db.patch(player._id, { readyAt: undefined }))
-      );
-
-      // Schedule timer expiry for first turn/round (WAR-47)
-      await scheduleTimerExpiry(
-        ctx,
-        session._id,
-        now,
-        session.turnTimerSeconds,
-        session.format as "ABBA" | "MULTIPLAYER"
-      );
-      ev.set("timerScheduled", true);
+      await performSessionStart(ctx, session, "ADMIN", admin._id, undefined, ev);
 
       ev.setOutcome("ok");
       return { success: true };
@@ -2376,5 +2401,75 @@ export const getSessionResults = query({
       maps,
       banHistory,
     };
+  },
+});
+
+// ============================================================================
+// Auto-Start (scheduled by playerReady when all players are ready)
+// ============================================================================
+
+/**
+ * Auto-start a session when all players are ready and connected.
+ *
+ * Scheduled by playerReady when conditions are met.
+ * Re-validates all invariants before transitioning so that a stale schedule
+ * or race condition silently no-ops instead of corrupting state.
+ *
+ * @param sessionId - The session to auto-start
+ */
+export const tryAutoStart = internalMutation({
+  args: {
+    sessionId: v.id("sessions"),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const ev = createWideEvent("sessions", "tryAutoStart", "internalMutation");
+    const startTime = Date.now();
+    try {
+      const session = await ctx.db.get(args.sessionId);
+      if (!session || session.status !== "WAITING") {
+        ev.set("sessionId", args.sessionId);
+        ev.set("skipReason", !session ? "session_not_found" : `status_${session?.status}`);
+        ev.setOutcome("noop");
+        return null;
+      }
+      ev.setSession(session);
+
+      // Re-validate all auto-start invariants
+      const players = await ctx.db
+        .query("sessionPlayers")
+        .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
+        .collect();
+
+      const now = Date.now();
+      const allAssigned = players.length === session.playerCount;
+      const allReadyAndConnected = players.every(
+        (p) =>
+          p.readyAt != null &&
+          p.isConnected &&
+          p.lastHeartbeat != null &&
+          now - p.lastHeartbeat < HEARTBEAT_TIMEOUT_MS
+      );
+      if (!allAssigned || !allReadyAndConnected) {
+        ev.set("skipReason", !allAssigned ? "not_all_assigned" : "not_all_ready_connected");
+        ev.set("assignedCount", players.length);
+        ev.set("expectedCount", session.playerCount);
+        ev.setOutcome("noop");
+        return null;
+      }
+
+      await performSessionStart(ctx, session, "SYSTEM", undefined, {
+        reason: "ALL_PLAYERS_READY",
+      }, ev);
+
+      ev.setOutcome("ok");
+      return null;
+    } catch (err) {
+      ev.setError(err, err instanceof ConvexError ? "business" : "system");
+      throw err;
+    } finally {
+      ev.setDuration(startTime);
+      ev.emit();
+    }
   },
 });

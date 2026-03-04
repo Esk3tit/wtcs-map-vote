@@ -4,16 +4,18 @@
  * Tests for token validation with IP locking and player heartbeat.
  */
 
-import { describe, it, expect } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { createTestContext } from "./test.setup";
 import {
   adminFactory,
+  mapFactory,
   sessionFactory,
+  sessionMapFactory,
   sessionPlayerFactory,
 } from "./test.factories";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
-import { HEARTBEAT_SKIP_MS, READY_EXPIRY_MS, READY_SKIP_MS } from "./lib/constants";
+import { HEARTBEAT_SKIP_MS } from "./lib/constants";
 
 // ============================================================================
 // Test Helpers
@@ -756,8 +758,8 @@ describe("playerAuth.playerHeartbeat", () => {
 // ============================================================================
 
 describe("playerAuth.playerReady", () => {
-  describe("success cases", () => {
-    it("sets readyAt on activated player in WAITING session", async () => {
+  describe("toggle behavior", () => {
+    it("sets readyAt when toggling to ready", async () => {
       const t = createTestContext();
       const { token, playerId } =
         await createSessionWithActivatedPlayer(t, "10.0.0.1", {
@@ -770,86 +772,347 @@ describe("playerAuth.playerReady", () => {
         ipAddress: "10.0.0.1",
       });
 
-      expect(result).toEqual({ status: "ok" });
+      expect(result).toEqual({ status: "ok", ready: true });
 
       const player = await t.run(async (ctx) => ctx.db.get(playerId));
       expect(player?.readyAt).toBeGreaterThanOrEqual(before);
     });
 
-    it("can re-ready after expiry (overwrites readyAt)", async () => {
+    it("clears readyAt when toggling to un-ready", async () => {
       const t = createTestContext();
       const { token, playerId } =
         await createSessionWithActivatedPlayer(t, "10.0.0.1", {
           sessionStatus: "WAITING",
         });
 
-      // Set an expired readyAt
-      const expiredTime = Date.now() - READY_EXPIRY_MS - 1000;
+      // Set ready first
       await t.run(async (ctx) =>
-        ctx.db.patch(playerId, { readyAt: expiredTime })
+        ctx.db.patch(playerId, { readyAt: Date.now() })
       );
 
+      const result = await t.mutation(internal.playerAuth.playerReady, {
+        token,
+        ipAddress: "10.0.0.1",
+      });
+
+      expect(result).toEqual({ status: "ok", ready: false });
+
+      const player = await t.run(async (ctx) => ctx.db.get(playerId));
+      expect(player?.readyAt).toBeUndefined();
+    });
+
+    it("can toggle ready on → off → on", async () => {
+      const t = createTestContext();
+      const { token, playerId } =
+        await createSessionWithActivatedPlayer(t, "10.0.0.1", {
+          sessionStatus: "WAITING",
+        });
+
+      // Toggle on
+      const r1 = await t.mutation(internal.playerAuth.playerReady, {
+        token,
+        ipAddress: "10.0.0.1",
+      });
+      expect(r1).toEqual({ status: "ok", ready: true });
+
+      // Toggle off
+      const r2 = await t.mutation(internal.playerAuth.playerReady, {
+        token,
+        ipAddress: "10.0.0.1",
+      });
+      expect(r2).toEqual({ status: "ok", ready: false });
+
+      // Toggle back on
       const before = Date.now();
-      const result = await t.mutation(internal.playerAuth.playerReady, {
+      const r3 = await t.mutation(internal.playerAuth.playerReady, {
         token,
         ipAddress: "10.0.0.1",
       });
-
-      expect(result).toEqual({ status: "ok" });
+      expect(r3).toEqual({ status: "ok", ready: true });
 
       const player = await t.run(async (ctx) => ctx.db.get(playerId));
       expect(player?.readyAt).toBeGreaterThanOrEqual(before);
     });
+  });
 
-    it("skips write if readyAt is still fresh", async () => {
-      const t = createTestContext();
-      const { token, playerId } =
-        await createSessionWithActivatedPlayer(t, "10.0.0.1", {
-          sessionStatus: "WAITING",
-        });
-
-      // Set a recent readyAt (within READY_SKIP_MS threshold)
-      const recentReadyAt = Date.now() - Math.floor(READY_SKIP_MS / 2); // halfway through skip window
-      await t.run(async (ctx) =>
-        ctx.db.patch(playerId, { readyAt: recentReadyAt })
-      );
-
-      const result = await t.mutation(internal.playerAuth.playerReady, {
-        token,
-        ipAddress: "10.0.0.1",
-      });
-
-      expect(result).toEqual({ status: "ok" });
-
-      // readyAt should remain unchanged (skip write)
-      const player = await t.run(async (ctx) => ctx.db.get(playerId));
-      expect(player?.readyAt).toBe(recentReadyAt);
+  describe("auto-start", () => {
+    beforeEach(() => {
+      vi.useFakeTimers();
     });
 
-    it("updates readyAt when beyond READY_SKIP_MS threshold", async () => {
+    afterEach(() => {
+      vi.useRealTimers();
+    });
+
+    it("starts session when all players are ready and connected", async () => {
       const t = createTestContext();
-      const { token, playerId } =
-        await createSessionWithActivatedPlayer(t, "10.0.0.1", {
-          sessionStatus: "WAITING",
+
+      // Arrange: WAITING session with 2 players, both connected, with maps
+      const { sessionId, tokenA, tokenB, playerIdA, playerIdB } =
+        await t.run(async (ctx) => {
+          const adminId = await ctx.db.insert("admins", adminFactory());
+          const sid = await ctx.db.insert(
+            "sessions",
+            sessionFactory(adminId, {
+              status: "WAITING",
+              playerCount: 2,
+              mapPoolSize: 3,
+            })
+          );
+
+          const tA = crypto.randomUUID();
+          const pA = await ctx.db.insert(
+            "sessionPlayers",
+            sessionPlayerFactory(sid, {
+              token: tA,
+              teamName: "Team A",
+              ipAddress: "10.0.0.1",
+              isConnected: true,
+              lastHeartbeat: Date.now(),
+            })
+          );
+
+          const tB = crypto.randomUUID();
+          const pB = await ctx.db.insert(
+            "sessionPlayers",
+            sessionPlayerFactory(sid, {
+              token: tB,
+              teamName: "Team B",
+              ipAddress: "10.0.0.2",
+              isConnected: true,
+              lastHeartbeat: Date.now(),
+            })
+          );
+
+          // Add required maps
+          for (let i = 0; i < 3; i++) {
+            const mapId = await ctx.db.insert("maps", mapFactory({ name: `Map ${i + 1}` }));
+            await ctx.db.insert("sessionMaps", sessionMapFactory(sid, mapId, { name: `Map ${i + 1}` }));
+          }
+
+          return { sessionId: sid, tokenA: tA, tokenB: tB, playerIdA: pA, playerIdB: pB };
         });
 
-      // Set a stale readyAt (beyond READY_SKIP_MS threshold)
-      const staleReadyAt = Date.now() - READY_SKIP_MS - 1000;
-      await t.run(async (ctx) =>
-        ctx.db.patch(playerId, { readyAt: staleReadyAt })
-      );
+      // Player A readies up
+      const r1 = await t.mutation(internal.playerAuth.playerReady, {
+        token: tokenA,
+        ipAddress: "10.0.0.1",
+      });
+      expect(r1).toEqual({ status: "ok", ready: true });
 
+      // Session should still be WAITING (only 1 of 2 ready)
+      const midSession = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(midSession?.status).toBe("WAITING");
+
+      // Player B readies up — should schedule auto-start
       const before = Date.now();
+      const r2 = await t.mutation(internal.playerAuth.playerReady, {
+        token: tokenB,
+        ipAddress: "10.0.0.2",
+      });
+      expect(r2).toEqual({ status: "ok", ready: true });
+
+      // Auto-start is now a scheduled mutation; advance just enough to trigger it
+      // (not the turn timer which is 30+ seconds away)
+      await t.finishAllScheduledFunctions(() =>
+        vi.advanceTimersByTime(100)
+      );
+
+      // Session should now be IN_PROGRESS
+      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(session?.status).toBe("IN_PROGRESS");
+      expect(session?.startedAt).toBeGreaterThanOrEqual(before);
+      expect(session?.timerStartedAt).toBeGreaterThanOrEqual(before);
+
+      // All players should have readyAt cleared
+      const pA = await t.run(async (ctx) => ctx.db.get(playerIdA));
+      const pB = await t.run(async (ctx) => ctx.db.get(playerIdB));
+      expect(pA?.readyAt).toBeUndefined();
+      expect(pB?.readyAt).toBeUndefined();
+    });
+
+    it("does not auto-start when a player is disconnected", async () => {
+      const t = createTestContext();
+
+      const { sessionId, tokenA } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sid = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            status: "WAITING",
+            playerCount: 2,
+            mapPoolSize: 3,
+          })
+        );
+
+        // Player A: connected with fresh heartbeat
+        const tA = crypto.randomUUID();
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sid, {
+            token: tA,
+            teamName: "Team A",
+            ipAddress: "10.0.0.1",
+            isConnected: true,
+            lastHeartbeat: Date.now(),
+          })
+        );
+
+        // Player B: disconnected but ready — only allConnected should block
+        const tB = crypto.randomUUID();
+        await ctx.db.insert("sessionPlayers", {
+          ...sessionPlayerFactory(sid, {
+            token: tB,
+            teamName: "Team B",
+            ipAddress: "10.0.0.2",
+            isConnected: false, // disconnected
+          }),
+          readyAt: Date.now(), // ready, so allReady won't block
+        });
+
+        // Add required maps
+        for (let i = 0; i < 3; i++) {
+          const mapId = await ctx.db.insert(
+            "maps",
+            mapFactory({ name: `Map ${i + 1}` })
+          );
+          await ctx.db.insert(
+            "sessionMaps",
+            sessionMapFactory(sid, mapId, { name: `Map ${i + 1}` })
+          );
+        }
+
+        return { sessionId: sid, tokenA: tA };
+      });
+
+      // Player A readies up — but Player B is disconnected, so no auto-start
       const result = await t.mutation(internal.playerAuth.playerReady, {
-        token,
+        token: tokenA,
+        ipAddress: "10.0.0.1",
+      });
+      expect(result).toEqual({ status: "ok", ready: true });
+
+      await t.finishAllScheduledFunctions(() =>
+        vi.advanceTimersByTime(100)
+      );
+
+      // Session should remain WAITING because Player B is disconnected
+      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(session?.status).toBe("WAITING");
+    });
+
+    it("does not auto-start when not all players are assigned", async () => {
+      const t = createTestContext();
+
+      // Session expects 3 players but only 2 are created
+      const { sessionId, tokenA, tokenB } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sid = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            status: "WAITING",
+            playerCount: 3,
+            mapPoolSize: 3,
+          })
+        );
+
+        const tA = crypto.randomUUID();
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sid, {
+            token: tA,
+            teamName: "Team A",
+            ipAddress: "10.0.0.1",
+            isConnected: true,
+            lastHeartbeat: Date.now(),
+          })
+        );
+
+        const tB = crypto.randomUUID();
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sid, {
+            token: tB,
+            teamName: "Team B",
+            ipAddress: "10.0.0.2",
+            isConnected: true,
+            lastHeartbeat: Date.now(),
+          })
+        );
+
+        // Add required maps
+        for (let i = 0; i < 3; i++) {
+          const mapId = await ctx.db.insert(
+            "maps",
+            mapFactory({ name: `Map ${i + 1}` })
+          );
+          await ctx.db.insert(
+            "sessionMaps",
+            sessionMapFactory(sid, mapId, { name: `Map ${i + 1}` })
+          );
+        }
+
+        return { sessionId: sid, tokenA: tA, tokenB: tB };
+      });
+
+      // Both players ready up
+      await t.mutation(internal.playerAuth.playerReady, {
+        token: tokenA,
+        ipAddress: "10.0.0.1",
+      });
+      await t.mutation(internal.playerAuth.playerReady, {
+        token: tokenB,
+        ipAddress: "10.0.0.2",
+      });
+
+      await t.finishAllScheduledFunctions(() =>
+        vi.advanceTimersByTime(100)
+      );
+
+      // Session should remain WAITING (only 2 of 3 players assigned)
+      const session = await t.run(async (ctx) => ctx.db.get(sessionId));
+      expect(session?.status).toBe("WAITING");
+    });
+
+    it("does not auto-start when session is already IN_PROGRESS", async () => {
+      const t = createTestContext();
+
+      const { tokenA } = await t.run(async (ctx) => {
+        const adminId = await ctx.db.insert("admins", adminFactory());
+        const sid = await ctx.db.insert(
+          "sessions",
+          sessionFactory(adminId, {
+            status: "IN_PROGRESS",
+            playerCount: 2,
+            mapPoolSize: 3,
+            timerStartedAt: Date.now(),
+          })
+        );
+
+        const tA = crypto.randomUUID();
+        await ctx.db.insert(
+          "sessionPlayers",
+          sessionPlayerFactory(sid, {
+            token: tA,
+            teamName: "Team A",
+            ipAddress: "10.0.0.1",
+            isConnected: true,
+          })
+        );
+
+        return { tokenA: tA };
+      });
+
+      // playerReady should reject with SESSION_NOT_WAITING
+      const result = await t.mutation(internal.playerAuth.playerReady, {
+        token: tokenA,
         ipAddress: "10.0.0.1",
       });
 
-      expect(result).toEqual({ status: "ok" });
-
-      // readyAt should be updated
-      const player = await t.run(async (ctx) => ctx.db.get(playerId));
-      expect(player?.readyAt).toBeGreaterThanOrEqual(before);
+      expect(result).toEqual({
+        status: "error",
+        error: "SESSION_NOT_WAITING",
+      });
     });
   });
 

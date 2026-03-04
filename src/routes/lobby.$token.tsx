@@ -6,20 +6,18 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { TokenErrorPage } from "@/components/session/TokenErrorPage";
 import { SessionEndedPage } from "@/components/session/SessionEndedPage";
-import { ReadyCountdown } from "@/components/session/ReadyCountdown";
 import { ConnectionStatusBadge } from "@/components/session/ConnectionStatusBadge";
 import { DisconnectedOverlay } from "@/components/session/DisconnectedOverlay";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
 import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
 import { SITE_URL } from "@/lib/convexHttp";
-import { READY_EXPIRY_MS } from "../../convex/lib/constants";
 import { isReadyActive } from "@/lib/ready";
 import { cn } from "@/lib/utils";
 import { toast } from "sonner";
 import { audioManager } from "@/lib/audio";
-import { Lock, Loader2, CheckCircle2, Volume2, VolumeX } from "lucide-react";
+import { Lock, Loader2, CheckCircle2, Volume2, VolumeX, LogIn } from "lucide-react";
 import { TeamAvatar } from "@/components/session/team-avatar";
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import { MAP_STAGGER_DELAY_MS } from "@/lib/animation";
 import { PlayerRouteErrorComponent } from "@/components/error-boundary";
 
@@ -45,27 +43,51 @@ function PlayerLobbyPage() {
     auth.isSubscriptionActive ? { token } : "skip"
   );
 
-  // Tick every second when WAITING so ready badges stay current
-  const isWaiting = data?.status === "valid" && data.session.status === "WAITING";
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!isWaiting) return;
-    const timer = setInterval(() => setNow(Date.now()), 1000);
-    return () => clearInterval(timer);
-  }, [isWaiting]);
+  // Audio unlock gate — requires a user gesture before lobby sounds can play.
+  // Without this, a player who pastes the link and never interacts won't hear
+  // the player-ready sound when others ready up.
+  const [hasEntered, setHasEntered] = useState(false);
 
   // Ready button state
   const [readyLoading, setReadyLoading] = useState(false);
 
-  // Audio: importing audioManager attaches browser autoplay unlock listeners.
-  // The Ready Up click (or any interaction) triggers unlock before the vote page.
+  // Audio: the "Enter Lobby" gate above guarantees a user gesture before this point.
   const [muted, setMuted] = useState(() => audioManager.muted);
   const toggleMute = useCallback(() => {
     const newMuted = audioManager.toggleMute();
     setMuted(newMuted);
   }, []);
 
+  // Play sound when another player becomes ready
+  const prevReadyRef = useRef<Record<string, boolean>>({});
+  const isFirstRenderRef = useRef(true);
+  useEffect(() => {
+    if (!hasEntered) return;
+    if (data?.status !== "valid" || !data.otherPlayers) return;
+
+    // On first render, seed the ref with current states without playing sounds
+    if (isFirstRenderRef.current) {
+      isFirstRenderRef.current = false;
+      for (const other of data.otherPlayers) {
+        prevReadyRef.current[other._id] = isReadyActive(other.readyAt);
+      }
+      return;
+    }
+
+    for (const other of data.otherPlayers) {
+      const wasReady = prevReadyRef.current[other._id] ?? false;
+      const nowReady = isReadyActive(other.readyAt);
+      if (!wasReady && nowReady) {
+        audioManager.play("player-ready");
+      }
+      prevReadyRef.current[other._id] = nowReady;
+    }
+  }, [data, hasEntered]);
+
   const handleReady = useCallback(async () => {
+    // Capture toggle direction at click-time (before async/re-render)
+    const wasReady = data?.status === "valid" && isReadyActive(data.player.readyAt);
+    const action = wasReady ? "cancel ready" : "ready up";
     setReadyLoading(true);
     try {
       const res = await fetch(`${SITE_URL}/api/player/ready`, {
@@ -75,14 +97,19 @@ function PlayerLobbyPage() {
         signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) {
-        toast.error("Failed to ready up. Please try again.");
+        // Suppress toast for SESSION_NOT_WAITING — the session auto-started
+        // while the player was clicking, and redirect will handle it.
+        const body = await res.json().catch(() => ({}));
+        if (body?.error !== "SESSION_NOT_WAITING") {
+          toast.error(`Failed to ${action}. Please try again.`);
+        }
       }
     } catch {
       toast.error("Network error. Please try again.");
     } finally {
       setReadyLoading(false);
     }
-  }, [token]);
+  }, [token, data]);
 
   // Auto-redirect based on session status (hook must be before early returns)
   const isRedirecting = useSessionStatusRedirect(data, token, "lobby");
@@ -131,9 +158,95 @@ function PlayerLobbyPage() {
     return <SessionEndedPage reason="EXPIRED" />;
   }
 
+  // Audio consent gate — requires a user gesture to unlock browser autoplay.
+  // The player chooses sound on/off before entering the lobby, so the
+  // player-ready sound works reliably even if this is their first interaction.
+  if (!hasEntered) {
+    return (
+      <div className="min-h-screen bg-background p-6 flex items-center justify-center">
+        <div className="w-full max-w-md text-center space-y-8">
+          <div className="space-y-3">
+            <h1 className="text-3xl font-bold text-foreground">
+              {data.session.matchName}
+            </h1>
+            <Badge variant="outline" className="text-base px-4 py-1">
+              {data.session.format === "ABBA" ? "ABBA Ban" : "Multiplayer Vote"}
+            </Badge>
+          </div>
+
+          <Card className="p-6 border-primary/20">
+            <div className="flex items-center justify-center gap-4">
+              <TeamAvatar
+                name={data.player.teamName}
+                logoUrl={data.player.teamLogoUrl}
+                size="lg"
+              />
+              <div className="text-left min-w-0">
+                <p className="text-sm text-muted-foreground">Joining as</p>
+                <h2 className="text-2xl font-bold text-foreground truncate">
+                  {data.player.teamName}
+                </h2>
+              </div>
+            </div>
+          </Card>
+
+          <Card className="p-5 space-y-4">
+            <div className="flex items-center gap-3">
+              <Volume2 className="w-5 h-5 text-primary shrink-0" />
+              <p className="text-sm text-foreground text-left">
+                This session uses sound effects for ready alerts and voting cues.
+              </p>
+            </div>
+
+            <button
+              type="button"
+              onClick={toggleMute}
+              aria-pressed={!muted}
+              aria-label={`Sound effects ${muted ? "off" : "on"}`}
+              className={cn(
+                "w-full flex items-center justify-between rounded-lg border px-4 py-3 transition-colors cursor-pointer",
+                muted
+                  ? "border-border bg-muted/50"
+                  : "border-primary/30 bg-primary/5"
+              )}
+            >
+              <span className="text-sm font-medium text-foreground">
+                Sound effects
+              </span>
+              <span
+                className={cn(
+                  "text-xs font-semibold px-2 py-0.5 rounded-full",
+                  muted
+                    ? "bg-muted text-muted-foreground"
+                    : "bg-green-500/15 text-green-500"
+                )}
+              >
+                {muted ? "OFF" : "ON"}
+              </span>
+            </button>
+
+            <p className="text-xs text-muted-foreground">
+              You can change this anytime in the lobby.
+            </p>
+          </Card>
+
+          <Button
+            size="lg"
+            className="gap-2 px-8 text-lg"
+            onClick={() => setHasEntered(true)}
+            autoFocus
+          >
+            <LogIn className="w-5 h-5" />
+            Enter Lobby
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   const { player, session, maps, otherPlayers } = data;
 
-  const playerIsReady = isReadyActive(player.readyAt, now);
+  const playerIsReady = isReadyActive(player.readyAt);
   const showReadyButton = session.status === "WAITING";
 
   // Get waiting message based on status
@@ -142,7 +255,7 @@ function PlayerLobbyPage() {
       case "DRAFT":
         return "Waiting for admin to finalize session setup...";
       case "WAITING":
-        return "Waiting for admin to start the session...";
+        return "Waiting for all players to ready up...";
       case "PAUSED":
         return "Session is paused. Waiting for admin to resume...";
       case "EXPIRED":
@@ -203,36 +316,30 @@ function PlayerLobbyPage() {
             </div>
           </Card>
 
-          {/* Ready Button (WAITING only) */}
+          {/* Ready Button (WAITING only) — toggles ready/un-ready */}
           {showReadyButton && (
             <div className="flex flex-col items-center gap-3">
-              {playerIsReady && player.readyAt ? (
-                <>
-                  <ReadyCountdown
-                    readyAt={player.readyAt}
-                    durationMs={READY_EXPIRY_MS}
-                    now={now}
-                  />
-                  <p className="text-sm font-medium text-green-500">Ready!</p>
-                </>
-              ) : (
-                <>
-                  <Button
-                    size="lg"
-                    className="gap-2 bg-green-600 hover:bg-green-700 text-white px-8 animate-pulse"
-                    disabled={readyLoading}
-                    onClick={handleReady}
-                    autoFocus
-                  >
-                    {readyLoading ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                    ) : (
-                      <CheckCircle2 className="w-5 h-5" />
-                    )}
-                    Ready Up
-                  </Button>
-                  <p className="text-xs text-muted-foreground">Enables sound effects</p>
-                </>
+              <Button
+                size="lg"
+                className={cn(
+                  "gap-2 px-8",
+                  playerIsReady
+                    ? "bg-muted hover:bg-muted/80 text-foreground"
+                    : "bg-green-600 hover:bg-green-700 text-white animate-pulse"
+                )}
+                disabled={readyLoading}
+                onClick={handleReady}
+                autoFocus={!playerIsReady}
+              >
+                {readyLoading ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <CheckCircle2 className="w-5 h-5" />
+                )}
+                {playerIsReady ? "Cancel Ready" : "Ready Up"}
+              </Button>
+              {playerIsReady && (
+                <p className="text-sm font-medium text-green-500">Ready!</p>
               )}
             </div>
           )}
@@ -275,7 +382,7 @@ function PlayerLobbyPage() {
             <Card className="p-4 bg-card/50">
               <div className="space-y-3">
                 {otherPlayers.map((otherPlayer) => {
-                  const otherIsReady = isReadyActive(otherPlayer.readyAt, now);
+                  const otherIsReady = isReadyActive(otherPlayer.readyAt);
                   return (
                     <div
                       key={otherPlayer._id}
@@ -325,7 +432,7 @@ function PlayerLobbyPage() {
 
           {/* Footer */}
           <div className="flex items-center justify-between text-sm text-muted-foreground">
-            <p>The admin will start the session when all players are ready.</p>
+            <p>When all players are ready and connected, the match begins automatically.</p>
             <button
               type="button"
               onClick={toggleMute}

@@ -10,7 +10,7 @@ import { PostHogProvider } from "@posthog/react";
 import { router } from '@/router'
 import App from '@/App'
 import { Sentry, initSentry } from '@/lib/sentry'
-import { initPostHog } from '@/lib/posthog'
+import { initPostHog, posthogInstance } from '@/lib/posthog'
 import { initWebVitals } from '@/lib/vitals'
 
 import './index.css'
@@ -22,15 +22,6 @@ if (!convexUrl) {
     "Please set it in your .env.local file or environment."
   );
 }
-
-// Initialize Sentry before render
-initSentry(router);
-
-// Initialize PostHog analytics (no-op if key missing)
-const posthogClient = initPostHog();
-
-// Initialize Web Vitals reporting (metrics → PostHog + dev console)
-initWebVitals(posthogClient);
 
 // User-facing handler for unhandled promise rejections
 function handleUnhandledRejection(event: PromiseRejectionEvent) {
@@ -60,8 +51,24 @@ if (import.meta.hot) {
 
 const convex = new ConvexReactClient(convexUrl);
 
+// Initialize Sentry synchronously so error handlers work from the first render.
+// Sentry.init() itself doesn't issue outbound requests during initialization.
+try {
+  initSentry(router);
+} catch {
+  // Sentry unavailable — app continues without error tracking
+}
+
 createRoot(document.getElementById('root')!, {
   onUncaughtError: Sentry.reactErrorHandler((error, errorInfo) => {
+    // ConvexError is intentional business logic, filtered from Sentry via beforeSend.
+    // Log in dev so unhandled throws are still visible during development.
+    if (error instanceof Error && error.name === "ConvexError") {
+      if (import.meta.env.DEV) {
+        console.warn("Uncaught ConvexError (suppressed in prod):", error, errorInfo.componentStack);
+      }
+      return;
+    }
     console.error("Uncaught error:", error, errorInfo.componentStack);
   }),
   onCaughtError: Sentry.reactErrorHandler(),
@@ -69,8 +76,8 @@ createRoot(document.getElementById('root')!, {
 }).render(
   <StrictMode>
     <ConvexAuthProvider client={convex}>
-      {posthogClient ? (
-        <PostHogProvider client={posthogClient}>
+      {posthogInstance ? (
+        <PostHogProvider client={posthogInstance}>
           <App />
         </PostHogProvider>
       ) : (
@@ -78,4 +85,16 @@ createRoot(document.getElementById('root')!, {
       )}
     </ConvexAuthProvider>
   </StrictMode>,
-)
+);
+
+// Defer PostHog/Vitals initialization so the page renders immediately.
+// If posthog.com is geo-blocked (e.g. Russia), this prevents synchronous
+// network requests from blocking React rendering.
+setTimeout(() => {
+  try {
+    const posthogClient = initPostHog();
+    initWebVitals(posthogClient);
+  } catch {
+    // PostHog unavailable — app continues without analytics
+  }
+}, 0);

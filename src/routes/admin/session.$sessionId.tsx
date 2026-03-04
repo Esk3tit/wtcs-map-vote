@@ -5,7 +5,6 @@ import type { Id } from "../../../convex/_generated/dataModel";
 import type { ActorType } from "../../../convex/lib/types";
 import {
   getActivePlayerIndex,
-  READY_EXPIRY_MS,
   sortPlayersByJoinOrder,
 } from "../../../convex/lib/constants";
 import { isReadyActive } from "@/lib/ready";
@@ -185,28 +184,15 @@ function AdminConnectionBadge({
 }
 
 // ============================================================================
-// Player Ready Badge (self-contained timer to avoid full-page re-renders)
+// Player Ready Badge
 // ============================================================================
 
 /**
- * Displays a ready/not-ready badge for a player in the WAITING state.
- * Manages its own 1-second timer so the parent component does not re-render.
+ * Displays a persistent ready/not-ready badge for a player in the WAITING state.
+ * Ready is a toggle with no expiry — stays active until manually cancelled.
  */
 function PlayerReadyBadge({ readyAt }: { readyAt?: number }) {
-  const [now, setNow] = useState(() => Date.now());
-
-  useEffect(() => {
-    if (readyAt == null) return;
-    const timer = setInterval(() => {
-      const next = Date.now();
-      setNow(next);
-      if (next - readyAt >= READY_EXPIRY_MS) clearInterval(timer);
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [readyAt]);
-
-  const isPlayerReady = isReadyActive(readyAt, now);
-  const secondsAgo = readyAt != null ? Math.max(0, Math.floor((now - readyAt) / 1000)) : null;
+  const isPlayerReady = isReadyActive(readyAt);
 
   if (isPlayerReady) {
     return (
@@ -215,7 +201,7 @@ function PlayerReadyBadge({ readyAt }: { readyAt?: number }) {
         className="gap-1 bg-green-500/20 text-green-600 border-green-500/30"
       >
         <CheckCircle2 className="w-3 h-3" />
-        Ready ({secondsAgo}s ago)
+        Ready
       </Badge>
     );
   }
@@ -633,7 +619,7 @@ function SessionDetailPage() {
                   }
                   onClick={() => {
                     const allReady = session.players.every(
-                      (p) => isReadyActive(p.readyAt, Date.now())
+                      (p) => isReadyActive(p.readyAt)
                     );
                     if (allReady) {
                       handleAction(

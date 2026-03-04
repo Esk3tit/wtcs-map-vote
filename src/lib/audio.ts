@@ -11,6 +11,7 @@
 // ============================================================================
 
 export type SoundName =
+  | "player-ready"
   | "turn-start"
   | "timer-warning"
   | "timeout-buzzer"
@@ -24,6 +25,7 @@ export type SoundName =
 const STORAGE_KEY = "wtcs-audio-muted";
 
 const SOUND_FILES: Record<SoundName, string> = {
+  "player-ready": "/sounds/player-ready.mp3",
   "turn-start": "/sounds/turn-start.mp3",
   "timer-warning": "/sounds/timer-warning.mp3",
   "timeout-buzzer": "/sounds/timeout-buzzer.mp3",

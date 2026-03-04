@@ -42,8 +42,16 @@ const URL_PROPERTIES = [
 const PATH_PROPERTIES = ["$pathname", "$session_entry_pathname"] as const;
 
 /**
+ * The PostHog instance for the React provider.
+ * Exported separately so the provider can mount before init() runs.
+ * null when VITE_PUBLIC_POSTHOG_KEY is not configured.
+ */
+export const posthogInstance: typeof posthog | null = POSTHOG_KEY ? posthog : null;
+
+/**
  * Initialize PostHog analytics.
  * Returns the PostHog instance if configured, null otherwise.
+ * Safe to call after React renders — the provider already has the instance.
  */
 export function initPostHog(): typeof posthog | null {
   if (!POSTHOG_KEY) return null;
