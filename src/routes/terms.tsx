@@ -1,4 +1,4 @@
-import { createFileRoute } from "@tanstack/react-router"
+import { createFileRoute, Link } from "@tanstack/react-router"
 
 export const Route = createFileRoute("/terms")({
   component: TermsOfServicePage,
@@ -89,9 +89,9 @@ function TermsOfServicePage() {
         />
         <footer className="mt-12 pt-8 border-t border-border/30 text-center">
           <p className="text-xs text-muted-foreground">
-            <a href="/privacy" className="hover:text-foreground transition-colors">
+            <Link to="/privacy" className="hover:text-foreground transition-colors">
               Privacy Policy
-            </a>
+            </Link>
           </p>
         </footer>
       </div>

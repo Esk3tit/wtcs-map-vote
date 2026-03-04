@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { createFileRoute, useSearch, useNavigate } from '@tanstack/react-router'
+import { createFileRoute, useSearch, useNavigate, Link } from '@tanstack/react-router'
 import { useAuthActions } from '@convex-dev/auth/react'
 import { useConvexAuth } from '@/lib/convex'
 import { Card } from '@/components/ui/card'
@@ -134,13 +134,13 @@ function LoginPage() {
               Only authorized administrators can access this portal
             </p>
             <p className="text-xs text-center text-muted-foreground">
-              <a href="/privacy" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">
+              <Link to="/privacy" target="_blank" className="hover:text-foreground transition-colors">
                 Privacy Policy
-              </a>
+              </Link>
               {" · "}
-              <a href="/terms" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">
+              <Link to="/terms" target="_blank" className="hover:text-foreground transition-colors">
                 Terms of Service
-              </a>
+              </Link>
             </p>
           </div>
         </div>

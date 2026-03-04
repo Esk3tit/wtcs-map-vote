@@ -1,13 +1,15 @@
+import { Link } from "@tanstack/react-router"
+
 export function PolicyFooter() {
   return (
     <footer className="py-4 text-center text-xs text-muted-foreground/60">
-      <a href="/privacy" target="_blank" rel="noopener noreferrer" className="hover:text-muted-foreground transition-colors">
+      <Link to="/privacy" target="_blank" className="hover:text-muted-foreground transition-colors">
         Privacy Policy
-      </a>
+      </Link>
       {" · "}
-      <a href="/terms" target="_blank" rel="noopener noreferrer" className="hover:text-muted-foreground transition-colors">
+      <Link to="/terms" target="_blank" className="hover:text-muted-foreground transition-colors">
         Terms of Service
-      </a>
+      </Link>
     </footer>
   )
 }
