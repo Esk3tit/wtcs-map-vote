@@ -868,6 +868,7 @@ describe("playerAuth.playerReady", () => {
               teamName: "Team A",
               ipAddress: "10.0.0.1",
               isConnected: true,
+              lastHeartbeat: Date.now(),
             })
           );
 
@@ -879,6 +880,7 @@ describe("playerAuth.playerReady", () => {
               teamName: "Team B",
               ipAddress: "10.0.0.2",
               isConnected: true,
+              lastHeartbeat: Date.now(),
             })
           );
 
@@ -943,7 +945,7 @@ describe("playerAuth.playerReady", () => {
           })
         );
 
-        // Player A: connected
+        // Player A: connected with fresh heartbeat
         const tA = crypto.randomUUID();
         await ctx.db.insert(
           "sessionPlayers",
@@ -952,6 +954,7 @@ describe("playerAuth.playerReady", () => {
             teamName: "Team A",
             ipAddress: "10.0.0.1",
             isConnected: true,
+            lastHeartbeat: Date.now(),
           })
         );
 
@@ -1021,6 +1024,7 @@ describe("playerAuth.playerReady", () => {
             teamName: "Team A",
             ipAddress: "10.0.0.1",
             isConnected: true,
+            lastHeartbeat: Date.now(),
           })
         );
 
@@ -1032,6 +1036,7 @@ describe("playerAuth.playerReady", () => {
             teamName: "Team B",
             ipAddress: "10.0.0.2",
             isConnected: true,
+            lastHeartbeat: Date.now(),
           })
         );
 

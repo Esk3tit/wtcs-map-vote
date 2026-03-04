@@ -34,6 +34,7 @@ import {
   EDITABLE_STATUSES,
   RESETTABLE_STATUSES,
   TOKEN_REGEN_STATUSES,
+  HEARTBEAT_TIMEOUT_MS,
 } from "./lib/constants";
 import { validateName, validateRange } from "./lib/validation";
 import {
@@ -2440,9 +2441,14 @@ export const tryAutoStart = internalMutation({
         .withIndex("by_sessionId", (q) => q.eq("sessionId", session._id))
         .collect();
 
+      const now = Date.now();
       const allAssigned = players.length === session.playerCount;
       const allReadyAndConnected = players.every(
-        (p) => p.readyAt != null && p.isConnected
+        (p) =>
+          p.readyAt != null &&
+          p.isConnected &&
+          p.lastHeartbeat != null &&
+          now - p.lastHeartbeat < HEARTBEAT_TIMEOUT_MS
       );
       if (!allAssigned || !allReadyAndConnected) {
         ev.set("skipReason", !allAssigned ? "not_all_assigned" : "not_all_ready_connected");

@@ -11,7 +11,7 @@ import { internal } from "./_generated/api";
 
 import { v } from "convex/values";
 
-import { ACTIVE_SESSION_STATUSES, HEARTBEAT_SKIP_MS } from "./lib/constants";
+import { ACTIVE_SESSION_STATUSES, HEARTBEAT_SKIP_MS, HEARTBEAT_TIMEOUT_MS } from "./lib/constants";
 import { lookupAndValidatePlayer } from "./lib/auth";
 import { rateLimiter } from "./lib/rateLimits";
 import { createWideEvent } from "./lib/wideEvent";
@@ -421,7 +421,12 @@ export const playerReady = internalMutation({
 
       const allAssigned = allPlayers.length === session.playerCount;
       const allReady = allPlayers.every((p) => p.readyAt != null);
-      const allConnected = allPlayers.every((p) => p.isConnected);
+      const allConnected = allPlayers.every(
+        (p) =>
+          p.isConnected &&
+          p.lastHeartbeat != null &&
+          now - p.lastHeartbeat < HEARTBEAT_TIMEOUT_MS
+      );
       ev.set("allAssigned", allAssigned);
       ev.set("allReady", allReady);
       ev.set("allConnected", allConnected);
