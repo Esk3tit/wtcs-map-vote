@@ -1,11 +1,12 @@
 import { useState, useEffect } from 'react'
-import { createFileRoute, useSearch, useNavigate, Link } from '@tanstack/react-router'
+import { createFileRoute, useSearch, useNavigate } from '@tanstack/react-router'
 import { useAuthActions } from '@convex-dev/auth/react'
 import { useConvexAuth } from '@/lib/convex'
 import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Loader2, AlertCircle } from 'lucide-react'
 import wtcsLogo from '@/assets/wtcs-logo.png'
+import { PolicyFooter } from '@/components/layout/policy-footer'
 
 export const Route = createFileRoute('/login')({
   component: LoginPage,
@@ -133,15 +134,7 @@ function LoginPage() {
             <p className="text-xs text-center text-muted-foreground leading-relaxed">
               Only authorized administrators can access this portal
             </p>
-            <p className="text-xs text-center text-muted-foreground">
-              <Link to="/privacy" target="_blank" className="hover:text-foreground transition-colors">
-                Privacy Policy
-              </Link>
-              {" · "}
-              <Link to="/terms" target="_blank" className="hover:text-foreground transition-colors">
-                Terms of Service
-              </Link>
-            </p>
+            <PolicyFooter className="py-0 text-muted-foreground [&_a]:hover:text-foreground" />
           </div>
         </div>
       </Card>
