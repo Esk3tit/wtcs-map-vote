@@ -129,9 +129,18 @@ function LoginPage() {
           </div>
 
           {/* Footer Text */}
-          <div className="pt-4 border-t border-border/30">
+          <div className="pt-4 border-t border-border/30 space-y-2">
             <p className="text-xs text-center text-muted-foreground leading-relaxed">
               Only authorized administrators can access this portal
+            </p>
+            <p className="text-xs text-center text-muted-foreground">
+              <a href="/privacy" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">
+                Privacy Policy
+              </a>
+              {" · "}
+              <a href="/terms" target="_blank" rel="noopener noreferrer" className="hover:text-foreground transition-colors">
+                Terms of Service
+              </a>
             </p>
           </div>
         </div>
