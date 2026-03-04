@@ -13,7 +13,7 @@ const ROUTES_WITH_OWN_LINKS = ['/admin', '/login', '/privacy', '/terms']
 
 function RootLayout() {
   const pathname = useRouterState({ select: (s) => s.location.pathname })
-  const showFooter = !ROUTES_WITH_OWN_LINKS.some((r) => pathname.startsWith(r))
+  const showFooter = !ROUTES_WITH_OWN_LINKS.some((r) => pathname === r || pathname.startsWith(r + '/'))
 
   return (
     <ErrorBoundary
