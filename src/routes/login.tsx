@@ -6,6 +6,7 @@ import { Card } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Loader2, AlertCircle } from 'lucide-react'
 import wtcsLogo from '@/assets/wtcs-logo.png'
+import { PolicyFooter } from '@/components/layout/policy-footer'
 
 export const Route = createFileRoute('/login')({
   component: LoginPage,
@@ -129,10 +130,11 @@ function LoginPage() {
           </div>
 
           {/* Footer Text */}
-          <div className="pt-4 border-t border-border/30">
+          <div className="pt-4 border-t border-border/30 space-y-2">
             <p className="text-xs text-center text-muted-foreground leading-relaxed">
               Only authorized administrators can access this portal
             </p>
+            <PolicyFooter className="py-0 text-muted-foreground [&_a]:hover:text-foreground" />
           </div>
         </div>
       </Card>

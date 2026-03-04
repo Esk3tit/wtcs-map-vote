@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button'
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar'
 import { LogOut, User, Users, Calendar, Map as MapIcon, Settings } from 'lucide-react'
 import wtcsLogo from '@/assets/wtcs-logo.png'
+import { PolicyFooter } from '@/components/layout/policy-footer'
 
 interface AdminSidebarProps {
   onNavigate?: () => void
@@ -108,6 +109,7 @@ export function AdminSidebar({ onNavigate }: AdminSidebarProps) {
           <LogOut className="w-4 h-4" />
           Logout
         </Button>
+        <PolicyFooter />
       </div>
     </aside>
   )
