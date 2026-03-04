@@ -6,6 +6,107 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 
 ---
 
+## [1.0.0] - 2026-03-03 - Production Release
+
+The 1.0.0 release marks WTCS Map Vote as feature-complete and production-ready. This release consolidates all work from 98 pull requests across 8 development phases, delivering a real-time competitive map voting application built on React 19, Convex, and TanStack Router.
+
+### Core Platform
+
+- **React 19 + TypeScript + Vite 7** frontend with TanStack Router file-based routing
+- **Convex real-time backend** with 8-table schema, 21 indexes, and full TypeScript type safety
+- **Tailwind CSS 4** styling with shadcn/ui (base-vega) component library
+- **Netlify deployment** with automatic Convex deploy on merge to main
+- **Mobile-first responsive design** across all admin and player views
+
+### Authentication & Security
+
+- **Google OAuth** admin authentication via `@convex-dev/auth` with email-based whitelist
+- **Player token authentication** via HTTP actions with IP locking and heartbeat validation
+- **Admin management UI** with root admin protection and session invalidation
+- **Rate limiting** on all mutations to prevent abuse
+- **SSRF-safe URL validation** for external image URLs
+- **CORS restriction** to `SITE_URL` in production with fail-closed behavior
+- **Audit logging** — dual system: session-scoped `auditLogs` and global `adminAuditLogs`
+
+### Voting Engine
+
+- **ABBA ban format** — alternating ban turns with full validation chain
+- **Multiplayer vote format** — simultaneous voting with round resolution and deadlock handling
+- **Timer management** — per-session auto-ban/auto-vote on timeout via scheduled functions
+- **Admin overrides** — `forceRandomSelection` (CSPRNG), `adminVoteOnBehalf`, session reset/clone
+- **Round history, vote progress, and revote tracking** queries
+
+### Session Lifecycle
+
+- **Full state machine** — DRAFT → WAITING → ACTIVE → PAUSED → COMPLETE with centralized transition map
+- **Disconnect detection & auto-pause** via heartbeat timeout cron
+- **Auto-start** — sessions automatically start when all players are connected and ready
+- **Persistent ready toggle** with audio notification on ready state changes
+- **Audio consent gate** before lobby entry for browser autoplay compliance
+- **Player auto-redirects** — lobby → vote → results transitions via `useSessionStatusRedirect`
+
+### Admin Experience
+
+- **Dashboard** with session overview, quick actions, and skeleton loading
+- **Teams management** — CRUD with logo upload (Convex storage) and `TeamAvatar` component
+- **Maps management** — CRUD with image upload/URL picker, active/inactive toggle
+- **Session management** — create, configure, start, pause, resume, end, reset, clone, delete
+- **Session detail page** — real-time player status, lobby URLs, GDPR-compliant IP redaction
+- **Paginated lists** using `paginationOptsValidator` across all admin tables
+- **Standardized empty states** with shared `EmptyState` component
+
+### Player Experience
+
+- **Lobby** — real-time map grid with staggered entrance animations, pulsing wait indicator
+- **Voting interface** — tap-friendly map selection, vote confirmation UI, golden border feedback
+- **Session paused overlay** — semi-transparent overlay during admin pause
+- **Disconnected overlay** — exponential backoff reconnection with retry logic
+- **3-state connection indicators** — Connected/Reconnecting/Disconnected badges
+- **Session error states** — `SessionEndedPage` for expired sessions, `TokenErrorPage` for invalid tokens
+- **Multiplayer round results reveal** — 3-second reveal phase with vote counts and winner banner
+
+### Animation & Visual Polish
+
+- **ABBA turn flash overlay** — green viewport-edge glow on your-turn transition
+- **ABBA progress tracker** with map thumbnails and multiplayer round history table
+- **Animated map ban/elimination transitions** — grayscale + stamp-in, staggered elimination
+- **Winner celebration animation** — choreographed CSS-only sequence on results page
+- **Turn transition animations** — banner crossfade, timer pulse, round fade-in
+- **Skeleton loading screens** on all player pages and admin dashboard
+- **Team logos** throughout all views with batch resolution
+- **6 audio alerts** for voting events with mute toggle and autoplay unlock
+
+### Observability & Monitoring
+
+- **Sentry error tracking** — React 19 error hooks, `Sentry.ErrorBoundary`, session replay (error-only)
+- **Source map upload** via `@sentry/vite-plugin` with post-upload cleanup and release tracking
+- **Wide event structured logging** across all Convex functions with business context enrichment
+- **PostHog analytics** with session replay, privacy-safe token sanitization, `VITE_PUBLIC_` env vars
+- **Core Web Vitals monitoring** via `web-vitals` library (LCP, FID, CLS, FCP, TTFB)
+- **ConvexError filtering**, browser noise suppression, extension error filtering
+
+### Testing & Quality
+
+- **700+ unit tests** via `convex-test` and Vitest across all backend modules
+- **CI/CD pipeline** — GitHub Actions with typecheck, lint, test with coverage, and PR coverage comments
+- **Coverage thresholds** enforced: 70% lines/branches/statements, 75% functions
+- **100% coverage** on `admins.ts`, `playerAuth.ts`, `lib/auth.ts`
+
+### Developer Experience
+
+- **Comprehensive documentation** — CLAUDE.md, SPECIFICATION.md, architecture.md, convex_rules.md, sentry_rules.md
+- **Code review todo tracking** system in `todos/` directory
+- **Convex coding style guide** with module headers, section dividers, JSDoc, and error message conventions
+- **Shared utility library** — validators, validation helpers, constants, type definitions, cascade delete
+- **Pagination best practices** documentation
+
+---
+
+### Previous Pre-Release Versions
+
+<details>
+<summary>Click to expand pre-release changelog (v0.0.1 – v0.22.0)</summary>
+
 ## [0.22.0] - 2026-03-01 - Turn Transitions, Rate Limiting & Sentry (WAR-67, 72–73, PRs #91–94)
 
 ### Added
@@ -898,3 +999,5 @@ Phase 2 complete! All admin and player pages are now wired to Convex with real-t
 - ESLint configuration
 - TypeScript strict mode
 - Path aliases (`@/` for src imports)
+
+</details>
