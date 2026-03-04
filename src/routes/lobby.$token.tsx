@@ -97,7 +97,12 @@ function PlayerLobbyPage() {
         signal: AbortSignal.timeout(10_000),
       });
       if (!res.ok) {
-        toast.error(`Failed to ${action}. Please try again.`);
+        // Suppress toast for SESSION_NOT_WAITING — the session auto-started
+        // while the player was clicking, and redirect will handle it.
+        const body = await res.json().catch(() => ({}));
+        if (body?.error !== "SESSION_NOT_WAITING") {
+          toast.error(`Failed to ${action}. Please try again.`);
+        }
       }
     } catch {
       toast.error("Network error. Please try again.");
