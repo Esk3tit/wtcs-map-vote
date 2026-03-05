@@ -134,7 +134,7 @@ CSS cannot detect that a data value changed from one specific value to another. 
 
 ### `TurnFlashOverlay` component state
 
-The `TurnFlashOverlay` uses a ref-comparison pattern (`prevState`) to detect turn changes. It tracks both `isYourTurn` and `currentTurn` to handle ABBA consecutive turns where the same player acts twice in a row (B→B). The flash fires whenever the turn state changes and `isYourTurn` is true, rather than only on `isYourTurn` false-to-true transitions. It manages a `isFlashing` state that mounts the overlay div, which then plays the `border-flash` keyframe. Cleanup happens via both `onAnimationEnd` and a 750ms fallback timer (for when `prefers-reduced-motion` suppresses the animation class).
+The `TurnFlashOverlay` uses a ref-comparison pattern (`prevTurnState`) to detect turn changes. It tracks both `isYourTurn` and `currentTurn` to handle ABBA consecutive turns where the same player acts twice in a row (B→B). The flash fires whenever the turn state changes and `isYourTurn` is true, rather than only on `isYourTurn` false-to-true transitions. It manages a `isFlashing` state that mounts the overlay div, which then plays the `border-flash` keyframe. Cleanup happens via both `onAnimationEnd` and a 750ms fallback timer (for when `prefers-reduced-motion` suppresses the animation class).
 
 ### `useRevealPhase` state machine
 

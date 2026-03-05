@@ -21,11 +21,13 @@ export function TurnFlashOverlay({
   isSuppressed,
 }: TurnFlashOverlayProps) {
   const [isFlashing, setIsFlashing] = useState(false);
-  const prevState = useRef({ isYourTurn, currentTurn });
+  // Sentinel initial values ensure the flash fires on the very first turn
+  // (e.g. Player A's opening turn). Matches useAudioAlerts strategy.
+  const prevTurnState = useRef({ isYourTurn: false, currentTurn: -1 });
 
   useEffect(() => {
-    const prev = prevState.current;
-    prevState.current = { isYourTurn, currentTurn };
+    const prev = prevTurnState.current;
+    prevTurnState.current = { isYourTurn, currentTurn };
 
     // Skip if nothing actually changed (prevents firing on isSuppressed changes)
     if (prev.isYourTurn === isYourTurn && prev.currentTurn === currentTurn) return;
