@@ -26,7 +26,7 @@ Four custom keyframes are defined in the `@theme` block of `src/index.css`. Tail
 - **Easing:** `ease-out`
 - **Behavior:** Fades opacity 0 -> 1 (at 15%) -> 0. One-shot, `forwards` fill.
 - **Used by:** `TurnFlashOverlay` (`motion-safe:animate-border-flash`).
-- **Trigger:** JS state change (`isYourTurn` false-to-true transition). The overlay mounts, the keyframe plays, and `onAnimationEnd` unmounts it.
+- **Trigger:** JS state change (turn change where `isYourTurn` is true). Tracks both `isYourTurn` and `currentTurn` to handle ABBA consecutive turns (B→B). The overlay mounts, the keyframe plays, and `onAnimationEnd` unmounts it.
 
 ### `stamp-in` (400ms)
 
@@ -134,7 +134,7 @@ CSS cannot detect that a data value changed from one specific value to another. 
 
 ### `TurnFlashOverlay` component state
 
-The `TurnFlashOverlay` uses a similar ref-comparison pattern (`prevTurnRef`) to detect when `isYourTurn` transitions from `false` to `true`. It manages a `isFlashing` state that mounts the overlay div, which then plays the `border-flash` keyframe. Cleanup happens via both `onAnimationEnd` and a 750ms fallback timer (for when `prefers-reduced-motion` suppresses the animation class).
+The `TurnFlashOverlay` uses a ref-comparison pattern (`prevState`) to detect turn changes. It tracks both `isYourTurn` and `currentTurn` to handle ABBA consecutive turns where the same player acts twice in a row (B→B). The flash fires whenever the turn state changes and `isYourTurn` is true, rather than only on `isYourTurn` false-to-true transitions. It manages a `isFlashing` state that mounts the overlay div, which then plays the `border-flash` keyframe. Cleanup happens via both `onAnimationEnd` and a 750ms fallback timer (for when `prefers-reduced-motion` suppresses the animation class).
 
 ### `useRevealPhase` state machine
 

@@ -849,10 +849,11 @@ function PlayerVotingPage() {
       </div>
     </div>
 
-    {/* Turn transition flash (ABBA: fires when isYourTurn goes false→true) */}
+    {/* Turn transition flash (ABBA: fires on each turn that belongs to you) */}
     {session.format === "ABBA" && (
       <TurnFlashOverlay
         isYourTurn={isYourTurn}
+        currentTurn={session.currentTurn}
         isSuppressed={auth.isOverlayVisible}
       />
     )}
