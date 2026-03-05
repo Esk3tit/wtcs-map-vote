@@ -3,28 +3,39 @@ import { useEffect, useRef, useState } from "react";
 interface TurnFlashOverlayProps {
   /** Whether it is currently this player's turn */
   isYourTurn: boolean;
+  /** Current turn number (needed to detect ABBA consecutive turns) */
+  currentTurn: number;
   /** Suppress the flash (e.g. when DisconnectedOverlay is visible) */
   isSuppressed: boolean;
 }
 
 /**
- * Full-viewport border glow that fires once when isYourTurn transitions
- * from false to true. Non-blocking (pointer-events: none) and respects
- * prefers-reduced-motion via Tailwind's motion-safe variant.
+ * Full-viewport border glow that fires once when it becomes your turn.
+ * Tracks both isYourTurn and currentTurn to handle ABBA consecutive turns
+ * (where isYourTurn stays true across back-to-back turns for the same player).
+ * Non-blocking (pointer-events: none) and respects prefers-reduced-motion.
  */
 export function TurnFlashOverlay({
   isYourTurn,
+  currentTurn,
   isSuppressed,
 }: TurnFlashOverlayProps) {
   const [isFlashing, setIsFlashing] = useState(false);
-  const prevTurnRef = useRef(isYourTurn);
+  // Sentinel initial values ensure the flash fires on the very first turn
+  // (e.g. Player A's opening turn). Matches useAudioAlerts strategy.
+  const prevTurnState = useRef({ isYourTurn: false, currentTurn: -1 });
 
   useEffect(() => {
-    if (isYourTurn && !prevTurnRef.current && !isSuppressed) {
+    const prev = prevTurnState.current;
+    prevTurnState.current = { isYourTurn, currentTurn };
+
+    // Skip if nothing actually changed (prevents firing on isSuppressed changes)
+    if (prev.isYourTurn === isYourTurn && prev.currentTurn === currentTurn) return;
+
+    if (isYourTurn && !isSuppressed) {
       setIsFlashing(true); // eslint-disable-line react-hooks/set-state-in-effect
     }
-    prevTurnRef.current = isYourTurn;
-  }, [isYourTurn, isSuppressed]);
+  }, [isYourTurn, currentTurn, isSuppressed]);
 
   // Fallback cleanup: onAnimationEnd won't fire when prefers-reduced-motion
   // suppresses the animation class. This timer guarantees unmount.
