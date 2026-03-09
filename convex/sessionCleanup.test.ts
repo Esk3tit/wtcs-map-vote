@@ -514,7 +514,7 @@ async function createABBATimerSession(
     const playerAId = await ctx.db.insert(
       "sessionPlayers",
       sessionPlayerFactory(sessionId, {
-        role: "PLAYER_A",
+        role: "Player A",
         teamName: "Team Alpha",
         ipAddress: "10.0.0.1",
       })
@@ -524,7 +524,7 @@ async function createABBATimerSession(
     const playerBId = await ctx.db.insert(
       "sessionPlayers",
       sessionPlayerFactory(sessionId, {
-        role: "PLAYER_B",
+        role: "Player B",
         teamName: "Team Beta",
         ipAddress: "10.0.0.2",
       })

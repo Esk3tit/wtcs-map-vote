@@ -470,7 +470,7 @@ describe("playerAuth.validateAndLockToken", () => {
             token: token1,
             ipAddress: undefined,
             teamName: "Team Alpha",
-            role: "PLAYER_A",
+            role: "Player A",
           })
         );
         await ctx.db.insert(
@@ -479,7 +479,7 @@ describe("playerAuth.validateAndLockToken", () => {
             token: token2,
             ipAddress: undefined,
             teamName: "Team Beta",
-            role: "PLAYER_B",
+            role: "Player B",
           })
         );
       });

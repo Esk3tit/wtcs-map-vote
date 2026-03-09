@@ -4429,7 +4429,7 @@ describe("WAR-35: getSessionByToken enhancements", () => {
           sessionPlayerFactory(sessionId, {
             token,
             teamName: "Team A",
-            role: "PLAYER_A",
+            role: "Player A",
           })
         );
         const playerB = await ctx.db.insert(
@@ -4437,7 +4437,7 @@ describe("WAR-35: getSessionByToken enhancements", () => {
           sessionPlayerFactory(sessionId, {
             token: "other-player",
             teamName: "Team B",
-            role: "PLAYER_B",
+            role: "Player B",
           })
         );
 

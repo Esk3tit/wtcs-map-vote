@@ -460,7 +460,7 @@ describe("guardStart", () => {
         sessionPlayerFactory(sessionId, {
           teamName: "Alpha",
           isConnected: false,
-          role: "PLAYER_1",
+          role: "Player 1",
         })
       );
       await ctx.db.insert(
@@ -468,7 +468,7 @@ describe("guardStart", () => {
         sessionPlayerFactory(sessionId, {
           teamName: "Beta",
           isConnected: true,
-          role: "PLAYER_2",
+          role: "Player 2",
         })
       );
       await ctx.db.insert(
@@ -476,7 +476,7 @@ describe("guardStart", () => {
         sessionPlayerFactory(sessionId, {
           teamName: "Gamma",
           isConnected: false,
-          role: "PLAYER_3",
+          role: "Player 3",
         })
       );
       await ctx.db.insert(
@@ -484,7 +484,7 @@ describe("guardStart", () => {
         sessionPlayerFactory(sessionId, {
           teamName: "Delta",
           isConnected: true,
-          role: "PLAYER_4",
+          role: "Player 4",
         })
       );
 

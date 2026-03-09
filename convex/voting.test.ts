@@ -122,7 +122,7 @@ async function createABBASession(
       "sessionPlayers",
       sessionPlayerFactory(sessionId, {
         token: tokenA,
-        role: "PLAYER_A",
+        role: "Player A",
         teamName: "Team Alpha",
         ipAddress: overrides.playerAIp ?? "10.0.0.1",
         isConnected: true,
@@ -136,7 +136,7 @@ async function createABBASession(
       "sessionPlayers",
       sessionPlayerFactory(sessionId, {
         token: tokenB,
-        role: "PLAYER_B",
+        role: "Player B",
         teamName: "Team Beta",
         ipAddress: overrides.playerBIp ?? "10.0.0.2",
         isConnected: true,
@@ -284,7 +284,7 @@ describe("voting.submitBan", () => {
           "sessionPlayers",
           sessionPlayerFactory(sessionId, {
             token: tokenA,
-            role: "PLAYER_1",
+            role: "Player 1",
             teamName: "Team A",
             ipAddress: "10.0.0.1",
             isConnected: true,
@@ -1074,7 +1074,7 @@ describe("voting.submitVote", () => {
           "sessionPlayers",
           sessionPlayerFactory(sessionId, {
             token,
-            role: "PLAYER_1",
+            role: "Player 1",
             teamName: "Team A",
             ipAddress: "10.0.0.1",
             isConnected: true,
@@ -3267,7 +3267,7 @@ describe("voting.adminVoteOnBehalf", () => {
         const playerId = await ctx.db.insert(
           "sessionPlayers",
           sessionPlayerFactory(otherSessionId, {
-            role: "PLAYER_A",
+            role: "Player A",
             teamName: "Team A",
           })
         );

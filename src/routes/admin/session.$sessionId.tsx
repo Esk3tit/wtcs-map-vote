@@ -7,7 +7,7 @@ import {
   getActivePlayerIndex,
   sortPlayersByJoinOrder,
 } from "../../../convex/lib/constants";
-import { normalizeRole, humanizeRole } from "@/lib/formatting";
+import { normalizeRole } from "@/lib/formatting";
 import { isReadyActive } from "@/lib/ready";
 import {
   Card,
@@ -157,7 +157,7 @@ const formatPlayerRole = (role: string, format: string): string => {
     if (normalized === "PLAYER_A") return "Player A — Bans 1st & 4th";
     if (normalized === "PLAYER_B") return "Player B — Bans 2nd & 3rd";
   }
-  return humanizeRole(role);
+  return role;
 };
 
 // ============================================================================
