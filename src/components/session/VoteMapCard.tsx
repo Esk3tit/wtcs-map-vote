@@ -103,7 +103,7 @@ export function VoteMapCard({
       role={isClickable ? "button" : undefined}
       tabIndex={isClickable ? 0 : undefined}
       aria-label={
-        isClickable ? `Vote for ${map.name}` :
+        isClickable ? `Ban ${map.name}` :
         winner ? `Winner: ${map.name}` :
         isBanned ? `${map.name} - Banned` :
         justEliminated ? `${map.name} - Eliminated` :
@@ -220,7 +220,7 @@ export function VoteMapCard({
         </div>
         {!isAnyReveal && isMyVote && (
           <div className="text-xs text-center text-amber-400 mt-1">
-            Your vote
+            Your ban
           </div>
         )}
         {isBanned &&
@@ -233,7 +233,7 @@ export function VoteMapCard({
         {justEliminated && map.voteCount !== undefined && (
           <div className="text-xs text-center text-red-400 mt-1">
             Eliminated ({map.voteCount}{" "}
-            {map.voteCount === 1 ? "vote" : "votes"})
+            {map.voteCount === 1 ? "ban" : "bans"})
           </div>
         )}
       </div>

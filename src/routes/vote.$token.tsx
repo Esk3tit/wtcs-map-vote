@@ -79,7 +79,7 @@ function getVotingErrorMessage(error: VotingErrorCode): string {
     case "SESSION_NOT_IN_PROGRESS":
       return "Session is no longer active";
     case "ALREADY_VOTED":
-      return "You already voted this round";
+      return "You already banned this round";
     case "IP_MISMATCH":
       return "Session is locked to another device";
     case "INVALID_TOKEN":
@@ -505,7 +505,7 @@ function PlayerVotingPage() {
                 variant="secondary"
                 className="bg-muted text-xs sm:text-sm"
               >
-                {session.format === "ABBA" ? "ABBA Ban" : "Multiplayer Vote"}
+                {session.format === "ABBA" ? "ABBA Ban" : "Multiplayer Ban"}
               </Badge>
             </div>
             <div className="flex items-center gap-2 text-sm">
@@ -600,9 +600,9 @@ function PlayerVotingPage() {
                         </span>
                       )
                     ) : isYourTurn ? (
-                      "CAST YOUR VOTE"
+                      "CAST YOUR BAN"
                     ) : (
-                      "Waiting for others to vote..."
+                      "Waiting for others to ban..."
                     )}
                   </div>
                 </div>
@@ -625,9 +625,7 @@ function PlayerVotingPage() {
 
                 {isYourTurn && (
                   <p className="text-center text-muted-foreground text-lg">
-                    {session.format === "ABBA"
-                      ? "Select a map to ban"
-                      : "Select a map to vote for"}
+                    Pick a map to ban
                   </p>
                 )}
               </>
@@ -695,7 +693,7 @@ function PlayerVotingPage() {
             />
           )}
 
-          {/* Multiplayer Vote Status */}
+          {/* Multiplayer Ban Status */}
           {session.format === "MULTIPLAYER" && (
             <div className="max-w-4xl mx-auto">
               <div className="flex items-center justify-center gap-6 p-4 bg-muted/50 rounded-lg">
@@ -810,21 +808,13 @@ function PlayerVotingPage() {
         >
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>
-                {pendingAction?.type === "ban"
-                  ? "Confirm Ban"
-                  : "Confirm Vote"}
-              </AlertDialogTitle>
+              <AlertDialogTitle>Confirm Ban</AlertDialogTitle>
               <AlertDialogDescription>
-                {pendingAction?.type === "ban"
-                  ? "Are you sure you want to ban "
-                  : "Vote to eliminate "}
+                Are you sure you want to ban{" "}
                 <span className="font-semibold text-foreground">
                   {pendingAction?.name}
                 </span>
-                {pendingAction?.type === "ban"
-                  ? "? This action cannot be undone."
-                  : "? This cannot be changed."}
+                ? This action cannot be undone.
               </AlertDialogDescription>
             </AlertDialogHeader>
             <AlertDialogFooter>
@@ -839,14 +829,10 @@ function PlayerVotingPage() {
                 {isSubmitting ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    {pendingAction?.type === "ban"
-                      ? "Banning..."
-                      : "Voting..."}
+                    Banning...
                   </>
-                ) : pendingAction?.type === "ban" ? (
-                  "Confirm Ban"
                 ) : (
-                  "Confirm Vote"
+                  "Confirm Ban"
                 )}
               </AlertDialogAction>
             </AlertDialogFooter>

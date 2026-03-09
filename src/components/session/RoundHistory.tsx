@@ -71,7 +71,7 @@ export function RoundHistory({ roundHistory, maps }: RoundHistoryProps) {
                         {ban.voteCount !== undefined && ban.voteCount > 0 && (
                           <div className="text-[10px] text-center text-muted-foreground/70">
                             {ban.voteCount}{" "}
-                            {ban.voteCount === 1 ? "vote" : "votes"}
+                            {ban.voteCount === 1 ? "ban" : "bans"}
                           </div>
                         )}
                       </div>

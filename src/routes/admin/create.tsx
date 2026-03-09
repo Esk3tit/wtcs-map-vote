@@ -302,8 +302,8 @@ function CreateSessionPage() {
                       <Users className="w-6 h-6 text-primary" />
                     </div>
                     <div className="flex-1">
-                      <h3 className="font-semibold text-foreground mb-1">Multiplayer Vote</h3>
-                      <p className="text-sm text-muted-foreground">4 players, simultaneous voting rounds</p>
+                      <h3 className="font-semibold text-foreground mb-1">Multiplayer Ban</h3>
+                      <p className="text-sm text-muted-foreground">4 players, simultaneous banning rounds</p>
                     </div>
                   </div>
                 </CardContent>

@@ -243,14 +243,14 @@ const CONFIRM_DIALOG_CONFIG: Record<
   reset: {
     title: "Reset Session?",
     description:
-      "All votes and results will be cleared. Players and maps will be preserved. The session will return to WAITING state.",
+      "All bans and results will be cleared. Players and maps will be preserved. The session will return to WAITING state.",
     confirmLabel: "Reset Session",
     destructive: false,
   },
   delete: {
     title: "Delete Session?",
     description:
-      "This will permanently delete the session and all associated data (players, maps, votes). This action cannot be undone.",
+      "This will permanently delete the session and all associated data (players, maps, bans). This action cannot be undone.",
     confirmLabel: "Delete Session",
     destructive: true,
   },
@@ -533,7 +533,7 @@ function SessionDetailPage() {
           mapId: selectedMapId,
         }),
       () => {
-        toast.success(`Vote submitted for ${teamName}`);
+        toast.success(`Ban submitted for ${teamName}`);
         setVoteOnBehalfPlayer(null);
         setSelectedMapId(null);
       },
@@ -792,7 +792,6 @@ function SessionDetailPage() {
         actionLoading={actionLoading}
         availableMaps={availableMaps}
         selectedMapId={selectedMapId}
-        format={session.format}
         onSelectMap={setSelectedMapId}
         onConfirm={handleVoteOnBehalf}
         onCancel={() => {
@@ -946,7 +945,7 @@ function SessionDetailPage() {
                           className="gap-1 bg-blue-500/20 text-blue-600 border-blue-500/30"
                         >
                           <CheckCircle2 className="w-3 h-3" />
-                          Voted
+                          Banned
                         </Badge>
                       )}
                       {canVoteOnBehalf && (
@@ -964,9 +963,7 @@ function SessionDetailPage() {
                           }}
                         >
                           <Hand className="w-3 h-3" />
-                          {session.format === "ABBA"
-                            ? "Ban on Behalf"
-                            : "Vote on Behalf"}
+                          Ban on Behalf
                         </Button>
                       )}
                     </div>
@@ -1217,7 +1214,6 @@ function VoteOnBehalfDialog({
   actionLoading,
   availableMaps,
   selectedMapId,
-  format,
   onSelectMap,
   onConfirm,
   onCancel,
@@ -1227,7 +1223,6 @@ function VoteOnBehalfDialog({
   actionLoading: ActionName | null;
   availableMaps: { _id: Id<"sessionMaps">; name: string; imageUrl: string }[];
   selectedMapId: Id<"sessionMaps"> | null;
-  format: "ABBA" | "MULTIPLAYER";
   onSelectMap: (id: Id<"sessionMaps">) => void;
   onConfirm: () => void;
   onCancel: () => void;
@@ -1245,13 +1240,10 @@ function VoteOnBehalfDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {format === "ABBA" ? "Ban" : "Vote"} on Behalf of{" "}
-            {player.teamName}
+            Ban on Behalf of {player.teamName}
           </DialogTitle>
           <DialogDescription>
-            Select a map to{" "}
-            {format === "ABBA" ? "ban" : "vote for"} on behalf of
-            this player.
+            Pick a map to ban on behalf of this player.
           </DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-3 gap-2 max-h-80 overflow-y-auto">
@@ -1309,7 +1301,7 @@ function VoteOnBehalfDialog({
                 Submitting...
               </>
             ) : (
-              `Submit ${format === "ABBA" ? "Ban" : "Vote"}`
+              "Submit Ban"
             )}
           </Button>
         </DialogFooter>
