@@ -1245,13 +1245,10 @@ function VoteOnBehalfDialog({
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
           <DialogTitle>
-            {format === "ABBA" ? "Ban" : "Vote"} on Behalf of{" "}
-            {player.teamName}
+            Ban on Behalf of {player.teamName}
           </DialogTitle>
           <DialogDescription>
-            Select a map to{" "}
-            {format === "ABBA" ? "ban" : "vote for"} on behalf of
-            this player.
+            Pick a map to ban on behalf of this player.
           </DialogDescription>
         </DialogHeader>
         <div className="grid grid-cols-3 gap-2 max-h-80 overflow-y-auto">

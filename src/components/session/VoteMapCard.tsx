@@ -103,7 +103,7 @@ export function VoteMapCard({
       role={isClickable ? "button" : undefined}
       tabIndex={isClickable ? 0 : undefined}
       aria-label={
-        isClickable ? `Vote for ${map.name}` :
+        isClickable ? `Ban ${map.name}` :
         winner ? `Winner: ${map.name}` :
         isBanned ? `${map.name} - Banned` :
         justEliminated ? `${map.name} - Eliminated` :
