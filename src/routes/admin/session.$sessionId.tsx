@@ -152,12 +152,11 @@ const getMapStateOverlay = (
 
 const formatPlayerRole = (role: string, format: string): string => {
   if (format === "ABBA") {
-    if (role === "PLAYER_A") return "Player A — Bans 1st & 4th";
-    if (role === "PLAYER_B") return "Player B — Bans 2nd & 3rd";
+    if (role === "Player A") return "Player A — Bans 1st & 4th";
+    if (role === "Player B") return "Player B — Bans 2nd & 3rd";
   }
-  // Multiplayer: PLAYER_1, PLAYER_2, etc.
-  const num = role.replace("PLAYER_", "");
-  return `Player ${num}`;
+  // Already human-readable (e.g., "Player 1", "Player A")
+  return role;
 };
 
 // ============================================================================

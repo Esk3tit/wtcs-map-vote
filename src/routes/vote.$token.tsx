@@ -320,16 +320,26 @@ function PlayerVotingPage() {
   const opponentLogoUrl =
     otherPlayers.length > 0 ? otherPlayers[0].teamLogoUrl : undefined;
 
+  // Determine Player A and Player B for ABBA display (always A, B, B, A)
+  const isPlayerA = player.role === "Player A";
+  const teamA = {
+    name: isPlayerA ? player.teamName : opponentTeam,
+    logoUrl: isPlayerA ? player.teamLogoUrl : opponentLogoUrl,
+  };
+  const teamB = {
+    name: isPlayerA ? opponentTeam : player.teamName,
+    logoUrl: isPlayerA ? opponentLogoUrl : player.teamLogoUrl,
+  };
+
   // Build ban steps for progress tracker (ABBA format)
   // Note: This is for display only. Turn detection is server-authoritative via isYourTurn.
-  // Pattern shows alternating teams: Team A, Team B, Team B, Team A
+  // Pattern always shows: Team A, Team B, Team B, Team A
   const banSteps: BanStep[] =
     session.format === "ABBA"
-      ? [0, 1, 1, 0].map((pIndex, stepIndex) => ({
+      ? [teamA, teamB, teamB, teamA].map((team, stepIndex) => ({
           step: stepIndex + 1,
-          team: pIndex === 0 ? player.teamName : opponentTeam,
-          teamLogoUrl:
-            pIndex === 0 ? player.teamLogoUrl : opponentLogoUrl,
+          team: team.name,
+          teamLogoUrl: team.logoUrl,
           completed: stepIndex < session.currentTurn,
         }))
       : [];
