@@ -7,6 +7,7 @@ import {
   getActivePlayerIndex,
   sortPlayersByJoinOrder,
 } from "../../../convex/lib/constants";
+import { normalizeRole, humanizeRole } from "@/lib/formatting";
 import { isReadyActive } from "@/lib/ready";
 import {
   Card,
@@ -149,18 +150,6 @@ const getMapStateOverlay = (
 // ============================================================================
 // Role Formatting
 // ============================================================================
-
-const normalizeRole = (role: string): string =>
-  role.replace(/\s+/g, "_").toUpperCase();
-
-const humanizeRole = (role: string): string =>
-  role.includes("_")
-    ? role
-        .toLowerCase()
-        .split("_")
-        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(" ")
-    : role;
 
 const formatPlayerRole = (role: string, format: string): string => {
   const normalized = normalizeRole(role);

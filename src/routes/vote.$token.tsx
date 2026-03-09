@@ -32,6 +32,7 @@ import { useMapAnimations } from "@/hooks/useMapAnimations";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
 import { useRevealPhase } from "@/hooks/useRevealPhase";
 import { MAP_STAGGER_DELAY_MS } from "@/lib/animation";
+import { normalizeRole } from "@/lib/formatting";
 import { audioManager } from "@/lib/audio";
 import { useAudioAlerts } from "@/hooks/useAudioAlerts";
 import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
@@ -321,8 +322,7 @@ function PlayerVotingPage() {
     otherPlayers.length > 0 ? otherPlayers[0].teamLogoUrl : undefined;
 
   // Determine Player A and Player B for ABBA display (always A, B, B, A)
-  const isPlayerA =
-    player.role.replace(/\s+/g, "_").toUpperCase() === "PLAYER_A";
+  const isPlayerA = normalizeRole(player.role) === "PLAYER_A";
   const self = { name: player.teamName, logoUrl: player.teamLogoUrl };
   const opponent = { name: opponentTeam, logoUrl: opponentLogoUrl };
   const [teamA, teamB] = isPlayerA ? [self, opponent] : [opponent, self];
