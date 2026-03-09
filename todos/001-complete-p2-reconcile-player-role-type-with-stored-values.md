@@ -42,12 +42,12 @@ Additionally, test files are inconsistent: tests using `createSessionFull` write
 - **Risk**: Medium (future bugs likely)
 
 ## Recommended Action
-Option 1 preferred. Standardize on UPPER_SNAKE_CASE, update create.tsx, fix test data, add a one-time migration or keep normalizeRole as backward compat.
+Option 2 implemented. Updated `PlayerRole` type to Title Case to match actual stored values. Fixed all test files to use consistent Title Case format. No migration needed.
 
 ## Technical Details
-- **Affected Files**: `convex/lib/types.ts`, `src/routes/admin/create.tsx`, `convex/voting.test.ts`, `convex/playerAuth.test.ts`, `convex/sessionCleanup.test.ts`, `convex/sessionLifecycle.test.ts`
+- **Affected Files**: `convex/lib/types.ts`, `convex/voting.test.ts`, `convex/playerAuth.test.ts`, `convex/sessionCleanup.test.ts`, `convex/sessionLifecycle.test.ts`, `convex/wideEvent.test.ts`, `convex/sessions.test.ts`, `docs/SPECIFICATION.md`
 - **Related Components**: Session creation, player display, ABBA progress tracker
-- **Database Changes**: Yes - existing `sessionPlayers.role` values would need migration if switching to UPPER_SNAKE_CASE
+- **Database Changes**: None — type updated to match existing data
 
 ## Acceptance Criteria
 - [ ] `PlayerRole` type matches actual stored values
