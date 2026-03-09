@@ -7,7 +7,7 @@ import {
   getActivePlayerIndex,
   sortPlayersByJoinOrder,
 } from "../../../convex/lib/constants";
-import { normalizeRole } from "@/lib/formatting";
+import { formatPlayerRole } from "@/lib/formatting";
 import { isReadyActive } from "@/lib/ready";
 import {
   Card,
@@ -147,18 +147,6 @@ const getMapStateOverlay = (
   return null;
 };
 
-// ============================================================================
-// Role Formatting
-// ============================================================================
-
-const formatPlayerRole = (role: string, format: string): string => {
-  const normalized = normalizeRole(role);
-  if (format === "ABBA") {
-    if (normalized === "PLAYER_A") return "Player A — Bans 1st & 4th";
-    if (normalized === "PLAYER_B") return "Player B — Bans 2nd & 3rd";
-  }
-  return role;
-};
 
 // ============================================================================
 // Admin Connection Badge
