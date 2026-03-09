@@ -6,37 +6,37 @@ tags: [code-review, robustness]
 dependencies: ["001"]
 ---
 
-# Wrap Raw player.role Displays with humanizeRole
+# Raw player.role Displays — Resolved via Data Model Fix
 
 ## Problem Statement
-`player.role` is rendered raw (without formatting) in two locations. Currently works because the DB stores Title Case, but would break if the data model is fixed to UPPER_SNAKE_CASE.
+`player.role` was rendered raw in two locations. The concern was that if the data format changed, the display would break.
+
+## Resolution
+This was resolved by Todo #001 (reconcile PlayerRole type). The `PlayerRole` type now matches the actual stored Title Case format ("Player A", "Player B"), so raw `player.role` display is correct and type-safe. The `normalizeRole` utility in `src/lib/formatting.ts` is used for case-insensitive comparison where needed (e.g., ABBA progress tracker).
 
 ## Findings
-- `src/routes/vote.$token.tsx:518` - `{player.role}` displayed as "You are: Player A"
-- `src/routes/lobby.$token.tsx:305` - `({player.role})` displayed as "(Player A)"
-- Both would show `"PLAYER_A"` if data format changes
-
-## Proposed Solutions
-
-### Option 1: Wrap with humanizeRole
-- `{humanizeRole(player.role)}` at both locations
-- **Effort**: Small
-- **Risk**: Low
-
-## Recommended Action
-Apply after #001 is resolved to ensure consistency.
+- `src/routes/vote.$token.tsx:518` - `{player.role}` displayed correctly as "Player A"
+- `src/routes/lobby.$token.tsx:305` - `({player.role})` displayed correctly as "(Player A)"
+- `humanizeRole` was removed (dead code for Title Case data)
+- `normalizeRole` handles comparison logic in `formatPlayerRole` and `isPlayerA` check
 
 ## Technical Details
-- **Affected Files**: `src/routes/vote.$token.tsx`, `src/routes/lobby.$token.tsx`
+- **No code changes needed** — data model fix guarantees correct display format
+- `normalizeRole` from `@/lib/formatting` used for role comparisons
 
 ## Acceptance Criteria
-- [ ] player.role displays correctly regardless of stored format
-- [ ] No raw role strings rendered in UI
+- [x] player.role displays correctly with Title Case stored format
+- [x] PlayerRole type matches stored values
 
 ## Work Log
 
 ### 2026-03-09 - Approved for Work
 **By:** Claude Triage System
+
+### 2026-03-09 - Resolved (No Changes Needed)
+- Data model fix in #001 made this a non-issue
+- humanizeRole removed as dead code
+- normalizeRole handles comparison where needed
 
 ## Resources
 - PR #101: https://github.com/Esk3tit/wtcs-map-vote/pull/101

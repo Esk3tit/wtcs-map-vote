@@ -4508,6 +4508,25 @@ describe("WAR-35: getSessionByToken enhancements", () => {
         // ABBA bans don't have vote counts
         expect(result.roundHistory[0].bans[0].voteCount).toBeUndefined();
       }
+
+      // Verify Player B sees the same round history (viewer-independent ordering)
+      const resultB = await t.query(api.sessions.getSessionByToken, {
+        token: "other-player",
+      });
+      expect(resultB.status).toBe("valid");
+      if (resultB.status === "valid") {
+        expect(resultB.roundHistory).toHaveLength(3);
+        expect(resultB.roundHistory[0].round).toBe(1);
+        expect(resultB.roundHistory[0].bans[0].mapName).toBe("Dust2");
+        expect(resultB.roundHistory[0].bans[0].bannedByTeam).toBe("Team A");
+        expect(resultB.roundHistory[1].round).toBe(2);
+        expect(resultB.roundHistory[1].bans[0].mapName).toBe("Mirage");
+        expect(resultB.roundHistory[1].bans[0].bannedByTeam).toBe("Team B");
+        expect(resultB.roundHistory[2].round).toBe(3);
+        expect(resultB.roundHistory[2].bans[0].mapName).toBe("Inferno");
+        expect(resultB.roundHistory[2].bans[0].bannedByTeam).toBe("Team B");
+        expect(resultB.roundHistory[0].bans[0].voteCount).toBeUndefined();
+      }
     });
 
     it("returns MULTIPLAYER round history with multiple bans per round", async () => {

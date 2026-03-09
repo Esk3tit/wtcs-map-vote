@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { normalizeRole } from "./formatting";
+import { normalizeRole } from "@/lib/formatting";
 
 describe("normalizeRole", () => {
   it('converts "Player A" to "PLAYER_A"', () => {
@@ -16,5 +16,9 @@ describe("normalizeRole", () => {
 
   it('is idempotent for "PLAYER_A"', () => {
     expect(normalizeRole("PLAYER_A")).toBe("PLAYER_A");
+  });
+
+  it("trims surrounding whitespace", () => {
+    expect(normalizeRole("  Player A  ")).toBe("PLAYER_A");
   });
 });
