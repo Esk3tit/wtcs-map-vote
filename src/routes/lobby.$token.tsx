@@ -170,7 +170,7 @@ function PlayerLobbyPage() {
               {data.session.matchName}
             </h1>
             <Badge variant="outline" className="text-base px-4 py-1">
-              {data.session.format === "ABBA" ? "ABBA Ban" : "Multiplayer Vote"}
+              {data.session.format === "ABBA" ? "ABBA Ban" : "Multiplayer Ban"}
             </Badge>
           </div>
 
@@ -284,7 +284,7 @@ function PlayerLobbyPage() {
               {session.matchName}
             </h1>
             <Badge variant="outline" className="text-base px-4 py-1">
-              {session.format === "ABBA" ? "ABBA Ban" : "Multiplayer Vote"}
+              {session.format === "ABBA" ? "ABBA Ban" : "Multiplayer Ban"}
             </Badge>
           </div>
 

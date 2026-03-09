@@ -693,7 +693,7 @@ function PlayerVotingPage() {
             />
           )}
 
-          {/* Multiplayer Vote Status */}
+          {/* Multiplayer Ban Status */}
           {session.format === "MULTIPLAYER" && (
             <div className="max-w-4xl mx-auto">
               <div className="flex items-center justify-center gap-6 p-4 bg-muted/50 rounded-lg">
@@ -810,7 +810,7 @@ function PlayerVotingPage() {
             <AlertDialogHeader>
               <AlertDialogTitle>Confirm Ban</AlertDialogTitle>
               <AlertDialogDescription>
-                {"Are you sure you want to ban "}
+                Are you sure you want to ban{" "}
                 <span className="font-semibold text-foreground">
                   {pendingAction?.name}
                 </span>
@@ -829,7 +829,7 @@ function PlayerVotingPage() {
                 {isSubmitting ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-                    {"Banning..."}
+                    Banning...
                   </>
                 ) : (
                   "Confirm Ban"

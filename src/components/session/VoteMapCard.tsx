@@ -233,7 +233,7 @@ export function VoteMapCard({
         {justEliminated && map.voteCount !== undefined && (
           <div className="text-xs text-center text-red-400 mt-1">
             Eliminated ({map.voteCount}{" "}
-            {map.voteCount === 1 ? "vote" : "votes"})
+            {map.voteCount === 1 ? "ban" : "bans"})
           </div>
         )}
       </div>

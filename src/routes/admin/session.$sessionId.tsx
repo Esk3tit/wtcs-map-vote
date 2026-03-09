@@ -243,14 +243,14 @@ const CONFIRM_DIALOG_CONFIG: Record<
   reset: {
     title: "Reset Session?",
     description:
-      "All votes and results will be cleared. Players and maps will be preserved. The session will return to WAITING state.",
+      "All bans and results will be cleared. Players and maps will be preserved. The session will return to WAITING state.",
     confirmLabel: "Reset Session",
     destructive: false,
   },
   delete: {
     title: "Delete Session?",
     description:
-      "This will permanently delete the session and all associated data (players, maps, votes). This action cannot be undone.",
+      "This will permanently delete the session and all associated data (players, maps, bans). This action cannot be undone.",
     confirmLabel: "Delete Session",
     destructive: true,
   },
