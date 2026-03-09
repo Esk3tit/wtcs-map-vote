@@ -150,13 +150,25 @@ const getMapStateOverlay = (
 // Role Formatting
 // ============================================================================
 
+const normalizeRole = (role: string): string =>
+  role.replace(/\s+/g, "_").toUpperCase();
+
+const humanizeRole = (role: string): string =>
+  role.includes("_")
+    ? role
+        .toLowerCase()
+        .split("_")
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(" ")
+    : role;
+
 const formatPlayerRole = (role: string, format: string): string => {
+  const normalized = normalizeRole(role);
   if (format === "ABBA") {
-    if (role === "Player A") return "Player A — Bans 1st & 4th";
-    if (role === "Player B") return "Player B — Bans 2nd & 3rd";
+    if (normalized === "PLAYER_A") return "Player A — Bans 1st & 4th";
+    if (normalized === "PLAYER_B") return "Player B — Bans 2nd & 3rd";
   }
-  // Already human-readable (e.g., "Player 1", "Player A")
-  return role;
+  return humanizeRole(role);
 };
 
 // ============================================================================
