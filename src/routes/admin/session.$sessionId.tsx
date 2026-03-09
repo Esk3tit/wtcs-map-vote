@@ -945,7 +945,7 @@ function SessionDetailPage() {
                           className="gap-1 bg-blue-500/20 text-blue-600 border-blue-500/30"
                         >
                           <CheckCircle2 className="w-3 h-3" />
-                          Voted
+                          Banned
                         </Badge>
                       )}
                       {canVoteOnBehalf && (
