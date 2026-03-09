@@ -32,6 +32,7 @@ import { useMapAnimations } from "@/hooks/useMapAnimations";
 import { usePlayerAuth } from "@/hooks/usePlayerAuth";
 import { useRevealPhase } from "@/hooks/useRevealPhase";
 import { MAP_STAGGER_DELAY_MS } from "@/lib/animation";
+import { normalizeRole } from "@/lib/formatting";
 import { audioManager } from "@/lib/audio";
 import { useAudioAlerts } from "@/hooks/useAudioAlerts";
 import { useSessionStatusRedirect } from "@/hooks/useSessionStatusRedirect";
@@ -320,16 +321,21 @@ function PlayerVotingPage() {
   const opponentLogoUrl =
     otherPlayers.length > 0 ? otherPlayers[0].teamLogoUrl : undefined;
 
+  // Determine Player A and Player B for ABBA display (always A, B, B, A)
+  const isPlayerA = normalizeRole(player.role) === "PLAYER_A";
+  const self = { name: player.teamName, logoUrl: player.teamLogoUrl };
+  const opponent = { name: opponentTeam, logoUrl: opponentLogoUrl };
+  const [teamA, teamB] = isPlayerA ? [self, opponent] : [opponent, self];
+
   // Build ban steps for progress tracker (ABBA format)
   // Note: This is for display only. Turn detection is server-authoritative via isYourTurn.
-  // Pattern shows alternating teams: Team A, Team B, Team B, Team A
+  // Pattern always shows: Team A, Team B, Team B, Team A
   const banSteps: BanStep[] =
     session.format === "ABBA"
-      ? [0, 1, 1, 0].map((pIndex, stepIndex) => ({
+      ? [teamA, teamB, teamB, teamA].map((team, stepIndex) => ({
           step: stepIndex + 1,
-          team: pIndex === 0 ? player.teamName : opponentTeam,
-          teamLogoUrl:
-            pIndex === 0 ? player.teamLogoUrl : opponentLogoUrl,
+          team: team.name,
+          teamLogoUrl: team.logoUrl,
           completed: stepIndex < session.currentTurn,
         }))
       : [];

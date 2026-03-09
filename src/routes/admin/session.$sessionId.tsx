@@ -7,6 +7,7 @@ import {
   getActivePlayerIndex,
   sortPlayersByJoinOrder,
 } from "../../../convex/lib/constants";
+import { formatPlayerRole } from "@/lib/formatting";
 import { isReadyActive } from "@/lib/ready";
 import {
   Card,
@@ -146,19 +147,6 @@ const getMapStateOverlay = (
   return null;
 };
 
-// ============================================================================
-// Role Formatting
-// ============================================================================
-
-const formatPlayerRole = (role: string, format: string): string => {
-  if (format === "ABBA") {
-    if (role === "PLAYER_A") return "Player A — Bans 1st & 4th";
-    if (role === "PLAYER_B") return "Player B — Bans 2nd & 3rd";
-  }
-  // Multiplayer: PLAYER_1, PLAYER_2, etc.
-  const num = role.replace("PLAYER_", "");
-  return `Player ${num}`;
-};
 
 // ============================================================================
 // Admin Connection Badge

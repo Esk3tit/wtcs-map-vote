@@ -58,7 +58,7 @@ function fakePlayer(
     _id: "player789" as Id<"sessionPlayers">,
     _creationTime: Date.now(),
     sessionId: "session456" as Id<"sessions">,
-    role: "PLAYER_A",
+    role: "Player A",
     teamName: "Team Alpha",
     token: "test-player-token-not-a-secret",
     tokenExpiresAt: Date.now() + 86400000,

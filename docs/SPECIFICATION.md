@@ -463,7 +463,7 @@ export default defineSchema({
   // Player slots in a session
   sessionPlayers: defineTable({
     sessionId: v.id("sessions"),
-    role: v.string(), // "PLAYER_A", "PLAYER_B", "PLAYER_1", "PLAYER_2", etc.
+    role: v.string(), // "Player A", "Player B", "Player 1", "Player 2", etc.
     teamName: v.string(),
     token: v.string(), // unique access token
     tokenExpiresAt: v.number(),

@@ -10,18 +10,20 @@ import type { Id } from "../_generated/dataModel";
 
 /**
  * Player roles for different session formats
- * ABBA format: PLAYER_A, PLAYER_B
- * Multiplayer format: PLAYER_1, PLAYER_2, PLAYER_3, PLAYER_4
+ * ABBA format: Player A, Player B
+ * Multiplayer format: Player 1, Player 2, Player 3, Player 4
+ *
+ * These match the Title Case values stored in the database.
  *
  * @see docs/SPECIFICATION.md Section 3.2
  */
 export type PlayerRole =
-  | "PLAYER_A"
-  | "PLAYER_B"
-  | "PLAYER_1"
-  | "PLAYER_2"
-  | "PLAYER_3"
-  | "PLAYER_4";
+  | "Player A"
+  | "Player B"
+  | "Player 1"
+  | "Player 2"
+  | "Player 3"
+  | "Player 4";
 
 /**
  * Audit log action types
