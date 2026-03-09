@@ -533,7 +533,7 @@ function SessionDetailPage() {
           mapId: selectedMapId,
         }),
       () => {
-        toast.success(`Vote submitted for ${teamName}`);
+        toast.success(`Ban submitted for ${teamName}`);
         setVoteOnBehalfPlayer(null);
         setSelectedMapId(null);
       },
@@ -792,7 +792,6 @@ function SessionDetailPage() {
         actionLoading={actionLoading}
         availableMaps={availableMaps}
         selectedMapId={selectedMapId}
-        format={session.format}
         onSelectMap={setSelectedMapId}
         onConfirm={handleVoteOnBehalf}
         onCancel={() => {
@@ -964,9 +963,7 @@ function SessionDetailPage() {
                           }}
                         >
                           <Hand className="w-3 h-3" />
-                          {session.format === "ABBA"
-                            ? "Ban on Behalf"
-                            : "Vote on Behalf"}
+                          Ban on Behalf
                         </Button>
                       )}
                     </div>
@@ -1217,7 +1214,6 @@ function VoteOnBehalfDialog({
   actionLoading,
   availableMaps,
   selectedMapId,
-  format,
   onSelectMap,
   onConfirm,
   onCancel,
@@ -1227,7 +1223,6 @@ function VoteOnBehalfDialog({
   actionLoading: ActionName | null;
   availableMaps: { _id: Id<"sessionMaps">; name: string; imageUrl: string }[];
   selectedMapId: Id<"sessionMaps"> | null;
-  format: "ABBA" | "MULTIPLAYER";
   onSelectMap: (id: Id<"sessionMaps">) => void;
   onConfirm: () => void;
   onCancel: () => void;
@@ -1306,7 +1301,7 @@ function VoteOnBehalfDialog({
                 Submitting...
               </>
             ) : (
-              `Submit ${format === "ABBA" ? "Ban" : "Vote"}`
+              "Submit Ban"
             )}
           </Button>
         </DialogFooter>

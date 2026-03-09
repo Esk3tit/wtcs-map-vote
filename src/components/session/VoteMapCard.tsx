@@ -220,7 +220,7 @@ export function VoteMapCard({
         </div>
         {!isAnyReveal && isMyVote && (
           <div className="text-xs text-center text-amber-400 mt-1">
-            Your vote
+            Your ban
           </div>
         )}
         {isBanned &&

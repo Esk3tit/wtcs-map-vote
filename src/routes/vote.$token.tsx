@@ -79,7 +79,7 @@ function getVotingErrorMessage(error: VotingErrorCode): string {
     case "SESSION_NOT_IN_PROGRESS":
       return "Session is no longer active";
     case "ALREADY_VOTED":
-      return "You already voted this round";
+      return "You already banned this round";
     case "IP_MISMATCH":
       return "Session is locked to another device";
     case "INVALID_TOKEN":
@@ -505,7 +505,7 @@ function PlayerVotingPage() {
                 variant="secondary"
                 className="bg-muted text-xs sm:text-sm"
               >
-                {session.format === "ABBA" ? "ABBA Ban" : "Multiplayer Vote"}
+                {session.format === "ABBA" ? "ABBA Ban" : "Multiplayer Ban"}
               </Badge>
             </div>
             <div className="flex items-center gap-2 text-sm">
@@ -808,11 +808,9 @@ function PlayerVotingPage() {
         >
           <AlertDialogContent>
             <AlertDialogHeader>
-              <AlertDialogTitle>
-Confirm Ban
-              </AlertDialogTitle>
+              <AlertDialogTitle>Confirm Ban</AlertDialogTitle>
               <AlertDialogDescription>
-Are you sure you want to ban{" "}
+                {"Are you sure you want to ban "}
                 <span className="font-semibold text-foreground">
                   {pendingAction?.name}
                 </span>
@@ -831,7 +829,7 @@ Are you sure you want to ban{" "}
                 {isSubmitting ? (
                   <>
                     <Loader2 className="w-4 h-4 mr-2 animate-spin" />
-Banning...
+                    {"Banning..."}
                   </>
                 ) : (
                   "Confirm Ban"
