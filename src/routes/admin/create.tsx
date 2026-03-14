@@ -27,6 +27,8 @@ import { getMutationErrorMessage } from '@/lib/errors'
 
 type SessionFormat = 'ABBA' | 'MULTIPLAYER'
 
+const DEFAULT_MULTIPLAYER_SLOTS: string[] = ['', '', '']
+
 interface Team {
   id: string
   name: string
@@ -130,7 +132,7 @@ function CreateSessionPage() {
   const [format, setFormat] = useState<SessionFormat>('ABBA')
   const [playerA, setPlayerA] = useState('')
   const [playerB, setPlayerB] = useState('')
-  const [multiplayerPlayers, setMultiplayerPlayers] = useState<string[]>(['', '', ''])
+  const [multiplayerPlayers, setMultiplayerPlayers] = useState<string[]>([...DEFAULT_MULTIPLAYER_SLOTS])
   const [selectedMaps, setSelectedMaps] = useState<Id<'maps'>[]>([])
   const [turnTimer, setTurnTimer] = useState('30')
   const [mapPoolSize, setMapPoolSize] = useState(5)
@@ -274,7 +276,7 @@ function CreateSessionPage() {
                 )}
                 onClick={() => {
                   setFormat('ABBA')
-                  setMultiplayerPlayers(['', '', ''])
+                  setMultiplayerPlayers([...DEFAULT_MULTIPLAYER_SLOTS])
                 }}
               >
                 <CardContent className="p-6">

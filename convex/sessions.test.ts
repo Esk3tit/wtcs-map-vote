@@ -23,6 +23,7 @@ import {
   createDeletedId,
 } from "./test.factories";
 import { api } from "./_generated/api";
+import { MIN_PLAYER_COUNT, MAX_PLAYER_COUNT } from "./lib/constants";
 import { Id } from "./_generated/dataModel";
 import {
   SessionStatus,
@@ -3205,7 +3206,7 @@ describe("sessions.createSessionFull", () => {
           ],
           mapIds,
         })
-      ).rejects.toThrow("MULTIPLAYER format requires 2-8 players");
+      ).rejects.toThrow(`MULTIPLAYER format requires ${MIN_PLAYER_COUNT}-${MAX_PLAYER_COUNT} players`);
     });
 
     it("rejects MULTIPLAYER format with player count above maximum", async () => {
@@ -3233,7 +3234,7 @@ describe("sessions.createSessionFull", () => {
           })),
           mapIds,
         })
-      ).rejects.toThrow("MULTIPLAYER format requires 2-8 players");
+      ).rejects.toThrow(`MULTIPLAYER format requires ${MIN_PLAYER_COUNT}-${MAX_PLAYER_COUNT} players`);
     });
 
     it("rejects duplicate roles in player list", async () => {
