@@ -3269,7 +3269,7 @@ describe("sessions.createSessionFull", () => {
     it("rejects MULTIPLAYER format with player count above maximum", async () => {
       const { t, authT } = await createAuthenticatedAdmin();
       const { mapIds } = await t.run(async (ctx) => {
-        for (let i = 1; i <= 9; i++) {
+        for (let i = 1; i <= MAX_PLAYER_COUNT + 1; i++) {
           await ctx.db.insert("teams", teamFactory({ name: `Team ${i}` }));
         }
         const mapIds = [
@@ -3285,7 +3285,7 @@ describe("sessions.createSessionFull", () => {
           matchName: "Test",
           format: "MULTIPLAYER",
           mapPoolSize: 3,
-          players: Array.from({ length: 9 }, (_, i) => ({
+          players: Array.from({ length: MAX_PLAYER_COUNT + 1 }, (_, i) => ({
             role: `Player ${i + 1}`,
             teamName: `Team ${i + 1}`,
           })),
