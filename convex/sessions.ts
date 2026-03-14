@@ -1197,20 +1197,27 @@ export const createSessionFull = mutation({
       );
 
       // Validate player count matches format expectations
-      const expectedPlayerCount = args.format === "ABBA" ? 2 : 4;
-      if (args.players.length !== expectedPlayerCount) {
+      if (args.format === "ABBA") {
+        if (args.players.length !== 2) {
+          throw new ConvexError(
+            `ABBA format requires exactly 2 players, received ${args.players.length}.`
+          );
+        }
+      } else if (args.format === "MULTIPLAYER") {
+        // MULTIPLAYER: validate against MIN/MAX range
+        if (
+          args.players.length < MIN_PLAYER_COUNT ||
+          args.players.length > MAX_PLAYER_COUNT
+        ) {
+          throw new ConvexError(
+            `MULTIPLAYER format requires ${MIN_PLAYER_COUNT}-${MAX_PLAYER_COUNT} players, received ${args.players.length}.`
+          );
+        }
+      } else {
         throw new ConvexError(
-          `${args.format} format requires exactly ${expectedPlayerCount} players, received ${args.players.length}`
+          `Unknown format: ${args.format as string}. Expected ABBA or MULTIPLAYER.`
         );
       }
-
-      // Validate player count range
-      validateRange(
-        args.players.length,
-        MIN_PLAYER_COUNT,
-        MAX_PLAYER_COUNT,
-        "Player count"
-      );
 
       // Validate and collect player roles and team names (check for duplicates)
       const validatedPlayers: Array<{ role: string; teamName: string }> = [];
