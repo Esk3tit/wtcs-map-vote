@@ -9,6 +9,8 @@ import {
   MAX_MAP_POOL_SIZE,
   MIN_TURN_TIMER_SECONDS,
   MAX_TURN_TIMER_SECONDS,
+  MIN_PLAYER_COUNT,
+  MAX_PLAYER_COUNT,
 } from '../../../convex/lib/constants'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
@@ -17,7 +19,7 @@ import { Label } from '@/components/ui/label'
 import { Badge } from '@/components/ui/badge'
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
-import { ArrowLeft, Users, UserCircle2, Check, ChevronsUpDown, Loader2 } from 'lucide-react'
+import { ArrowLeft, Users, UserCircle2, Check, ChevronsUpDown, Loader2, Minus, Plus } from 'lucide-react'
 import { useState, useMemo } from 'react'
 import { cn } from '@/lib/utils'
 import { toast } from 'sonner'
@@ -125,10 +127,8 @@ function CreateSessionPage() {
   const [format, setFormat] = useState<SessionFormat>('ABBA')
   const [playerA, setPlayerA] = useState('')
   const [playerB, setPlayerB] = useState('')
-  const [player1, setPlayer1] = useState('')
-  const [player2, setPlayer2] = useState('')
-  const [player3, setPlayer3] = useState('')
-  const [player4, setPlayer4] = useState('')
+  const [multiplayerCount, setMultiplayerCount] = useState(3)
+  const [multiplayerPlayers, setMultiplayerPlayers] = useState<string[]>(['', '', ''])
   const [selectedMaps, setSelectedMaps] = useState<Id<'maps'>[]>([])
   const [turnTimer, setTurnTimer] = useState('30')
   const [mapPoolSize, setMapPoolSize] = useState(5)
@@ -181,12 +181,10 @@ function CreateSessionPage() {
               { role: 'Player A', teamName: playerA },
               { role: 'Player B', teamName: playerB },
             ]
-          : [
-              { role: 'Player 1', teamName: player1 },
-              { role: 'Player 2', teamName: player2 },
-              { role: 'Player 3', teamName: player3 },
-              { role: 'Player 4', teamName: player4 },
-            ]
+          : multiplayerPlayers.map((teamName, i) => ({
+              role: `Player ${i + 1}`,
+              teamName,
+            }))
 
       // Atomic session creation - creates session, players, and maps in single transaction
       const { sessionId } = await createSessionFull({
@@ -226,7 +224,7 @@ function CreateSessionPage() {
     selectedMaps.length === mapPoolSize &&
     matchName.trim() !== '' &&
     isTurnTimerValid &&
-    (format === 'ABBA' ? playerA && playerB : player1 && player2 && player3 && player4)
+    (format === 'ABBA' ? playerA && playerB : multiplayerPlayers.every((p) => p !== ''))
 
   return (
     <div className="flex-1 flex flex-col">
@@ -303,7 +301,7 @@ function CreateSessionPage() {
                     </div>
                     <div className="flex-1">
                       <h3 className="font-semibold text-foreground mb-1">Multiplayer Ban</h3>
-                      <p className="text-sm text-muted-foreground">4 players, simultaneous banning rounds</p>
+                      <p className="text-sm text-muted-foreground">{MIN_PLAYER_COUNT}-{MAX_PLAYER_COUNT} players, simultaneous banning rounds</p>
                     </div>
                   </div>
                 </CardContent>
@@ -333,35 +331,62 @@ function CreateSessionPage() {
                 />
               </div>
             ) : (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <TeamCombobox
-                  value={player1}
-                  onChange={setPlayer1}
-                  label="Player 1"
-                  teams={teams}
-                  isLoading={isLoadingTeams}
-                />
-                <TeamCombobox
-                  value={player2}
-                  onChange={setPlayer2}
-                  label="Player 2"
-                  teams={teams}
-                  isLoading={isLoadingTeams}
-                />
-                <TeamCombobox
-                  value={player3}
-                  onChange={setPlayer3}
-                  label="Player 3"
-                  teams={teams}
-                  isLoading={isLoadingTeams}
-                />
-                <TeamCombobox
-                  value={player4}
-                  onChange={setPlayer4}
-                  label="Player 4"
-                  teams={teams}
-                  isLoading={isLoadingTeams}
-                />
+              <div className="space-y-4">
+                {/* Player Count Selector */}
+                <div className="flex items-center gap-3">
+                  <Label className="text-sm text-muted-foreground">Number of Players</Label>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      disabled={multiplayerCount <= MIN_PLAYER_COUNT}
+                      onClick={() => {
+                        const newCount = multiplayerCount - 1
+                        setMultiplayerCount(newCount)
+                        setMultiplayerPlayers((prev) => prev.slice(0, newCount))
+                      }}
+                    >
+                      <Minus className="h-4 w-4" />
+                    </Button>
+                    <span className="w-8 text-center font-mono text-sm font-medium">{multiplayerCount}</span>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      disabled={multiplayerCount >= MAX_PLAYER_COUNT}
+                      onClick={() => {
+                        const newCount = multiplayerCount + 1
+                        setMultiplayerCount(newCount)
+                        setMultiplayerPlayers((prev) => [...prev, ''])
+                      }}
+                    >
+                      <Plus className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+
+                {/* Dynamic Player Slots */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {multiplayerPlayers.map((player, index) => (
+                    <TeamCombobox
+                      key={index}
+                      value={player}
+                      onChange={(value) => {
+                        setMultiplayerPlayers((prev) => {
+                          const updated = [...prev]
+                          updated[index] = value
+                          return updated
+                        })
+                      }}
+                      label={`Player ${index + 1}`}
+                      teams={teams}
+                      isLoading={isLoadingTeams}
+                    />
+                  ))}
+                </div>
               </div>
             )}
           </div>

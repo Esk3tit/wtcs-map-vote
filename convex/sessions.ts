@@ -1197,11 +1197,22 @@ export const createSessionFull = mutation({
       );
 
       // Validate player count matches format expectations
-      const expectedPlayerCount = args.format === "ABBA" ? 2 : 4;
-      if (args.players.length !== expectedPlayerCount) {
-        throw new ConvexError(
-          `${args.format} format requires exactly ${expectedPlayerCount} players, received ${args.players.length}`
-        );
+      if (args.format === "ABBA") {
+        if (args.players.length !== 2) {
+          throw new ConvexError(
+            `ABBA format requires exactly 2 players, received ${args.players.length}`
+          );
+        }
+      } else {
+        // MULTIPLAYER: validate against MIN/MAX range
+        if (
+          args.players.length < MIN_PLAYER_COUNT ||
+          args.players.length > MAX_PLAYER_COUNT
+        ) {
+          throw new ConvexError(
+            `MULTIPLAYER format requires ${MIN_PLAYER_COUNT}-${MAX_PLAYER_COUNT} players, received ${args.players.length}`
+          );
+        }
       }
 
       // Validate player count range

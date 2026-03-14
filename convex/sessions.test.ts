@@ -3153,11 +3153,10 @@ describe("sessions.createSessionFull", () => {
       ).rejects.toThrow("ABBA format requires exactly 2 players");
     });
 
-    it("rejects MULTIPLAYER format with wrong player count", async () => {
+    it("rejects MULTIPLAYER format with player count below minimum", async () => {
       const { t, authT } = await createAuthenticatedAdmin();
       const { mapIds } = await t.run(async (ctx) => {
         await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
-        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
         const mapIds = [
           await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
           await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
@@ -3173,11 +3172,10 @@ describe("sessions.createSessionFull", () => {
           mapPoolSize: 3,
           players: [
             { role: "Player 1", teamName: "Team A" },
-            { role: "Player 2", teamName: "Team B" },
           ],
           mapIds,
         })
-      ).rejects.toThrow("MULTIPLAYER format requires exactly 4 players");
+      ).rejects.toThrow("MULTIPLAYER format requires 2-8 players");
     });
 
     it("rejects duplicate roles in player list", async () => {
