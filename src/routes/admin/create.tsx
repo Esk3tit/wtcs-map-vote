@@ -272,7 +272,10 @@ function CreateSessionPage() {
                     ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
                     : 'border-border/50 bg-card/50',
                 )}
-                onClick={() => setFormat('ABBA')}
+                onClick={() => {
+                  setFormat('ABBA')
+                  setMultiplayerPlayers(['', '', ''])
+                }}
               >
                 <CardContent className="p-6">
                   <div className="flex items-start gap-4">
@@ -294,7 +297,11 @@ function CreateSessionPage() {
                     ? 'border-primary bg-primary/5 ring-2 ring-primary/20'
                     : 'border-border/50 bg-card/50',
                 )}
-                onClick={() => setFormat('MULTIPLAYER')}
+                onClick={() => {
+                  setFormat('MULTIPLAYER')
+                  setPlayerA('')
+                  setPlayerB('')
+                }}
               >
                 <CardContent className="p-6">
                   <div className="flex items-start gap-4">
@@ -368,7 +375,7 @@ function CreateSessionPage() {
                   </div>
                 </div>
 
-                {/* Dynamic Player Slots */}
+                {/* Dynamic Player Slots — key={index} is safe here because items are only added/removed from the end, never reordered */}
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                   {multiplayerPlayers.map((player, index) => (
                     <TeamCombobox

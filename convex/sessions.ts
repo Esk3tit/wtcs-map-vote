@@ -1215,14 +1215,6 @@ export const createSessionFull = mutation({
         }
       }
 
-      // Validate player count range
-      validateRange(
-        args.players.length,
-        MIN_PLAYER_COUNT,
-        MAX_PLAYER_COUNT,
-        "Player count"
-      );
-
       // Validate and collect player roles and team names (check for duplicates)
       const validatedPlayers: Array<{ role: string; teamName: string }> = [];
       const seenRoles = new Set<string>();

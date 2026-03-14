@@ -3227,17 +3227,10 @@ describe("sessions.createSessionFull", () => {
           matchName: "Test",
           format: "MULTIPLAYER",
           mapPoolSize: 3,
-          players: [
-            { role: "Player 1", teamName: "Team 1" },
-            { role: "Player 2", teamName: "Team 2" },
-            { role: "Player 3", teamName: "Team 3" },
-            { role: "Player 4", teamName: "Team 4" },
-            { role: "Player 5", teamName: "Team 5" },
-            { role: "Player 6", teamName: "Team 6" },
-            { role: "Player 7", teamName: "Team 7" },
-            { role: "Player 8", teamName: "Team 8" },
-            { role: "Player 9", teamName: "Team 9" },
-          ],
+          players: Array.from({ length: 9 }, (_, i) => ({
+            role: `Player ${i + 1}`,
+            teamName: `Team ${i + 1}`,
+          })),
           mapIds,
         })
       ).rejects.toThrow("MULTIPLAYER format requires 2-8 players");
