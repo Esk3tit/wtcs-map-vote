@@ -38,12 +38,14 @@ function TeamCombobox({
   label,
   teams,
   isLoading,
+  'aria-label': ariaLabel,
 }: {
   value: string
   onChange: (value: string) => void
   label: string
   teams: Team[]
   isLoading?: boolean
+  'aria-label'?: string
 }) {
   const [open, setOpen] = useState(false)
 
@@ -59,6 +61,7 @@ function TeamCombobox({
               variant="outline"
               role="combobox"
               aria-expanded={open}
+              aria-label={ariaLabel}
               className="w-full justify-between bg-background/50"
               disabled={isLoading}
             />
@@ -127,7 +130,6 @@ function CreateSessionPage() {
   const [format, setFormat] = useState<SessionFormat>('ABBA')
   const [playerA, setPlayerA] = useState('')
   const [playerB, setPlayerB] = useState('')
-  const [multiplayerCount, setMultiplayerCount] = useState(3)
   const [multiplayerPlayers, setMultiplayerPlayers] = useState<string[]>(['', '', ''])
   const [selectedMaps, setSelectedMaps] = useState<Id<'maps'>[]>([])
   const [turnTimer, setTurnTimer] = useState('30')
@@ -341,25 +343,23 @@ function CreateSessionPage() {
                       variant="outline"
                       size="icon"
                       className="h-8 w-8"
-                      disabled={multiplayerCount <= MIN_PLAYER_COUNT}
+                      aria-label="Decrease player count"
+                      disabled={multiplayerPlayers.length <= MIN_PLAYER_COUNT}
                       onClick={() => {
-                        const newCount = multiplayerCount - 1
-                        setMultiplayerCount(newCount)
-                        setMultiplayerPlayers((prev) => prev.slice(0, newCount))
+                        setMultiplayerPlayers((prev) => prev.slice(0, -1))
                       }}
                     >
                       <Minus className="h-4 w-4" />
                     </Button>
-                    <span className="w-8 text-center font-mono text-sm font-medium">{multiplayerCount}</span>
+                    <span className="w-8 text-center font-mono text-sm font-medium">{multiplayerPlayers.length}</span>
                     <Button
                       type="button"
                       variant="outline"
                       size="icon"
                       className="h-8 w-8"
-                      disabled={multiplayerCount >= MAX_PLAYER_COUNT}
+                      aria-label="Increase player count"
+                      disabled={multiplayerPlayers.length >= MAX_PLAYER_COUNT}
                       onClick={() => {
-                        const newCount = multiplayerCount + 1
-                        setMultiplayerCount(newCount)
                         setMultiplayerPlayers((prev) => [...prev, ''])
                       }}
                     >
@@ -382,6 +382,7 @@ function CreateSessionPage() {
                         })
                       }}
                       label={`Player ${index + 1}`}
+                      aria-label={`Select team for Player ${index + 1}`}
                       teams={teams}
                       isLoading={isLoadingTeams}
                     />

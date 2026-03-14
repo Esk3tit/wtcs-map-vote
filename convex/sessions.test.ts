@@ -3178,6 +3178,41 @@ describe("sessions.createSessionFull", () => {
       ).rejects.toThrow("MULTIPLAYER format requires 2-8 players");
     });
 
+    it("rejects MULTIPLAYER format with player count above maximum", async () => {
+      const { t, authT } = await createAuthenticatedAdmin();
+      const { mapIds } = await t.run(async (ctx) => {
+        for (let i = 1; i <= 9; i++) {
+          await ctx.db.insert("teams", teamFactory({ name: `Team ${i}` }));
+        }
+        const mapIds = [
+          await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
+        ];
+        return { mapIds };
+      });
+
+      await expect(
+        authT.mutation(api.sessions.createSessionFull, {
+          matchName: "Test",
+          format: "MULTIPLAYER",
+          mapPoolSize: 3,
+          players: [
+            { role: "Player 1", teamName: "Team 1" },
+            { role: "Player 2", teamName: "Team 2" },
+            { role: "Player 3", teamName: "Team 3" },
+            { role: "Player 4", teamName: "Team 4" },
+            { role: "Player 5", teamName: "Team 5" },
+            { role: "Player 6", teamName: "Team 6" },
+            { role: "Player 7", teamName: "Team 7" },
+            { role: "Player 8", teamName: "Team 8" },
+            { role: "Player 9", teamName: "Team 9" },
+          ],
+          mapIds,
+        })
+      ).rejects.toThrow("MULTIPLAYER format requires 2-8 players");
+    });
+
     it("rejects duplicate roles in player list", async () => {
       const { t, authT } = await createAuthenticatedAdmin();
       const { mapIds } = await t.run(async (ctx) => {

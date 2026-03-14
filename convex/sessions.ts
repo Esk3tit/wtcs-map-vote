@@ -1200,7 +1200,7 @@ export const createSessionFull = mutation({
       if (args.format === "ABBA") {
         if (args.players.length !== 2) {
           throw new ConvexError(
-            `ABBA format requires exactly 2 players, received ${args.players.length}`
+            `ABBA format requires exactly 2 players, received ${args.players.length}.`
           );
         }
       } else {
@@ -1210,7 +1210,7 @@ export const createSessionFull = mutation({
           args.players.length > MAX_PLAYER_COUNT
         ) {
           throw new ConvexError(
-            `MULTIPLAYER format requires ${MIN_PLAYER_COUNT}-${MAX_PLAYER_COUNT} players, received ${args.players.length}`
+            `MULTIPLAYER format requires ${MIN_PLAYER_COUNT}-${MAX_PLAYER_COUNT} players, received ${args.players.length}.`
           );
         }
       }
