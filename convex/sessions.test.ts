@@ -3184,6 +3184,63 @@ describe("sessions.createSessionFull", () => {
       expect(result.playerTokens).toHaveLength(3);
     });
 
+    it("accepts MULTIPLAYER format with MIN_PLAYER_COUNT players", async () => {
+      const { t, authT } = await createAuthenticatedAdmin();
+      const { mapIds } = await t.run(async (ctx) => {
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        const mapIds = [
+          await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
+        ];
+        return { mapIds };
+      });
+
+      const result = await authT.mutation(api.sessions.createSessionFull, {
+        matchName: "Test",
+        format: "MULTIPLAYER",
+        mapPoolSize: 3,
+        players: [
+          { role: "Player 1", teamName: "Team A" },
+          { role: "Player 2", teamName: "Team B" },
+        ],
+        mapIds,
+      });
+
+      expect(result.sessionId).toBeDefined();
+      expect(result.playerTokens).toHaveLength(MIN_PLAYER_COUNT);
+    });
+
+    it("accepts MULTIPLAYER format with MAX_PLAYER_COUNT players", async () => {
+      const { t, authT } = await createAuthenticatedAdmin();
+      const { mapIds } = await t.run(async (ctx) => {
+        for (let i = 1; i <= MAX_PLAYER_COUNT; i++) {
+          await ctx.db.insert("teams", teamFactory({ name: `Team ${i}` }));
+        }
+        const mapIds = [
+          await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
+        ];
+        return { mapIds };
+      });
+
+      const result = await authT.mutation(api.sessions.createSessionFull, {
+        matchName: "Test",
+        format: "MULTIPLAYER",
+        mapPoolSize: 3,
+        players: Array.from({ length: MAX_PLAYER_COUNT }, (_, i) => ({
+          role: `Player ${i + 1}`,
+          teamName: `Team ${i + 1}`,
+        })),
+        mapIds,
+      });
+
+      expect(result.sessionId).toBeDefined();
+      expect(result.playerTokens).toHaveLength(MAX_PLAYER_COUNT);
+    });
+
     it("rejects MULTIPLAYER format with player count below minimum", async () => {
       const { t, authT } = await createAuthenticatedAdmin();
       const { mapIds } = await t.run(async (ctx) => {
