@@ -276,7 +276,6 @@ function CreateSessionPage() {
                 )}
                 onClick={() => {
                   setFormat('ABBA')
-                  setMultiplayerPlayers([...DEFAULT_MULTIPLAYER_SLOTS])
                 }}
               >
                 <CardContent className="p-6">
@@ -301,8 +300,6 @@ function CreateSessionPage() {
                 )}
                 onClick={() => {
                   setFormat('MULTIPLAYER')
-                  setPlayerA('')
-                  setPlayerB('')
                 }}
               >
                 <CardContent className="p-6">
