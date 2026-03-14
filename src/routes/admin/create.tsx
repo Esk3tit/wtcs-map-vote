@@ -228,7 +228,7 @@ function CreateSessionPage() {
     selectedMaps.length === mapPoolSize &&
     matchName.trim() !== '' &&
     isTurnTimerValid &&
-    (format === 'ABBA' ? playerA && playerB : multiplayerPlayers.every((p) => p !== ''))
+    (format === 'ABBA' ? playerA && playerB : multiplayerPlayers.length >= MIN_PLAYER_COUNT && multiplayerPlayers.every((p) => p !== ''))
 
   return (
     <div className="flex-1 flex flex-col">
