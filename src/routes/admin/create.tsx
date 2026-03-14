@@ -355,7 +355,10 @@ function CreateSessionPage() {
                       aria-label="Decrease player count"
                       disabled={multiplayerPlayers.length <= MIN_PLAYER_COUNT}
                       onClick={() => {
-                        setMultiplayerPlayers((prev) => prev.slice(0, -1))
+                        setMultiplayerPlayers((prev) => {
+                          if (prev[prev.length - 1] !== '') return prev
+                          return prev.slice(0, -1)
+                        })
                       }}
                     >
                       <Minus className="h-4 w-4" />
