@@ -3153,6 +3153,36 @@ describe("sessions.createSessionFull", () => {
       ).rejects.toThrow("ABBA format requires exactly 2 players");
     });
 
+    it("accepts MULTIPLAYER format with 3 players", async () => {
+      const { t, authT } = await createAuthenticatedAdmin();
+      const { mapIds } = await t.run(async (ctx) => {
+        await ctx.db.insert("teams", teamFactory({ name: "Team A" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team B" }));
+        await ctx.db.insert("teams", teamFactory({ name: "Team C" }));
+        const mapIds = [
+          await ctx.db.insert("maps", mapFactory({ name: "Map 1" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 2" })),
+          await ctx.db.insert("maps", mapFactory({ name: "Map 3" })),
+        ];
+        return { mapIds };
+      });
+
+      const result = await authT.mutation(api.sessions.createSessionFull, {
+        matchName: "Test",
+        format: "MULTIPLAYER",
+        mapPoolSize: 3,
+        players: [
+          { role: "Player 1", teamName: "Team A" },
+          { role: "Player 2", teamName: "Team B" },
+          { role: "Player 3", teamName: "Team C" },
+        ],
+        mapIds,
+      });
+
+      expect(result.sessionId).toBeDefined();
+      expect(result.playerTokens).toHaveLength(3);
+    });
+
     it("rejects MULTIPLAYER format with player count below minimum", async () => {
       const { t, authT } = await createAuthenticatedAdmin();
       const { mapIds } = await t.run(async (ctx) => {
