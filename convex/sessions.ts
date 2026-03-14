@@ -1203,7 +1203,7 @@ export const createSessionFull = mutation({
             `ABBA format requires exactly 2 players, received ${args.players.length}.`
           );
         }
-      } else {
+      } else if (args.format === "MULTIPLAYER") {
         // MULTIPLAYER: validate against MIN/MAX range
         if (
           args.players.length < MIN_PLAYER_COUNT ||
@@ -1213,6 +1213,10 @@ export const createSessionFull = mutation({
             `MULTIPLAYER format requires ${MIN_PLAYER_COUNT}-${MAX_PLAYER_COUNT} players, received ${args.players.length}.`
           );
         }
+      } else {
+        throw new ConvexError(
+          `Unknown format: ${args.format as string}. Expected ABBA or MULTIPLAYER.`
+        );
       }
 
       // Validate and collect player roles and team names (check for duplicates)
