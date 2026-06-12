@@ -35,3 +35,4 @@ coverage/
 
 # Compound Engineering local config (machine-local; example file is committed)
 .compound-engineering/*.local.yaml
+.compound-engineering/*.local.yml
