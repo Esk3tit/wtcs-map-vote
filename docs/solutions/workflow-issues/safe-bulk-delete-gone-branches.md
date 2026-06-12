@@ -34,20 +34,24 @@ Procedure:
 
 ```bash
 git fetch --prune
-# 1. List gone branches
-git branch -vv | grep ': gone]' | sed -E 's/^[*+ ]+//; s/ .*//' > /tmp/gone.txt
-# 2. Pull every PR's head + merge state in ONE call (not one gh call per branch)
+# 1. List gone branches — anchor the match to the tracking-status block so a
+#    commit message containing ": gone]" can never false-match an active branch.
+git branch -vv | grep -E '\[[^]]+: gone\]' | sed -E 's/^[*+ ]+//; s/ .*//' > /tmp/gone.txt
+# 2. Pull every PR's head + merge state in ONE call (not one gh call per branch).
+#    --limit caps silently — raise it (or paginate) on repos with more total PRs,
+#    else a squash-merged branch whose PR falls outside the window lands in REVIEW.
 gh pr list --state all --limit 1000 --json number,headRefName,state,mergedAt > /tmp/prs.json
 # 3. Classify each branch; only delete the verified-safe ones
 while IFS= read -r b; do
   if git merge-base --is-ancestor "$b" origin/main 2>/dev/null; then
     git branch -D "$b"                       # reachable from main
-  elif jq -e --arg h "$b" 'any(.[]; .headRefName==$h and .mergedAt!=null)' /tmp/prs.json >/dev/null; then
+  elif jq -e --arg h "$b" 'any(.[]; .headRefName==$h and .state=="MERGED")' /tmp/prs.json >/dev/null; then
     git branch -D "$b"                       # squash-merged PR
   else
     echo "REVIEW (no merged PR, possible local-only work): $b"
   fi
 done < /tmp/gone.txt
+rm -f /tmp/gone.txt /tmp/prs.json            # clean up scratch files
 ```
 
 `git branch -D` prints `Deleted branch X (was <sha>)` — capture that output to a log; the SHA stays recoverable via `git reflog` for ~90 days. Remove any associated worktree first (`git worktree remove <path>`) before deleting its branch.
