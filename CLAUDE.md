@@ -422,6 +422,7 @@ No additional GitHub Actions deploy job needed - Netlify manages both frontend h
 - [Sentry Rules](docs/sentry_rules.md) - Sentry error tracking guidelines       
 - [Changelog](docs/changelog.md) - Version history (append only, never overwrite)
 - [Project Status](docs/project_status.md) - Current progress and next steps
+- [Documented Solutions](docs/solutions/) - past solutions & learnings (bugs, conventions, workflow patterns) organized by category with YAML frontmatter (`module`, `tags`, `problem_type`); relevant when implementing or debugging in a documented area
 - [Pagination Guide](docs/solutions/pagination/convex-pagination-best-practices.md) - Convex pagination patterns
 - Update docs after major milestones and feature completions
 - Use `/update-docs-and-commit` after finishing features or merging PRs
