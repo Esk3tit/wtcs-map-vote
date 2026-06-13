@@ -92,5 +92,9 @@ export function initPostHog(): typeof posthog | null {
     debug: import.meta.env.DEV,
   });
 
+  // Tag every event with the app name so both apps (this and the
+  // Community Polls app) can filter per-app without needing a separate project.
+  posthog.register({ app: "map-vote-ban" });
+
   return posthog;
 }
