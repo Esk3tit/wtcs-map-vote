@@ -54,7 +54,7 @@ Netlify deployments have different origins).
 
 ## Why This Matters
 
-Verified against `node_modules/posthog-js/dist/module.js` (posthog-js `^1.357.1`):
+Verified against the bundled SDK (`node_modules/posthog-js/dist/module.js`, `LIB_VERSION` `1.357.1`). The minified helper names below (`lr`, `rr`) are build-specific — the durable claim is the behavior, not the symbol names:
 
 1. `posthog.init(...)` returns synchronously at **T=0**.
 2. The initial pageview is scheduled as a **macrotask**: `setTimeout(() => this.lr(), 1)`,
@@ -122,7 +122,7 @@ posthog.init(POSTHOG_KEY, {
 });
 ```
 
-**Verification method** (reproducible against the bundled SDK):
+**Verification method** (reproducible against the bundled SDK; symbol names are build-specific — re-locate them by behavior after an SDK upgrade):
 
 1. Open `node_modules/posthog-js/dist/module.js`.
 2. Search for `send_instantly` / `lr(` → find `this.config.capture_pageview && setTimeout(() => … this.lr(), 1)`. This proves the initial pageview is deferred one macrotask past synchronous code.
