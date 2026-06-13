@@ -104,7 +104,7 @@ are deployed to the **same origin** (rare in practice).
 ```ts
 posthog.init(POSTHOG_KEY, {
   api_host: POSTHOG_HOST,
-  capture_pageview: "history_change", // this is what fires a deferred initial pageview
+  capture_pageview: "history_change", // enables the initial pageview; the SDK defers it via setTimeout(…,1) regardless of this value
 });
 // Registered at T=0 — before that deferred pageview is captured (~T=1ms).
 posthog.register({ app: "map-vote-ban" });

@@ -110,6 +110,7 @@ Coverage thresholds are enforced at 70% lines, 75% functions, 70% branches.
 - [Architecture](docs/architecture.md) - System design and data flow
 - [Changelog](docs/changelog.md) - Version history
 - [Project Status](docs/project_status.md) - Current progress and roadmap
+- [Concepts](CONCEPTS.md) - Shared domain vocabulary; seeded and maintained via the compound-engineering plugin's `/ce-compound` workflow (plain Markdown — useful with or without the plugin)
 
 ## License
 
