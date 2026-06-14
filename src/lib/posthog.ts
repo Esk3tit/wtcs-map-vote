@@ -7,7 +7,7 @@
  * VITE_PUBLIC_POSTHOG_KEY is not configured.
  */
 
-import type { PostHogConfig } from "posthog-js";
+import posthog, { type PostHogConfig } from "posthog-js";
 
 import { beforeSendEvent } from "./posthogRedaction";
 import { initWebVitals } from "./vitals";
@@ -47,12 +47,13 @@ export const posthogOptions: Partial<PostHogConfig> = {
   // on every event (including the deferred initial $pageview).
   before_send: beforeSendEvent,
 
-  // Initialize Web Vitals once PostHog is ready (the app tag is handled in
-  // before_send, not here — loaded fires after the remote-config round-trip).
-  loaded: (ph) => {
-    initWebVitals(ph);
-  },
-
   // Debug logging in development only
   debug: import.meta.env.DEV,
 };
+
+// Register Web Vitals listeners at startup so early paint/load metrics aren't
+// missed and console logging works even without a PostHog key. (The `loaded`
+// callback fires only after the /flags round-trip, and never when unconfigured.)
+// Pass the singleton when a key is present — the provider initializes it on
+// mount — or null otherwise so dev console reporting still runs.
+initWebVitals(POSTHOG_KEY ? posthog : null);
