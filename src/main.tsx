@@ -1,3 +1,5 @@
+import './instrument'
+
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 
@@ -7,11 +9,9 @@ import { toast } from "sonner";
 
 import { PostHogProvider } from "@posthog/react";
 
-import { router } from '@/router'
 import App from '@/App'
-import { Sentry, initSentry } from '@/lib/sentry'
-import { initPostHog, posthogInstance } from '@/lib/posthog'
-import { initWebVitals } from '@/lib/vitals'
+import { Sentry } from '@/lib/sentry'
+import { POSTHOG_KEY, posthogOptions } from '@/lib/posthog'
 
 import './index.css'
 
@@ -51,14 +51,6 @@ if (import.meta.hot) {
 
 const convex = new ConvexReactClient(convexUrl);
 
-// Initialize Sentry synchronously so error handlers work from the first render.
-// Sentry.init() itself doesn't issue outbound requests during initialization.
-try {
-  initSentry(router);
-} catch {
-  // Sentry unavailable — app continues without error tracking
-}
-
 createRoot(document.getElementById('root')!, {
   onUncaughtError: Sentry.reactErrorHandler((error, errorInfo) => {
     // ConvexError is intentional business logic, filtered from Sentry via beforeSend.
@@ -76,25 +68,9 @@ createRoot(document.getElementById('root')!, {
 }).render(
   <StrictMode>
     <ConvexAuthProvider client={convex}>
-      {posthogInstance ? (
-        <PostHogProvider client={posthogInstance}>
-          <App />
-        </PostHogProvider>
-      ) : (
+      <PostHogProvider apiKey={POSTHOG_KEY ?? ""} options={posthogOptions}>
         <App />
-      )}
+      </PostHogProvider>
     </ConvexAuthProvider>
   </StrictMode>,
 );
-
-// Defer PostHog/Vitals initialization so the page renders immediately.
-// If posthog.com is geo-blocked (e.g. Russia), this prevents synchronous
-// network requests from blocking React rendering.
-setTimeout(() => {
-  try {
-    const posthogClient = initPostHog();
-    initWebVitals(posthogClient);
-  } catch {
-    // PostHog unavailable — app continues without analytics
-  }
-}, 0);

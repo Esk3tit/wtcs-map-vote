@@ -1,100 +1,58 @@
 /**
  * PostHog Analytics
  *
- * Initializes PostHog product analytics and session replay.
- * Operates as a no-op when VITE_PUBLIC_POSTHOG_KEY is not configured.
+ * PostHog configuration consumed by the `PostHogProvider` (apiKey/options
+ * pattern). The provider owns initialization and renders children regardless of
+ * init state, so the app never blocks on PostHog. Operates as a no-op when
+ * VITE_PUBLIC_POSTHOG_KEY is not configured.
  */
 
-import posthog from "posthog-js";
+import type { PostHogConfig } from "posthog-js";
 
-const POSTHOG_KEY = import.meta.env.VITE_PUBLIC_POSTHOG_KEY;
+import { beforeSendEvent } from "./posthogRedaction";
+import { initWebVitals } from "./vitals";
+
+export const POSTHOG_KEY = import.meta.env.VITE_PUBLIC_POSTHOG_KEY as
+  | string
+  | undefined;
+
 const POSTHOG_HOST =
   import.meta.env.VITE_PUBLIC_POSTHOG_HOST || "https://us.i.posthog.com";
 
-/** Redact player tokens from URL paths: /vote/{token} → /vote/[REDACTED] */
-const redactPath = (path: string) =>
-  path.replace(/\/(vote|lobby)\/[^/?#]+/g, "/$1/[REDACTED]");
-
-/** Redact tokens from a full URL (path segments + ?token= query param) */
-function redactUrl(url: string): string {
-  try {
-    const parsed = new URL(url);
-    parsed.pathname = redactPath(parsed.pathname);
-    if (parsed.searchParams.has("token")) {
-      parsed.searchParams.set("token", "[REDACTED]");
-    }
-    return parsed.toString();
-  } catch {
-    return redactPath(url);
-  }
-}
-
-/** All PostHog properties that contain full URLs */
-const URL_PROPERTIES = [
-  "$current_url",
-  "$referrer",
-  "$initial_referrer",
-  "$initial_current_url",
-  "$session_entry_url",
-] as const;
-
-/** All PostHog properties that contain path-only values */
-const PATH_PROPERTIES = ["$pathname", "$session_entry_pathname"] as const;
-
 /**
- * The PostHog instance for the React provider.
- * Exported separately so the provider can mount before init() runs.
- * null when VITE_PUBLIC_POSTHOG_KEY is not configured.
+ * PostHog options passed to `PostHogProvider`. The provider calls
+ * `posthog.init()` with these on mount.
  */
-export const posthogInstance: typeof posthog | null = POSTHOG_KEY ? posthog : null;
+export const posthogOptions: Partial<PostHogConfig> = {
+  api_host: POSTHOG_HOST,
 
-/**
- * Initialize PostHog analytics.
- * Returns the PostHog instance if configured, null otherwise.
- * Safe to call after React renders — the provider already has the instance.
- */
-export function initPostHog(): typeof posthog | null {
-  if (!POSTHOG_KEY) return null;
+  // Modern baseline; explicit options below override it where set.
+  defaults: "2025-05-24",
 
-  posthog.init(POSTHOG_KEY, {
-    api_host: POSTHOG_HOST,
+  // SPA page view tracking — listen to History API changes.
+  // TanStack Router uses pushState under the hood, so this works automatically.
+  capture_pageview: "history_change",
+  capture_pageleave: "if_capture_pageview",
 
-    // SPA page view tracking — listen to History API changes.
-    // TanStack Router uses pushState under the hood, so this works automatically.
-    capture_pageview: "history_change",
-    capture_pageleave: "if_capture_pageview",
+  // Disable autocapture — use explicit events only
+  autocapture: false,
 
-    // Disable autocapture — use explicit events only
-    autocapture: false,
+  // Privacy
+  persistence: "localStorage",
+  session_recording: {
+    maskAllInputs: true,
+  },
 
-    // Privacy
-    persistence: "localStorage",
-    session_recording: {
-      maskAllInputs: true,
-    },
+  // Strip player tokens from URL-bearing properties and stamp the app tag
+  // on every event (including the deferred initial $pageview).
+  before_send: beforeSendEvent,
 
-    // Strip player tokens from all URL-bearing properties before capture
-    sanitize_properties: (properties) => {
-      for (const key of URL_PROPERTIES) {
-        if (typeof properties[key] === "string") {
-          properties[key] = redactUrl(properties[key]);
-        }
-      }
-      for (const key of PATH_PROPERTIES) {
-        if (typeof properties[key] === "string") {
-          properties[key] = redactPath(properties[key]);
-        }
-      }
-      return properties;
-    },
+  // Initialize Web Vitals once PostHog is ready (the app tag is handled in
+  // before_send, not here — loaded fires after the remote-config round-trip).
+  loaded: (ph) => {
+    initWebVitals(ph);
+  },
 
-    // Debug logging in development only
-    debug: import.meta.env.DEV,
-  });
-
-  // Tag every event with the app name so both apps (this and the
-  // Community Polls app) can filter per-app without needing a separate project.
-  posthog.register({ app: "map-vote-ban" });
-
-  return posthog;
-}
+  // Debug logging in development only
+  debug: import.meta.env.DEV,
+};
