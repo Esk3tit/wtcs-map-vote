@@ -52,6 +52,15 @@ Do **not** move it into the `loaded` callback. Do **not** add `persistence_name`
 unless the apps are served from the exact same origin (they aren't — separate
 Netlify deployments have different origins).
 
+> **Update (2026-06-14):** When this app adopted the canonical `PostHogProvider`
+> `apiKey`/`options` pattern (the provider owns `init()`, so there is no
+> synchronous post-init hook for `register()`), the `app` tag was moved into
+> `before_send` instead — it stamps every event including the deferred initial
+> pageview, independent of init/network timing. The synchronous-`register()`
+> guidance below still holds for the manual `init()` + `client`-prop pattern;
+> `before_send` is the equivalent for the provider pattern. See
+> [`analytics-init-deferral-does-not-fix-render-blocking.md`](./analytics-init-deferral-does-not-fix-render-blocking.md).
+
 ## Why This Matters
 
 Verified against the bundled SDK (`node_modules/posthog-js/dist/module.js`, `LIB_VERSION` `1.357.1`). The minified helper names below (`lr`, `rr`) are build-specific — the durable claim is the behavior, not the symbol names:
@@ -130,6 +139,12 @@ posthog.init(POSTHOG_KEY, {
 
 ## Related
 
+- `docs/solutions/best-practices/analytics-init-deferral-does-not-fix-render-blocking.md` —
+  the companion init-timing doc. Shares the meta-principle of verifying library
+  timing/network behavior against source. That doc shows init does no blocking
+  network I/O (so deferring it behind `setTimeout(0)` fixes nothing); this doc
+  shows the initial pageview is a deferred macrotask and `loaded` fires later
+  still (so `register()` must be synchronous).
 - `docs/solutions/conventions/favicon-parity-across-sister-apps.md` — the other
   documented `wtcs-map-vote` ↔ `wtcs-community-polls` parity convention. Shares the
   "keep sister apps in sync" framing; no technical overlap. Note that for *this*

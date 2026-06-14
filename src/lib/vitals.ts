@@ -6,9 +6,11 @@
  */
 
 import type { Metric } from "web-vitals";
-import type posthog from "posthog-js";
 
-type PostHogClient = typeof posthog;
+/** Minimal PostHog surface Web Vitals needs — just event capture. */
+interface PostHogClient {
+  capture: (event: string, properties?: Record<string, unknown>) => unknown;
+}
 
 /** Send a Web Vital metric to PostHog as a custom event. */
 function reportToPostHog(client: PostHogClient, metric: Metric) {
