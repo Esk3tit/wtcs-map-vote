@@ -1,4 +1,4 @@
-import './instrument'
+import '@/instrument'
 
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
@@ -68,9 +68,13 @@ createRoot(document.getElementById('root')!, {
 }).render(
   <StrictMode>
     <ConvexAuthProvider client={convex}>
-      <PostHogProvider apiKey={POSTHOG_KEY ?? ""} options={posthogOptions}>
+      {POSTHOG_KEY ? (
+        <PostHogProvider apiKey={POSTHOG_KEY} options={posthogOptions}>
+          <App />
+        </PostHogProvider>
+      ) : (
         <App />
-      </PostHogProvider>
+      )}
     </ConvexAuthProvider>
   </StrictMode>,
 );

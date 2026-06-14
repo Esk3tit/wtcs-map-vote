@@ -11,7 +11,7 @@ import type { CaptureResult } from "posthog-js";
 
 /** Tag every event with the app name so this app and the Community Polls app
  *  can share one PostHog project and filter per-app. */
-const APP_NAME = "map-vote-ban";
+export const APP_NAME = "map-vote-ban";
 
 /** Redact player tokens from URL paths: /vote/{token} → /vote/[REDACTED] */
 const redactPath = (path: string) =>
@@ -43,6 +43,18 @@ const URL_PROPERTIES = [
 /** All PostHog properties that contain path-only values */
 const PATH_PROPERTIES = ["$pathname", "$session_entry_pathname"] as const;
 
+/** Redact tokens from every URL- and path-bearing key in a property bag. */
+function redactProperties(props: Record<string, unknown>): void {
+  for (const key of URL_PROPERTIES) {
+    const value = props[key];
+    if (typeof value === "string") props[key] = redactUrl(value);
+  }
+  for (const key of PATH_PROPERTIES) {
+    const value = props[key];
+    if (typeof value === "string") props[key] = redactPath(value);
+  }
+}
+
 /**
  * PostHog `before_send` handler. Redacts player tokens from URL-bearing
  * properties and stamps the `app` tag on every event — including the SDK's
@@ -56,20 +68,18 @@ export function beforeSendEvent(
 ): CaptureResult | null {
   if (!event) return event;
 
-  const properties = event.properties;
-  if (properties) {
-    for (const key of URL_PROPERTIES) {
-      if (typeof properties[key] === "string") {
-        properties[key] = redactUrl(properties[key]);
-      }
-    }
-    for (const key of PATH_PROPERTIES) {
-      if (typeof properties[key] === "string") {
-        properties[key] = redactPath(properties[key]);
-      }
-    }
-    properties.app = APP_NAME;
+  // Event properties: redact URLs and stamp the app tag.
+  if (event.properties) {
+    redactProperties(event.properties);
+    event.properties.app = APP_NAME;
   }
+
+  // Person properties ($set, $set_once) travel as sibling fields, not inside
+  // `properties`. The deprecated sanitize_properties hook also ran on $set_once,
+  // so redact both here — $set_once.$pathname carries the initial landing path
+  // (e.g. a raw /vote/{token} for a first-time visitor) and would otherwise leak.
+  if (event.$set) redactProperties(event.$set);
+  if (event.$set_once) redactProperties(event.$set_once);
 
   return event;
 }
